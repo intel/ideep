@@ -1,0 +1,106 @@
+import numpy
+import ideep4py
+
+# from ideep4py import convolution2DParam, conv_test
+from ideep4py import intVector, convolution2DParam, convolution2D
+
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+
+w = numpy.ndarray(shape=(32, 32, 3, 3), dtype=numpy.float32, order='C')
+w = ideep4py.mdarray(w)
+
+b = numpy.ndarray(shape=(32,), dtype=numpy.float32, order='C')
+b = ideep4py.mdarray(b)
+
+cp = convolution2DParam()
+cp.out_dims = intVector()
+cp.out_dims.push_back(1)
+cp.out_dims.push_back(32)
+cp.out_dims.push_back(224)
+cp.out_dims.push_back(224)
+cp.sy = cp.sx = 1
+cp.pad_lh = cp.pad_lw = cp.pad_rh = cp.pad_rw = 1
+
+print("fwd with bias")
+y = convolution2D.Forward(x, w, b, cp)
+print("==============")
+y = convolution2D.Forward(x, w, b, cp)
+print("==============")
+y = convolution2D.Forward(y, w, b, cp)
+
+print("fwd without bias")
+y = convolution2D.Forward(x, w, None, cp)
+print("==============")
+y = convolution2D.Forward(x, w, None, cp)
+print("==============")
+y = convolution2D.Forward(y, w, None, cp)
+
+print("bwd data")
+x = convolution2D.BackwardData(w, y, cp)
+print("==============")
+x = convolution2D.BackwardData(w, y, cp)
+print("==============")
+x = convolution2D.BackwardData(w, y, cp)
+
+cp = convolution2DParam()
+cp.out_dims = intVector()
+cp.out_dims.push_back(32)
+cp.out_dims.push_back(32)
+cp.out_dims.push_back(3)
+cp.out_dims.push_back(3)
+cp.sy = cp.sx = 1
+cp.pad_lh = cp.pad_lw = cp.pad_rh = cp.pad_rw = 1
+
+print("bwd weights with bias")
+weights = convolution2D.BackwardWeightsBias(x, y, cp)
+print("weights=", type(weights))
+print("len=", len(weights))
+print("gw.shape=", weights[0].shape)
+print("gb.shape=", weights[1].shape)
+print("==============")
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+weights = convolution2D.BackwardWeightsBias(x, y, cp)
+print("weights=", type(weights))
+print("len=", len(weights))
+print("gw.shape=", weights[0].shape)
+print("gb.shape=", weights[1].shape)
+print("==============")
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+weights = convolution2D.BackwardWeightsBias(x, y, cp)
+print("weights=", type(weights))
+print("len=", len(weights))
+print("gw.shape=", weights[0].shape)
+print("gb.shape=", weights[1].shape)
+print("==============")
+
+print("bwd weights without bias")
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+weights = convolution2D.BackwardWeights(x, y, cp)
+print("weights=", type(weights))
+print("gw.shape=", weights.shape)
+print("==============")
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+weights = convolution2D.BackwardWeights(x, y, cp)
+print("weights=", type(weights))
+print("gw.shape=", weights.shape)
+print("==============")
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+weights = convolution2D.BackwardWeights(x, y, cp)
+print("weights=", type(weights))
+print("gw.shape=", weights.shape)
+print("==============")
+x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
+x = ideep4py.mdarray(x)
+weights = convolution2D.BackwardWeights(x, y, cp)
+
+# print("type=", type(x))
+# print("shape=", y.shape)
+# print("size=", y.size)
+# print("ndim=", y.ndim)
+# print("dtype=", y.dtype)

@@ -1,0 +1,3 @@
+[submodule "mkl-dnn"]
+	path = mkl-dnn
+	url = https://github.com/01org/mkl-dnn.git

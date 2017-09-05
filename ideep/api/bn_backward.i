@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") bn_backward
+%module (package="ideep.api") bn_backward
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstddef>

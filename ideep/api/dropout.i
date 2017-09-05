@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") dropout
+%module (package="ideep.api") dropout
 %{
   #define SWIG_FILE_WITH_INIT
   #include "dropout.h"

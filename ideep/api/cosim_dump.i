@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn") cosim_dump
+%module (package="ideep") cosim_dump
 %{
   #define SWIG_FILE_WITH_INIT
   #include <mkldnn.hpp>

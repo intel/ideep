@@ -1,4 +1,4 @@
-%module (package="mkldnn") mdarray
+%module (package="ideep") mdarray
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstring>

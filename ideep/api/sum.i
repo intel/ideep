@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") sum
+%module (package="ideep.api") sum
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstddef>

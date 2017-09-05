@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") c_api
+%module (package="ideep.api") c_api
 %{
   #include <mkldnn.h>
 %}

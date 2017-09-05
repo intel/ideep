@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") convolution_backward_data
+%module (package="ideep.api") convolution_backward_data
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstddef>

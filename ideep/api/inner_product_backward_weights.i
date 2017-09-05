@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") inner_product_backward_weights
+%module (package="ideep.api") inner_product_backward_weights
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstddef>

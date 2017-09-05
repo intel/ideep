@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") eltwise_backward
+%module (package="ideep.api") eltwise_backward
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstddef>

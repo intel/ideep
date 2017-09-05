@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-%module (package="mkldnn.api") reorder
+%module (package="ideep.api") reorder
 %{
   #define SWIG_FILE_WITH_INIT
   #include <cstddef>

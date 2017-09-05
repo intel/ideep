@@ -49,13 +49,13 @@ def reuse_buffer(d, s):
 
 # XXX: move this file to another location
 def array(obj, *args):
-    if isinstance(obj, ideep.mdarray):
+    if isinstance(obj, mdarray):
         return obj
     elif isinstance(obj, numpy.ndarray):
         # TODO: Do we automatically transfer?
 
         obj = numpy.ascontiguousarray(obj)
-        return ideep.mdarray(obj, *args)
+        return mdarray(obj, *args)
     else:
         raise NotImplementedError
 

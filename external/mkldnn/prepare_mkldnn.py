@@ -10,23 +10,37 @@ MKLDNN_BUILD_PATH = MKLDNN_WORK_PATH + '/source/build'
 MKLML_PKG_PATH = MKLDNN_SOURCE_PATH + '/external'
 
 
+def exception(msg):
+    try:
+        sys.exit(0)
+    finally:
+        print('Warning: %s' % msg)
+        print('Cleanup ...')
+        os.chdir(MKLDNN_WORK_PATH)
+        os.system('rm %s -rf' % MKLDNN_SOURCE_PATH)
+
+
 def download(mkldnn_version):
     print('Downloading ...')
 
     os.chdir(MKLDNN_WORK_PATH)
-    os.system('git clone -b master --single-branch https://github.com/01org/mkl-dnn.git source')
+    if os.system('git clone -b master --single-branch https://github.com/01org/mkl-dnn.git source') != 0:
+        exception('Could not fork mkldnn source')
 
     os.chdir(MKLDNN_SOURCE_PATH)
-    os.system('git reset --hard %s' % mkldnn_version)
+    if os.system('git reset --hard %s' % mkldnn_version) != 0:
+        exception('Could not reset to %s' % mkldnn_version)
 
     if not os.path.exists(MKLML_PKG_PATH):
-        os.system('cd scripts && ./prepare_mkl.sh && cd ..')
+        if os.system('cd scripts && ./prepare_mkl.sh && cd ..') != 0:
+            exception('Fail to prepare mkl')
 
 
 def build():
     print('Building ...')
 
-    os.system('mkdir -p build && cd build && cmake -DCMAKE_INSTALL_PREFIX=%s .. && make -j' % MKLDNN_ROOT)
+    if os.system('mkdir -p build && cd build && cmake -DCMAKE_INSTALL_PREFIX=%s .. && make -j' % MKLDNN_ROOT) != 0:
+        exception('Fail to build mkldnn')
 
 
 def install(refresh_build):
@@ -36,9 +50,11 @@ def install(refresh_build):
 
     # install mkldnn
     if refresh_build:
-        os.system('cd build && make -j && make install')
+        ret = os.system('cd build && make -j && make install')
     else:
-        os.system('cd build && make install')
+        ret = os.system('cd build && make install')
+    if ret != 0:
+        exception('Fail to instal mkldnn')
 
     # install mklml
     mklml_pkg_path_leafs = os.listdir(MKLML_PKG_PATH)

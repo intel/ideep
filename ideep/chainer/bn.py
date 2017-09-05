@@ -1,22 +1,22 @@
 from chainer import configuration
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import reorder_if_must
-from mkldnn.compute_complex import reuse_buffer
-from mkldnn.compute_complex import array
-from mkldnn.compute_complex import ComputeComplex
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import reorder_if_must
+from ideep.compute_complex import reuse_buffer
+from ideep.compute_complex import array
+from ideep.compute_complex import ComputeComplex
 import numpy
 
 # Most important thing
-from mkldnn.api.support import use_scale_shift
-from mkldnn.api.support import forward_training
-from mkldnn.api.support import forward_scoring
-from mkldnn.api.support import use_global_stats
-from mkldnn.api.support import at
-from mkldnn.api.support import backward
-import mkldnn.api.memory as m
-import mkldnn.api.bn_forward as bn_forward
-import mkldnn.api.bn_backward as bn_backward
-from mkldnn.mdarray import mdarray
+from ideep.api.support import use_scale_shift
+from ideep.api.support import forward_training
+from ideep.api.support import forward_scoring
+from ideep.api.support import use_global_stats
+from ideep.api.support import at
+from ideep.api.support import backward
+import ideep.api.memory as m
+import ideep.api.bn_forward as bn_forward
+import ideep.api.bn_backward as bn_backward
+from ideep.mdarray import mdarray
 
 
 class BnForward(ComputeComplex):

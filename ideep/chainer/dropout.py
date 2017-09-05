@@ -1,11 +1,11 @@
-import mkldnn.api.memory as m
+import ideep.api.memory as m
 import numpy as np
 from chainer import function
 from chainer.utils import type_check
-from mkldnn.mdarray import mdarray
-from mkldnn.api.dropout import dropout_f32
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import array, ComputeComplex
+from ideep.mdarray import mdarray
+from ideep.api.dropout import dropout_f32
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import array, ComputeComplex
 
 
 def _format(ndim):

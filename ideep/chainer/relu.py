@@ -1,15 +1,15 @@
 from chainer import function
 from chainer.utils import type_check
 
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import ComputeComplex, array, reuse_buffer, reorder_if_must
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import ComputeComplex, array, reuse_buffer, reorder_if_must
 
-from mkldnn.api.support import forward, eltwise_relu, at
-import mkldnn.api.memory as m
-import mkldnn.api.eltwise_forward as eltwise_forward
-import mkldnn.api.eltwise_backward as eltwise_backward
+from ideep.api.support import forward, eltwise_relu, at
+import ideep.api.memory as m
+import ideep.api.eltwise_forward as eltwise_forward
+import ideep.api.eltwise_backward as eltwise_backward
 
-from mkldnn.mdarray import mdarray
+from ideep.mdarray import mdarray
 
 
 class ReLUForward(ComputeComplex):

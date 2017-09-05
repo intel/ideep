@@ -2,21 +2,21 @@ from chainer import function
 from chainer.utils import conv
 from chainer.utils import type_check
 
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
 
 # Most important thing
-from mkldnn.api.support import forward, convolution_direct, zero
+from ideep.api.support import forward, convolution_direct, zero
 
-import mkldnn.api.memory as m
+import ideep.api.memory as m
 
-import mkldnn.api.convolution_forward as conv_forward
-import mkldnn.api.convolution_backward_data as conv_backdata
-import mkldnn.api.convolution_backward_weights as conv_backweights
-import mkldnn.api.cosim_dump as cdump
-from mkldnn.api.cosim_dump import *
-from mkldnn.mdarray import mdarray
-from mkldnn.chainer.optimization import WeightReorderOptimization, weight_optimization_trigger
+import ideep.api.convolution_forward as conv_forward
+import ideep.api.convolution_backward_data as conv_backdata
+import ideep.api.convolution_backward_weights as conv_backweights
+import ideep.api.cosim_dump as cdump
+from ideep.api.cosim_dump import *
+from ideep.mdarray import mdarray
+from ideep.chainer.optimization import WeightReorderOptimization, weight_optimization_trigger
 
 conv_f_op = conv_forward.conv_f_op
 conv_bd_op = conv_backdata.conv_bd_op

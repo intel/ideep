@@ -3,19 +3,19 @@ import numpy
 from chainer import function
 from chainer.utils import type_check
 
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import reuse_buffer
-from mkldnn.compute_complex import array
-from mkldnn.compute_complex import ComputeComplex
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import reuse_buffer
+from ideep.compute_complex import array
+from ideep.compute_complex import ComputeComplex
 
 # Most important thing
 
-from mkldnn.api.support import at
-import mkldnn.api.memory as m
-import mkldnn.api.view as view
-import mkldnn.api.concat as concat
-import mkldnn.api.reorder as r
-from mkldnn.mdarray import mdarray
+from ideep.api.support import at
+import ideep.api.memory as m
+import ideep.api.view as view
+import ideep.api.concat as concat
+import ideep.api.reorder as r
+from ideep.mdarray import mdarray
 
 
 class ConcatForward(ComputeComplex):

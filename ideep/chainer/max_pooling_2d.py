@@ -1,11 +1,11 @@
-import mkldnn.api.memory as m
-import mkldnn.api.cosim_dump as cdump
+import ideep.api.memory as m
+import ideep.api.cosim_dump as cdump
 
-from mkldnn.chainer.pooling_2d import Pooling2DMKLDNN, Pooling2DForward, Pooling2DBackward
-from mkldnn.api.support import pooling_max
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import array
-from mkldnn.api.cosim_dump import *
+from ideep.chainer.pooling_2d import Pooling2DMKLDNN, Pooling2DForward, Pooling2DBackward
+from ideep.api.support import pooling_max
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import array
+from ideep.api.cosim_dump import *
 
 
 class MaxPooling2DMKLDNN(Pooling2DMKLDNN):

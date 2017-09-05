@@ -1,17 +1,17 @@
 from chainer import function
 from chainer.utils import type_check
 
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import ComputeComplex, array, reuse_buffer
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import ComputeComplex, array, reuse_buffer
 
 # Most important thing
-from mkldnn.api.support import forward_training, lrn_across_channels, at
-import mkldnn.api.memory as m
-import mkldnn.api.lrn_forward as lrn_forward
-import mkldnn.api.lrn_backward as lrn_backward
-import mkldnn.api.cosim_dump as cdump
-from mkldnn.api.cosim_dump import *
-from mkldnn.mdarray import mdarray
+from ideep.api.support import forward_training, lrn_across_channels, at
+import ideep.api.memory as m
+import ideep.api.lrn_forward as lrn_forward
+import ideep.api.lrn_backward as lrn_backward
+import ideep.api.cosim_dump as cdump
+from ideep.api.cosim_dump import *
+from ideep.mdarray import mdarray
 
 
 class LrnForward(ComputeComplex):

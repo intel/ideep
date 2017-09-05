@@ -4,15 +4,15 @@ from chainer import function
 from chainer.utils import type_check
 from chainer.utils import conv
 
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
 
 # Most important thing
-from mkldnn.api.support import forward_training, zero, pooling_max, at
-import mkldnn.api.memory as m
-import mkldnn.api.pooling_forward as pooling_forward
-import mkldnn.api.pooling_backward as pooling_backward
-from mkldnn.mdarray import mdarray
+from ideep.api.support import forward_training, zero, pooling_max, at
+import ideep.api.memory as m
+import ideep.api.pooling_forward as pooling_forward
+import ideep.api.pooling_backward as pooling_backward
+from ideep.mdarray import mdarray
 
 
 def _pair(x):

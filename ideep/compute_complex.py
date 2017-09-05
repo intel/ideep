@@ -1,11 +1,9 @@
-from mkldnn.api.support import at, primitive_list
-from mkldnn.api import reorder as r
-# from mkldnn.api import memory as m
-from mkldnn.chainer.runtime import Stream
+from ideep.api.support import at, primitive_list
+from ideep.api import reorder as r
+from ideep.chainer.runtime import Stream
 
-import mkldnn
 import numpy
-from mkldnn.mdarray import mdarray
+from ideep.mdarray import mdarray
 
 
 def reorder_if_must(x, expect, e, net_):
@@ -51,13 +49,13 @@ def reuse_buffer(d, s):
 
 # XXX: move this file to another location
 def array(obj, *args):
-    if isinstance(obj, mkldnn.mdarray):
+    if isinstance(obj, ideep.mdarray):
         return obj
     elif isinstance(obj, numpy.ndarray):
         # TODO: Do we automatically transfer?
 
         obj = numpy.ascontiguousarray(obj)
-        return mkldnn.mdarray(obj, *args)
+        return ideep.mdarray(obj, *args)
     else:
         raise NotImplementedError
 

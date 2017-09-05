@@ -1,6 +1,6 @@
-from mkldnn.chainer.runtime import Engine, Stream
-from mkldnn.api.support import primitive_list
-import mkldnn.api.memory as m
+from ideep.chainer.runtime import Engine, Stream
+from ideep.api.support import primitive_list
+import ideep.api.memory as m
 import numpy
 
 

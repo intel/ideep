@@ -5,10 +5,10 @@ import ctypes
 sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 # API lift
-from mkldnn import api
-from mkldnn import chainer
-from mkldnn import compute_complex
+from ideep import api
+from ideep import chainer
+from ideep import compute_complex
 
-from mkldnn.mdarray import mdarray
+from ideep.mdarray import mdarray
 
-from mkldnn.chainer.fanout import *
+from ideep.chainer.fanout import *

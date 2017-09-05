@@ -1,5 +1,5 @@
-from mkldnn.api.support import engine
-from mkldnn.api.support import stream
+from ideep.api.support import engine
+from ideep.api.support import stream
 
 
 class Engine(object):

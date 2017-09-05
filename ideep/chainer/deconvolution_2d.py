@@ -4,17 +4,17 @@ from chainer import function
 from chainer.utils import conv
 from chainer.utils import type_check
 
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import ComputeComplex, array, reuse_buffer
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import ComputeComplex, array, reuse_buffer
 
-from mkldnn.api.support import forward, convolution_direct, zero
+from ideep.api.support import forward, convolution_direct, zero
 
-import mkldnn.api.memory as m
+import ideep.api.memory as m
 
-import mkldnn.api.convolution_forward as conv_forward
-import mkldnn.api.convolution_backward_data as conv_backdata
-import mkldnn.api.convolution_backward_weights as conv_backweights
-from mkldnn.mdarray import mdarray
+import ideep.api.convolution_forward as conv_forward
+import ideep.api.convolution_backward_data as conv_backdata
+import ideep.api.convolution_backward_weights as conv_backweights
+from ideep.mdarray import mdarray
 
 deconv_f_op = conv_backdata.conv_bd_op  # deconv fwd --> conv bwd data
 deconv_bd_op = conv_forward.conv_f_op  # deconv bwd data --> conv fwd

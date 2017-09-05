@@ -1,18 +1,18 @@
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
 
 # Most important thing
-from mkldnn.api.support import forward
-import mkldnn.api.memory as m
-import mkldnn.api.inner_product_forward as ip_forward
-import mkldnn.api.inner_product_backward_data as ip_backdata
-import mkldnn.api.inner_product_backward_weights as ip_backweights
-from mkldnn.mdarray import mdarray
+from ideep.api.support import forward
+import ideep.api.memory as m
+import ideep.api.inner_product_forward as ip_forward
+import ideep.api.inner_product_backward_data as ip_backdata
+import ideep.api.inner_product_backward_weights as ip_backweights
+from ideep.mdarray import mdarray
 
-from mkldnn.api.inner_product_forward import linear_f_op
-from mkldnn.api.inner_product_backward_data import linear_bd_op
-from mkldnn.api.inner_product_backward_weights import linear_bw_op
-from mkldnn.api.inner_product_backward_weights import linear_bwb_op
+from ideep.api.inner_product_forward import linear_f_op
+from ideep.api.inner_product_backward_data import linear_bd_op
+from ideep.api.inner_product_backward_weights import linear_bw_op
+from ideep.api.inner_product_backward_weights import linear_bwb_op
 
 
 def _x_format(ndim):

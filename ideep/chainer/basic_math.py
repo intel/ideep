@@ -1,11 +1,11 @@
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import ComputeComplex, reuse_buffer, reorder_if_must
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import ComputeComplex, reuse_buffer, reorder_if_must
 
 # Most important thing
-from mkldnn.api.support import at
-import mkldnn.api.memory as m
-import mkldnn.api.sum as sum
-from mkldnn.mdarray import mdarray
+from ideep.api.support import at
+import ideep.api.memory as m
+import ideep.api.sum as sum
+from ideep.mdarray import mdarray
 
 
 class AddForward(ComputeComplex):

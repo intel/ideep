@@ -1,19 +1,19 @@
 import numpy
 import chainer
-from mkldnn.chainer.runtime import Engine
-from mkldnn.compute_complex import array, reorder_if_must
+from ideep.chainer.runtime import Engine
+from ideep.compute_complex import array, reorder_if_must
 # Most important thing
-from mkldnn.api.support import primitive_list, at
-import mkldnn.api.memory as m
-import mkldnn.api.sum as sum
-from mkldnn.mdarray import mdarray
-from mkldnn.chainer.runtime import Stream
-from mkldnn.compute_complex import ComputeComplex
+from ideep.api.support import primitive_list, at
+import ideep.api.memory as m
+import ideep.api.sum as sum
+from ideep.mdarray import mdarray
+from ideep.chainer.runtime import Stream
+from ideep.compute_complex import ComputeComplex
 
 
 def mkl_sum_enabled(in_data):
     if isinstance(in_data[0], mdarray) \
-       or (isinstance(in_data[0], numpy.ndarray) and chainer.should_use_mkldnn('>=auto')):
+       or (isinstance(in_data[0], numpy.ndarray) and chainer.should_use_ideep('>=auto')):
         return True
     else:
         return False

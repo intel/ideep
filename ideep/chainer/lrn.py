@@ -10,7 +10,6 @@ import ideep.api.memory as m
 import ideep.api.lrn_forward as lrn_forward
 import ideep.api.lrn_backward as lrn_backward
 import ideep.api.cosim_dump as cdump
-from ideep.api.cosim_dump import *
 from ideep.mdarray import mdarray
 
 
@@ -138,16 +137,16 @@ class LrnMKLDNN(function.Function):
     def cpu_cosim_dump_inner(self, in_data, out_grad=None):
         cd = None
         if out_grad is None:
-            cd = cdump.cosim_dump(cdump_op_lrn_forward)
+            cd = cdump.cosim_dump(cdump.cdump_op_lrn_forward)
         else:
-            cd = cdump.cosim_dump(cdump_op_lrn_backward)
+            cd = cdump.cosim_dump(cdump.cdump_op_lrn_backward)
 
         x = array(in_data[0], m.memory.nchw, Engine())
-        cd.dump_memory(cdump_src_memory, x.memory)
+        cd.dump_memory(cdump.cdump_src_memory, x.memory)
 
         if out_grad is not None:
             gy = array(out_grad[0], m.memory.nchw, Engine())
-            cd.dump_memory(cdump_diff_dst_memory, gy.memory)
+            cd.dump_memory(cdump.cdump_diff_dst_memory, gy.memory)
 
-        cd.dump_int_parms(cdump_lrn_local_size, 1, self.n)
-        cd.dump_double_parms(cdump_lrn_doulbe_parms, 3, self.k, self.alpha, self.beta)
+        cd.dump_int_parms(cdump.cdump_lrn_local_size, 1, self.n)
+        cd.dump_double_parms(cdump.cdump_lrn_doulbe_parms, 3, self.k, self.alpha, self.beta)

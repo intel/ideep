@@ -1,5 +1,7 @@
 from ideep.chainer.runtime import Engine, Stream
 from ideep.api.support import primitive_list
+from ideep.api import reorder as r
+from ideep.api.support import at
 import ideep.api.memory as m
 import numpy
 

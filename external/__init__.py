@@ -1,1 +1,1 @@
-import external.mkldnn
+import external.mkldnn  # NOQA

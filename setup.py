@@ -33,6 +33,7 @@ class _install(install):
         self.run_command('build_ext')
         install.run(self)
 
+
 modules = {
     'ideep.api._c_api':
     ['ideep/api/c_api.i'],

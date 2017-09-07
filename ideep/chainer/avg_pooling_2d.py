@@ -7,7 +7,6 @@ from ideep.chainer.pooling_2d import Pooling2DBackward
 from ideep.api.support import pooling_avg_include_padding
 from ideep.chainer.runtime import Engine
 from ideep.compute_complex import array
-from ideep.api.cosim_dump import *
 
 
 class AvgPooling2DMKLDNN(Pooling2DMKLDNN):
@@ -38,18 +37,17 @@ class AvgPooling2DMKLDNN(Pooling2DMKLDNN):
     def cpu_cosim_dump_inner(self, in_data, out_grad=None):
         cd = None
         if out_grad is None:
-            cd = cdump.cosim_dump(cdump_op_avg_pooling_forward)
+            cd = cdump.cosim_dump(cdump.cdump_op_avg_pooling_forward)
         else:
-            cd = cdump.cosim_dump(cdump_op_avg_pooling_backward)
+            cd = cdump.cosim_dump(cdump.cdump_op_avg_pooling_backward)
 
         x = array(in_data[0], m.memory.nchw, Engine())
-        cd.dump_memory(cdump_src_memory, x.memory)
+        cd.dump_memory(cdump.cdump_src_memory, x.memory)
 
         if out_grad is not None:
             gy = array(out_grad[0], m.memory.nchw, Engine())
-            cd.dump_memory(cdump_diff_dst_memory, gy.memory)
+            cd.dump_memory(cdump.cdump_diff_dst_memory, gy.memory)
 
-        cd.dump_int_parms(cdump_avg_pooling_int_parms, 8,
+        cd.dump_int_parms(cdump.cdump_avg_pooling_int_parms, 8,
                           self.kh, self.kw, self.sy, self.sx, self.ph, self.pw,
                           pooling_avg_include_padding, 1 if self.cover_all else 0)
-

@@ -5,7 +5,6 @@ from ideep.chainer.pooling_2d import Pooling2DMKLDNN, Pooling2DForward, Pooling2
 from ideep.api.support import pooling_max
 from ideep.chainer.runtime import Engine
 from ideep.compute_complex import array
-from ideep.api.cosim_dump import *
 
 
 class MaxPooling2DMKLDNN(Pooling2DMKLDNN):
@@ -36,18 +35,17 @@ class MaxPooling2DMKLDNN(Pooling2DMKLDNN):
     def cpu_cosim_dump_inner(self, in_data, out_grad=None):
         cd = None
         if out_grad is None:
-            cd = cdump.cosim_dump(cdump_op_max_pooling_forward)
+            cd = cdump.cosim_dump(cdump.cdump_op_max_pooling_forward)
         else:
-            cd = cdump.cosim_dump(cdump_op_max_pooling_backward)
+            cd = cdump.cosim_dump(cdump.cdump_op_max_pooling_backward)
 
         x = array(in_data[0], m.memory.nchw, Engine())
-        cd.dump_memory(cdump_src_memory, x.memory)
+        cd.dump_memory(cdump.cdump_src_memory, x.memory)
 
         if out_grad is not None:
             gy = array(out_grad[0], m.memory.nchw, Engine())
-            cd.dump_memory(cdump_diff_dst_memory, gy.memory)
+            cd.dump_memory(cdump.cdump_diff_dst_memory, gy.memory)
 
-        cd.dump_int_parms(cdump_max_pooling_int_parms, 8,
+        cd.dump_int_parms(cdump.cdump_max_pooling_int_parms, 8,
                           self.kh, self.kw, self.sy, self.sx, self.ph, self.pw,
                           pooling_max, 1 if self.cover_all else 0)
-

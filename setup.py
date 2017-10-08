@@ -172,7 +172,7 @@ packages = [
     'ideep.api',
     'ideep.xnn',
     'ideep.utils',
-    'ideep.testing'
+    'ideep.testing',
     'example',
     'example.functions',
     'example.links'

@@ -6,7 +6,7 @@ import chainer
 from chainer import function_node
 from ideep.xnn import convolution_2d
 
-class Convolution2DFunctionMKLDNN(function_node.FunctionNode):
+class Convolution2DFunction(function_node.FunctionNode):
 
     def __init__(self, stride=1, pad=0, cover_all=False):
         self.sy, self.sx = _pair(stride)
@@ -85,3 +85,12 @@ class Convolution2DFunctionMKLDNN(function_node.FunctionNode):
                 ret.append(gW_b[1])
 
         return ret
+
+def convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+    fnode = Convolution2DFunction(stride, pad, cover_all)
+    if b is None:
+        args = x, W
+    else:
+        args = x, W, b
+    y, = fnode.apply(args)
+    return y

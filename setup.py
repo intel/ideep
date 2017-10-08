@@ -167,7 +167,16 @@ ext = Extension(
 )
 ext_modules.append(ext)
 
-packages = ['ideep', 'ideep.api', 'ideep.chainer', 'ideep.testing']
+packages = [
+    'ideep',
+    'ideep.api',
+    'ideep.xnn',
+    'ideep.utils',
+    'ideep.testing'
+    'example',
+    'example.functions',
+    'example.links'
+    ]
 
 setup(
     name='ideep',

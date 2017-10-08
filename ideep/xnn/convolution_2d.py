@@ -266,7 +266,8 @@ class ConvolutionBackwardWeighs(ComputeComplex):
 
         g = conv_geometry(x.shape, W.shape, stride, pad, cover_all)
 
-        cc_d = create_backward_desc(conv_backweights.desc, (x, W, b, gy), g.geometry)
+        cc_d = create_backward_desc(
+            conv_backweights.desc, (x, W, b, gy), g.geometry)
         cc_pd = conv_backweights.primitive_desc(cc_d, e, hint)
 
         self.gy = array(gy, m.memory.nchw, e)

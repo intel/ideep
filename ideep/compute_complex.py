@@ -2,7 +2,7 @@ import numpy
 
 from ideep.api.support import at, primitive_list
 from ideep.api import reorder as r
-from ideep.chainer.runtime import Stream
+from ideep.cpu_engine import Stream
 from ideep.mdarray import mdarray
 
 

@@ -1,21 +1,17 @@
-from chainer import function
-from chainer.utils import conv
-from chainer.utils import type_check
-
-from ideep.chainer.runtime import Engine
-from ideep.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
-
-# Most important thing
+from ideep.mdarray import mdarray
+from ideep.cpu_engine import Engine
+from ideep.compute_complex import reorder_if_must, ComputeComplex
+from ideep.compute_complex import reuse_buffer
+from ideep.xnn.array import array
+from ideep.xnn import conv
 from ideep.api.support import forward, convolution_direct, zero
 
 import ideep.api.memory as m
-
 import ideep.api.convolution_forward as conv_forward
 import ideep.api.convolution_backward_data as conv_backdata
 import ideep.api.convolution_backward_weights as conv_backweights
-import ideep.api.cosim_dump as cdump
-from ideep.mdarray import mdarray
-from ideep.chainer.optimization import WeightReorderOptimization, weight_optimization_trigger
+
+from ideep.chainer.optimization import WeightReorderOptimization
 
 conv_f_op = conv_forward.conv_f_op
 conv_bd_op = conv_backdata.conv_bd_op
@@ -148,7 +144,9 @@ class ConvolutionForward(ComputeComplex):
 
         self.geometry = g.geometry
         # Create primitive_desc from any
-        cc_d = create_forward_desc(conv_forward.desc, y_d, (x, W, b), g.geometry)
+        cc_d = create_forward_desc(
+            conv_forward.desc, y_d, (x, W, b), g.geometry)
+
         cc_pd = conv_forward.primitive_desc(cc_d, e)
         w_mpd = cc_pd.weights_primitive_desc()
         self.usr_w = array(W, m.memory.oihw, e)
@@ -203,7 +201,9 @@ class ConvolutionForward(ComputeComplex):
         if (isinstance(x, mdarray) and (x is not self.x)):
             return False
         g = conv_geometry(x.shape, W.shape, stride, pad, cover_all)
-        return (self.geometry == g.geometry) and (self.num_inputs == len(inputs))
+
+        return (self.geometry == g.geometry) and \
+                (self.num_inputs == len(inputs))
 
 
 class ConvolutionBackwardData(ComputeComplex):
@@ -278,9 +278,6 @@ class ConvolutionBackwardWeighs(ComputeComplex):
         #     gb = mdarray(cc_pd.diff_bias_primitive_desc())
 
         if b is not None:
-            # XXX: This is ugly, will use swig to do something about it
-            # ideal: gW, gb = conv_bwb_op(cc_pd, self.x, self.gy, self.dag_)
-
             gW = conv_bwb_op(cc_pd, self.x, self.gy, self.dag_)
             gb = gW.extra
         else:
@@ -297,100 +294,3 @@ class ConvolutionBackwardWeighs(ComputeComplex):
 
     def match(self, inputs, grad_ouputs, hint, *args, **kwargs):
         return (hint is self._hint)
-
-
-class Convolution2DFunctionMKLDNN(function.Function):
-
-    def __init__(self, stride=1, pad=0, cover_all=False, deterministic=False):
-        self.sy, self.sx = _pair(stride)
-        self.ph, self.pw = _pair(pad)
-        self.cover_all = cover_all
-        self.deterministic = deterministic
-
-    def check_type_forward(self, in_types):
-        n_in = in_types.size()
-        type_check.expect(2 <= n_in, n_in <= 3)
-
-        x_type = in_types[0]
-        w_type = in_types[1]
-        type_check.expect(
-            x_type.dtype.kind == 'f',
-            w_type.dtype.kind == 'f',
-            x_type.ndim == 4,
-            w_type.ndim == 4,
-            x_type.shape[1] == w_type.shape[1],
-        )
-
-        if type_check.eval(n_in) == 3:
-            b_type = in_types[2]
-            type_check.expect(
-                b_type.dtype == x_type.dtype,
-                b_type.ndim == 1,
-                b_type.shape[0] == w_type.shape[0],
-            )
-
-    def forward_cpu(self, inputs):
-
-        cc = ConvolutionForward(inputs, stride=(self.sy, self.sx),
-                                pad=(self.ph, self.pw), cover_all=self.cover_all,
-                                pos=(self.rank, self.fanout))
-
-        self.hint = cc.hint
-        self.W = cc.W
-        weight_optimization_trigger(self)
-
-        y, = cc.execute_on()
-        y.reset_buf_order()
-
-        return y,
-
-    def backward_cpu(self, inputs, grad_outputs):
-
-        cc_weight = ConvolutionBackwardWeighs(inputs, grad_outputs, self.hint,
-                                              stride=(self.sy, self.sx), pad=(self.ph, self.pw),
-                                              cover_all=self.cover_all, pos=(self.rank, self.fanout))
-        gW_b = cc_weight.execute_on()
-        # No reorder for bias?
-        gW_b[0].reset_buf_order()
-
-        if self.rank != 0:
-            cc_data = ConvolutionBackwardData(inputs, grad_outputs,
-                                              self.hint, self.W,
-                                              stride=(self.sy, self.sx), pad=(self.ph, self.pw),
-                                              cover_all=self.cover_all, pos=(self.rank, self.fanout))
-            gx = cc_data.execute_on()
-            gx[0].reset_buf_order()
-        else:
-            gx = None,
-
-        return gx + gW_b
-
-    def cpu_cosim_dump_inner(self, in_data, out_grad=None):
-        cd = None
-        if out_grad is None:
-            cd = cdump.cosim_dump(cdump.cdump_op_conv_forward)
-        else:
-            cd = cdump.cosim_dump(cdump.cdump_op_conv_backward)
-
-        e = Engine()
-        x = in_data[0]
-        W = in_data[1]
-        b = in_data[2] if len(in_data) == 3 else None
-
-        md_x = array(x, m.memory.nchw, e)
-        cd.dump_memory(cdump.cdump_src_memory, md_x.memory)
-
-        md_W = array(W, m.memory.oihw, e)
-        cd.dump_memory(cdump.cdump_weight_memory, md_W.memory)
-
-        if b is not None:
-            md_b = array(b, m.memory.x, e)
-            cd.dump_memory(cdump.cdump_bias_memory, md_b.memory)
-
-        if out_grad is not None:
-            md_gy = array(out_grad[0], m.memory.nchw, e)
-            cd.dump_memory(cdump.cdump_diff_dst_memory, md_gy.memory)
-
-        cd.dump_int_parms(cdump.cdump_conv_int_parms, 5,
-                          self.sy, self.sx, self.ph, self.pw,
-                          1 if self.cover_all else 0)

@@ -147,20 +147,6 @@ static inline uint64_t __cpuidXfeature()
     return (((uint64_t)edx << 32) | eax);
 }
 
-#if defined(__APPLE__)
-#define __cpuid(a, b, c, d, level) \
-    __asm__ __volatile__(   \
-            "pushl %%ebx\ncpuid\nmovl %%ebp, %%esi\npopl %%ebx"    \
-                : "=a"(a), "=S"(b), "=c"(c), "=d"(d)    \
-                : "0"(level))
-
-#define __cpuid_count(a, b, c, d, level, count) \
-    __asm__ __volatile__(   \
-            "pushl %%ebx\ncpuid\nmovl %%ebp, %%esi\npopl %%ebx" \
-                : "=a"(a), "=S"(b), "=c"(c), "=d"(d)    \
-                : "0"(level), "2"(count))
-
-#else   // Non-APPLE
 #define __cpuid(a, b, c, d, level)  \
     __asm__ __volatile__(   \
             "cpuid\n"   \
@@ -172,7 +158,6 @@ static inline uint64_t __cpuidXfeature()
             "cpuid\n"   \
                 : "=a"(a), "=b"(b), "=c"(c), "=d"(d)    \
                 : "0"(level), "2"(count))
-#endif
 #endif
 
 static inline void get_cpu_feature(uint32_t level, uint32_t result[4])

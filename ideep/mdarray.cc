@@ -360,8 +360,8 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
 
     assert(mkldnn::memory::f32 == res_dtype ||
            mkldnn::memory::s32 == res_dtype);
-    assert(MMULT == mult_or_div ||
-           MDIV == mult_or_div);
+    assert(mmult == mult_or_div ||
+           mdiv == mult_or_div);
     if (mkldnn::memory::f32 == res_dtype) {
       switch (mult_or_div) {
       case mmult:

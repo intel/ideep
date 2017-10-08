@@ -12,7 +12,7 @@ import external
 setup_requires = []
 install_requires = ['numpy>=1.9.0']
 
-mkldnn_root = external.mkldnn.root()
+mkldnn_root = '/usr/local' #external.mkldnn.root()
 mkldnn_version = 'b01e3a55a07be62172e713bcd2644c5176360212'
 
 
@@ -121,8 +121,6 @@ if sys.version_info.major < 3:
 ccxx_opts = ['-std=c++11']
 
 link_opts = [
-    '-Wl,-z,now',
-    '-Wl,-z,noexecstack',
     '-Wl,-rpath,' + mkldnn_root + '/lib',
     '-L' + mkldnn_root + '/lib'
 ]
@@ -134,14 +132,16 @@ includes = [
     mkldnn_root + '/include'
 ]
 
-libraries = ['mkldnn', 'mklml_intel']
+libraries = ['mkldnn']
 
 if system() == 'Linux':
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
-    libraries += ['boost_system', 'glog', 'm']
+    libraries += ['boost_system', 'glog', 'm', 'mklml_intel']
     mdarray_src = ['ideep/mdarray.i', 'ideep/mdarray.cc', 'ideep/cpu_info.cc']
+    link_opts += ['-Wl,-z,now', '-Wl,z,noexecstack']
 else:
     mdarray_src = ['ideep/mdarray.i', 'ideep/mdarray.cc']
+    libraries += ['mklml']
 
 ext_modules = []
 for m, s in modules.items():

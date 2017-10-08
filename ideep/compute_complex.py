@@ -1,8 +1,8 @@
+import numpy
+
 from ideep.api.support import at, primitive_list
 from ideep.api import reorder as r
 from ideep.chainer.runtime import Stream
-
-import numpy
 from ideep.mdarray import mdarray
 
 
@@ -18,28 +18,6 @@ def reorder_if_must(x, expect, e, net_):
     else:
         return x,
 
-# def reorder_if_must(x, expect, e, net_):
-#     usr_m = x.memory
-#     if (usr_m.get_primitive_desc() != expect):
-#         usr_pd = usr_m.get_primitive_desc()
-#         usr_fmt = m.get_fmt(usr_pd)
-#         expect_fmt = m.get_fmt(expect)
-#         reorded_array = mdarray(expect)
-#         reorded = reorded_array.memory
-#         if (usr_fmt == m.memory.nChw16c and expect_fmt == m.memory.nChw8c) \
-#             or (usr_fmt == m.memory.nChw8c and expect_fmt == m.memory.nChw16c):
-#             # Only support float32
-#             intermediate_arr = mdarray(x.shape, m.memory.f32, m.memory.nchw, e)
-#             itm_m = intermediate_arr.memory
-#             net_.push_back(r.reorder(at(usr_m), itm_m))
-#             net_.push_back(r.reorder(at(itm_m), reorded))
-#             return reorded_array, intermediate_arr
-#         else:
-#             net_.push_back(r.reorder(at(usr_m), reorded))
-#             return reorded_array,
-#     else:
-#         return x,
-
 
 def reuse_buffer(d, s):
     if isinstance(s, numpy.ndarray):
@@ -47,23 +25,23 @@ def reuse_buffer(d, s):
         d.setbuffer(s)
 
 
-# XXX: move this file to another location
-def array(obj, *args):
-    if isinstance(obj, mdarray):
-        return obj
-    elif isinstance(obj, numpy.ndarray):
-        # TODO: Do we automatically transfer?
-
-        obj = numpy.ascontiguousarray(obj)
-        return mdarray(obj, *args)
-    else:
-        raise NotImplementedError
-
-
 class ComputeComplex(object):
+
     """MKLDNN Compute Complex.
 
+    This class implements abstract interfaces for creating and reusing MKLDNN
+    primitive and necessary processes to finish a MKLDNN layer computation.
+    Currently it only supports static reuse paradim which rely on (rank,
+    fanout) coordinate to record and retrieve the same CC, avoiding the
+    overhead of creating and desctroying MKLDNN primitives.
+
+    Attributes:
+        rank: Layer number where this Compute Complex is in.
+        fanout: Branch number of this Compute Complex in a layer.
+        dag: Primitives that comprise a MKLDNN layer computation.
+        hint: Forward primitive descriptor for creating backward one
     """
+
     cache_f = {}
     cache_bd = {}
     cache_bw = {}
@@ -77,30 +55,37 @@ class ComputeComplex(object):
         cache = cls.cache[cls.cc_type]
         ret = cache.get(pos)
 
-        if ret and isinstance(ret, cls) and ret.match(*args, **kwargs):
-            ret.new = False
+        if configuration.config.train:
+            if ret and isinstance(ret, cls) and ret.match(*args, **kwargs):
+                ret.new = False
+            else:
+                ret = super(ComputeComplex, cls).__new__(cls)
+                # print("Create new CC: ", ret)
+                ret.new = True
+                cache[pos] = ret
+                ret.pos = pos
         else:
             ret = super(ComputeComplex, cls).__new__(cls)
             # print("Create new CC: ", ret)
             ret.new = True
             cache[pos] = ret
             ret.pos = pos
-
         return ret
 
     def __init__(self):
         if self.new:
             self.rank = -1
             self.fanout = -1
-            self.dag_ = primitive_list()
+            self.dag = primitive_list()
             self._hint = None
+            self.output = None
 
     def execute_on(self, s=None):
         if s is None:
             # XXX: Refresh everytime
             s = Stream()
 
-        s.submit(self.dag_)
+        s.submit(self.dag)
         s.wait()
         return self.outputs
 

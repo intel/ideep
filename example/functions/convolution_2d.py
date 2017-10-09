@@ -65,35 +65,59 @@ class Convolution2DFunction(function_node.FunctionNode):
 
     def backward(self, indexes, grad_outputs):
         inputs = self.get_retained_inputs()
+        gy, = grad_outputs
 
         ret = []
-
         if 0 in indexes:
-            cc_data = xnn.ConvolutionBackwardData(
-                inputs, grad_outputs,
-                self.hint, self.W,
-                stride=(self.sy, self.sx), pad=(self.ph, self.pw),
-                cover_all=self.cover_all, pos=(0, 0))
-
-            gx = cc_data.execute_on()
-            gx[0].reset_buf_order()
-            ret.append(gx)
+            pass
 
         if 1 in indexes:
-            cc_weight = xnn.ConvolutionBackwardWeighs(
-                inputs, grad_outputs, self.hint,
-                stride=(self.sy, self.sx), pad=(self.ph, self.pw),
-                cover_all=self.cover_all, pos=(self.rank, self.fanout))
-
-            gW_b = cc_weight.execute_on()
-            gW_b[0].reset_buf_order()
-
+            gW_b = Convolution2DGradW(self).apply((x, gy))
             ret.append(gW_b[0])
 
             if 2 in indexes:
                 ret.append(gW_b[1])
 
         return ret
+
+class Convolution2DGradW(function_node.FunctionNode):
+
+    def __init__(self, conv2d):
+        W_node = conv2d.inputs[1]
+        self.kh, self.kw = W_node.shape[2:]
+        self.sy = conv2d.sy
+        self.sx = conv2d.sx
+        self.ph = conv2d.ph
+        self.pw = conv2d.pw
+        self.cover_all = conv2d.cover_all
+        self.W_dtype = W_node.dtype
+        self.hint = conv2d.hint
+
+    def forward_cpu(self, inputs):
+        self.retain_inputs((0, 1))
+
+        cc = xnn.ConvolutionBackwardWeights(
+            inputs, self.hint, stride=(self.sy, self.sx),
+            pad=(self.ph, self.pw), cover_all=self.cover_all,
+            pos=(self.rank, self.fanout))
+
+        gW_b = cc_weight.execute_on()
+
+    def backward(self, indexes, grad_outputs):
+        x, gy = self.get_retained_inputs()
+        ggW, = grad_outputs
+
+        ret = []
+        if 0 in indexes:
+            pass
+        if 1 in indexes:
+            ggy = convolution_2d(
+                x, ggW, stride=(self.sy, self.sx)
+                pad=(self.ph, self.pw), cover_all=self.cover_all)
+            ret.append(ggy)
+
+        return ret
+
 
 def convolution_2d(
     x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):

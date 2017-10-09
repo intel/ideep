@@ -4,7 +4,16 @@ import unittest
 import chainer
 
 from chainer import function_node
-from ideep.xnn import convolution_2d
+from chainer.utils import type_check
+
+from ideep import xnn
+
+
+def _pair(x):
+    if hasattr(x, '__getitem__'):
+        return x
+    return x, x
+
 
 class Convolution2DFunction(function_node.FunctionNode):
 
@@ -41,37 +50,37 @@ class Convolution2DFunction(function_node.FunctionNode):
         else:
             self.retain_inputs((0, 1))
 
-        cc = convolution_2d.ConvolutionForward(
+        cc = xnn.ConvolutionForward(
             inputs, stride=(self.sy, self.sx),
             pad=(self.ph, self.pw), cover_all=self.cover_all,
-            pos=(self.rank, self.fanout))
+            pos=(0, 0))
 
         self.hint = cc.hint
         self.W = cc.W
-        weight_optimization_trigger(self)
 
         y, = cc.execute_on()
         y.reset_buf_order()
 
         return y,
 
-    def backward_cpu(self, indexes, grad_outputs):
+    def backward(self, indexes, grad_outputs):
         inputs = self.get_retained_inputs()
 
         ret = []
 
         if 0 in indexes:
-            cc_data = convolution_2d.ConvolutionBackwardData(
+            cc_data = xnn.ConvolutionBackwardData(
                 inputs, grad_outputs,
                 self.hint, self.W,
                 stride=(self.sy, self.sx), pad=(self.ph, self.pw),
-                cover_all=self.cover_all, pos=(self.rank, self.fanout))
+                cover_all=self.cover_all, pos=(0, 0))
+
             gx = cc_data.execute_on()
             gx[0].reset_buf_order()
             ret.append(gx)
 
         if 1 in indexes:
-            cc_weight = convolution_2d.ConvolutionBackwardWeighs(
+            cc_weight = xnn.ConvolutionBackwardWeighs(
                 inputs, grad_outputs, self.hint,
                 stride=(self.sy, self.sx), pad=(self.ph, self.pw),
                 cover_all=self.cover_all, pos=(self.rank, self.fanout))
@@ -86,7 +95,8 @@ class Convolution2DFunction(function_node.FunctionNode):
 
         return ret
 
-def convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+def convolution_2d(
+    x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
     fnode = Convolution2DFunction(stride, pad, cover_all)
     if b is None:
         args = x, W

@@ -11,7 +11,8 @@ from chainer import testing
 from chainer.testing import condition
 from chainer.utils import conv
 
-import ideep.example.functions as E
+import example.functions as E
+
 
 @testing.parameterize(*(
     testing.product({
@@ -32,20 +33,18 @@ import ideep.example.functions as E
         'in_shape': [(8, 3, 15, 15)],
         'kernel_geo': [(3, 11, 11, 4, 0)],
         'c_contiguous': [True],
-        'cover_all': [False],
+        'cover_all': [True, False],
         'x_dtype': [numpy.float32],
         'W_dtype': [numpy.float32]})
     ))
-class TestConvolution2DFunctionMKLDNN(unittest.TestCase):
+class TestConvolution2DFunction(unittest.TestCase):
 
     def setUp(self):
-        FanoutRecorder.clear()
         n, c, h, w = self.in_shape
         out_c = self.kernel_geo[0]
         kh, kw = (self.kernel_geo[1], self.kernel_geo[2])
         self.stride = self.kernel_geo[3]
         self.pad = self.kernel_geo[4]
-        self.use_mkldnn = 'always'
         self.W = numpy.random.normal(
             0, numpy.sqrt(1. / (kh * kw * c)),
             (out_c, c, kh, kw)).astype(self.W_dtype)
@@ -57,8 +56,8 @@ class TestConvolution2DFunctionMKLDNN(unittest.TestCase):
             -1, 1, self.in_shape).astype(self.x_dtype)
 
         out_h = conv.get_conv_outsize(
-            h, kh,
-            self.stride, self.pad, cover_all=self.cover_all)
+            h, kh, self.stride, self.pad, cover_all=self.cover_all)
+
         out_w = conv.get_conv_outsize(
             w, kw,
             self.stride, self.pad, cover_all=self.cover_all)
@@ -91,7 +90,9 @@ class TestConvolution2DFunctionMKLDNN(unittest.TestCase):
             cover_all=self.cover_all)
 
         testing.assert_allclose(
-            y_cpu.data, y_mkl.data, **self.check_forward_options)
+            y_cpu.data,
+            numpy.array(y_mkl.data, copy=False),
+            **self.check_forward_options)
 
     def check_backward(self, x_data, W_data, b_data, y_grad):
         xp = cuda.get_array_module(x_data)
@@ -115,7 +116,7 @@ class TestConvolution2DFunctionMKLDNN(unittest.TestCase):
 
         def f(*args):
             return E.convolution_2d(*args, stride=self.stride, pad=self.pad,
-                                    conver_all=self.cover_all)
+                                    cover_all=self.cover_all)
 
         gradient_check.check_backward(
             f, args, y_grad, **self.check_backward_options)

@@ -1,7 +1,7 @@
 import numpy
 
 from ideep.api import memory as m
-from ideep.chainer.runtime import Engine
+from ideep.cpu_engine import Engine
 from ideep.mdarray import mdarray
 
 

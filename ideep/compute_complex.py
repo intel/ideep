@@ -29,8 +29,10 @@ class ComputeComplex(object):
 
     """MKLDNN Compute Complex.
 
-    This class implements abstract interfaces for creating and reusing MKLDNN
-    primitive and necessary processes to finish a MKLDNN layer computation.
+    This class implements abstract interfaces for creating and reusing
+    MKLDNN primitive and necessary processes to finish a MKLDNN layer
+    computation.
+
     Currently it only supports static reuse paradim which rely on (rank,
     fanout) coordinate to record and retrieve the same CC, avoiding the
     overhead of creating and desctroying MKLDNN primitives.
@@ -55,15 +57,8 @@ class ComputeComplex(object):
         cache = cls.cache[cls.cc_type]
         ret = cache.get(pos)
 
-        if configuration.config.train:
-            if ret and isinstance(ret, cls) and ret.match(*args, **kwargs):
-                ret.new = False
-            else:
-                ret = super(ComputeComplex, cls).__new__(cls)
-                # print("Create new CC: ", ret)
-                ret.new = True
-                cache[pos] = ret
-                ret.pos = pos
+        if ret and isinstance(ret, cls) and ret.match(*args, **kwargs):
+            ret.new = False
         else:
             ret = super(ComputeComplex, cls).__new__(cls)
             # print("Create new CC: ", ret)

@@ -2,8 +2,8 @@ from ideep.mdarray import mdarray
 from ideep.cpu_engine import Engine
 from ideep.compute_complex import reorder_if_must, ComputeComplex
 from ideep.compute_complex import reuse_buffer
-from ideep.xnn.array import array
-from ideep.xnn import conv
+from ideep.array import array
+from ideep.utils import conv
 from ideep.api.support import forward, convolution_direct, zero
 
 import ideep.api.memory as m
@@ -11,7 +11,8 @@ import ideep.api.convolution_forward as conv_forward
 import ideep.api.convolution_backward_data as conv_backdata
 import ideep.api.convolution_backward_weights as conv_backweights
 
-from ideep.chainer.optimization import WeightReorderOptimization
+from ideep.xnn.optimization import WeightReorderOptimization
+
 
 conv_f_op = conv_forward.conv_f_op
 conv_bd_op = conv_backdata.conv_bd_op
@@ -150,7 +151,7 @@ class ConvolutionForward(ComputeComplex):
         cc_pd = conv_forward.primitive_desc(cc_d, e)
         w_mpd = cc_pd.weights_primitive_desc()
         self.usr_w = array(W, m.memory.oihw, e)
-        outputs = reorder_if_must(self.usr_w, w_mpd, e, self.dag_)
+        outputs = reorder_if_must(self.usr_w, w_mpd, e, self.dag)
         if len(outputs) == 2:
             self.W, self.itm_arr = outputs[:2]
         else:
@@ -159,21 +160,20 @@ class ConvolutionForward(ComputeComplex):
         # Record weight reorder primitive hint
         if self.usr_w is not self.W:
             wro = WeightReorderOptimization()
-            wro.reorder = self.dag_.size() - 1
+            wro.reorder = self.dag.size() - 1
             wro.optimized = False
             self.weight_reorder_opt = wro
         else:
             self.weight_reorder_opt = None
 
-        # Transform inputs, nothing will be done if mdarray
         self.x = array(x, m.memory.nchw, e)
         if b is not None:
             self.b = array(b, m.memory.x, e)
 
         if b is None:
-            y = conv_f_op(cc_pd, self.x, self.W, self.dag_)
+            y = conv_f_op(cc_pd, self.x, self.W, self.dag)
         else:
-            y = conv_f_op(cc_pd, self.x, self.W, self.b, self.dag_)
+            y = conv_f_op(cc_pd, self.x, self.W, self.b, self.dag)
 
         self._hint = cc_pd
         self.outputs = y,
@@ -187,7 +187,7 @@ class ConvolutionForward(ComputeComplex):
         else:
             if self.weight_reorder_opt is not None and \
                self.weight_reorder_opt.optimized is False:
-                self.dag_.erase(self.dag_.begin() + self.weight_reorder_opt.reorder)
+                self.dag.erase(self.dag.begin() + self.weight_reorder_opt.reorder)
                 self.weight_reorder_opt.optimized = True
 
         if b is not None:
@@ -215,7 +215,8 @@ class ConvolutionBackwardData(ComputeComplex):
         W = inputs[1]
         gy = grad_outputs[0]
         if self.new:
-            self._create_cc(x, W, gy, hint, fwd_W, stride, pad, cover_all, e)
+            self._create_cc(
+                x, W, gy, hint, fwd_W, stride, pad, cover_all, e)
         else:
             self._reuse_cc(W, gy)
 
@@ -225,7 +226,8 @@ class ConvolutionBackwardData(ComputeComplex):
         g = conv_geometry(x.shape, W.shape, stride, pad, cover_all)
 
         # Create primitive descriptor
-        cc_d = create_backward_desc(conv_backdata.desc, (x, W, gy), g.geometry)
+        cc_d = create_backward_desc(
+                conv_backdata.desc, (x, W, gy), g.geometry)
         cc_pd = conv_backdata.primitive_desc(cc_d, e, hint)
 
         # Transform inputs
@@ -233,7 +235,7 @@ class ConvolutionBackwardData(ComputeComplex):
         # self.W = array(W, m.memory.oihw, e)
         self.W = fwd_W
 
-        gx = conv_bd_op(cc_pd, self.gy, self.W, self.dag_)
+        gx = conv_bd_op(cc_pd, self.gy, self.W, self.dag)
 
         self._hint = hint
         self.outputs = gx,
@@ -279,10 +281,10 @@ class ConvolutionBackwardWeighs(ComputeComplex):
         #     gb = mdarray(cc_pd.diff_bias_primitive_desc())
 
         if b is not None:
-            gW = conv_bwb_op(cc_pd, self.x, self.gy, self.dag_)
+            gW = conv_bwb_op(cc_pd, self.x, self.gy, self.dag)
             gb = gW.extra
         else:
-            gW = conv_bw_op(cc_pd, self.x, self.gy, self.dag_)
+            gW = conv_bw_op(cc_pd, self.x, self.gy, self.dag)
 
         if b is not None:
             self.outputs = gW, gb

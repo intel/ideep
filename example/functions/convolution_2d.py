@@ -7,6 +7,7 @@ from chainer import function_node
 from chainer.utils import type_check
 
 from ideep import xnn
+import example.functions
 
 
 def _pair(x):
@@ -59,7 +60,6 @@ class Convolution2DFunction(function_node.FunctionNode):
         self.W = cc.W
 
         y, = cc.execute_on()
-        y.reset_buf_order()
 
         return y,
 
@@ -69,8 +69,11 @@ class Convolution2DFunction(function_node.FunctionNode):
 
         ret = []
         if 0 in indexes:
-            pass
-
+            xh, xw = x.shape[2:]
+            gx = example.functions.deconvolution_2d(
+                gy, W, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
+                outsize=(xh, xw))
+            ret.append(gx)
         if 1 in indexes:
             gW_b = Convolution2DGradW(self).apply((x, gy))
             ret.append(gW_b[0])
@@ -112,7 +115,7 @@ class Convolution2DGradW(function_node.FunctionNode):
             pass
         if 1 in indexes:
             ggy = convolution_2d(
-                x, ggW, stride=(self.sy, self.sx)
+                x, ggW, stride=(self.sy, self.sx),
                 pad=(self.ph, self.pw), cover_all=self.cover_all)
             ret.append(ggy)
 

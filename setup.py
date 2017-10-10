@@ -138,7 +138,7 @@ if system() == 'Linux':
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
     libraries += ['boost_system', 'glog', 'm', 'mklml_intel']
     mdarray_src = ['ideep/mdarray.i', 'ideep/mdarray.cc', 'ideep/cpu_info.cc']
-    link_opts += ['-Wl,-z,now', '-Wl,z,noexecstack']
+    link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']
 else:
     mdarray_src = ['ideep/mdarray.i', 'ideep/mdarray.cc']
     libraries += ['mklml']

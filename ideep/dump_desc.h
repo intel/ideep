@@ -56,7 +56,7 @@ static const mkldnn_memory_desc_t dummy_mdesc = {
             .strides = {3},
             .padding_dims = {4},
             .offset_padding_to_data = {5},
-            .offset_padding = 0xf0f05050,
+            .offset_padding = static_cast<ptrdiff_t>(0xf0f05050),
         },
     },
 };

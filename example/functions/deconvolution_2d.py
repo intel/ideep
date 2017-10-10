@@ -3,8 +3,9 @@ import numpy
 import chainer
 from chainer import function_node
 
-import example.functions as E
-from example.functions import convolution_2d
+import example.functions
+import ideep.xnn as xnn
+from example.functions.convolution_2d import Convolution2DGradW
 
 
 def _pair(x):
@@ -60,7 +61,13 @@ class Deconvolution2DFucntion(function_node.FunctionNode):
             )
 
     def forward_cpu(self, inputs):
-        pass
+        cc_data = xnn.ConvolutionBackwardData(
+            inputs, xnn.dummy_hint, stride=(self.sy, self.sx),
+            pad=(self.ph, self.pw), cover_all=self.cover_all,
+            pos=(0, 0))
+
+        gx = cc_data.execute_on()
+        return gx
 
     def backward(self, indexes, grad_outputs):
         x, W = self.get_retained_inputs()
@@ -70,14 +77,14 @@ class Deconvolution2DFucntion(function_node.FunctionNode):
         if 0 in indexes:
             if self.cover_all is None:
                 self._set_cover_all(x, W)
-            gx = E.convolution_2d(
+            gx = example.functions.convolution_2d(
                     gy, W, stride=(self.sy, self.sx),
                 pad=(self.ph, self.pw), cover_all=self.cover_all)
             ret.apped(gx)
         if 1 in indexes:
             if self.cover_all is None:
                 self._set_cover_all(x, W)
-            gW, = convolution_2d.Convolution2DGradW(self).apply((gx, x))
+            gW, = Convolution2DGradW(self).apply((gx, x))
             ret.append(gW[0])
 
             if 2 in indexes:

@@ -21,6 +21,20 @@ conv_bw_op = conv_backweights.conv_bw_op
 conv_bwb_op = conv_backweights.conv_bwb_op
 
 
+def create_dummy_hint():
+    x_md = m.desc((128, 3, 227, 227), m.memory.f32, m.memory.any)
+    W_md = m.desc((96, 3, 11, 11), m.memory.f32, m.memory.any)
+    o_md = m.desc((128, 96, 55, 55), m.memory.f32, m.memory.any)
+
+    dummy_d = conv_forward.desc(
+        forward, convolution_direct, x_md, W_md, o_md,
+        (4, 4), (0, 0), (0, 0), zero)
+    return conv_forward.primitive_desc(dummy_d, Engine());
+
+
+dummy_hint = create_dummy_hint()
+
+
 class conv_geometry(object):
     def __init__(self, x_shape, W_shape, stride, pad, cover_all):
         assert isinstance(x_shape, tuple), 'X shape must be tuple'

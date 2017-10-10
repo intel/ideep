@@ -2,18 +2,28 @@ from chainer import function
 from chainer.utils import type_check
 
 from ideep.chainer.runtime import Engine
-from ideep.compute_complex import ComputeComplex, array, reuse_buffer, reorder_if_must
-
+from ideep.compute_complex import ComputeComplex, array
+from ideep.compute_complex import reuse_buffer, reorder_if_must
+from ideep.mdarray import mdarray
 from ideep.api.support import forward, eltwise_relu, at
+
 import ideep.api.memory as m
 import ideep.api.eltwise_forward as eltwise_forward
 import ideep.api.eltwise_backward as eltwise_backward
 
-from ideep.mdarray import mdarray
-
 
 class ReLUForward(ComputeComplex):
     cc_type = 'f'
+
+    def __init__(self, inputs, pos=(0, 0), e=Engine()):
+        x = inputs[0]
+        # assert isinstance(x, mdarray)
+        super(ReLUForward, self).__init__()
+
+        if self.new:
+            self._create_cc(x, e)
+        else:
+            self._reuse_cc(x)
 
     def _create_cc(self, x, e=Engine()):
         # fix bug local variable 'fmt' referenced before assignment
@@ -49,16 +59,6 @@ class ReLUForward(ComputeComplex):
 
     def _reuse_cc(self, x):
         reuse_buffer(self.x, x)
-
-    def __init__(self, inputs, pos=(0, 0), e=Engine()):
-        x = inputs[0]
-        # assert isinstance(x, mdarray)
-        super(ReLUForward, self).__init__()
-
-        if self.new:
-            self._create_cc(x, e)
-        else:
-            self._reuse_cc(x)
 
 
 class ReLUBackward(ComputeComplex):
@@ -113,31 +113,3 @@ class ReLUBackward(ComputeComplex):
     def _reuse_cc(self, x, gy):
         reuse_buffer(self.x, x)
         reuse_buffer(self.gy, gy)
-
-
-class ReLUMKLDNN(function.Function):
-
-    def check_type_forward(self, in_types):
-        type_check.expect(
-            in_types.size() == 1,
-            in_types[0].dtype.kind == 'f',
-        )
-
-    def forward(self, x):
-        cc = ReLUForward(x, pos=(self.rank, self.fanout))
-
-        self.hint = cc.hint
-
-        y, = cc.execute_on()
-        y.reset_buf_order()
-
-        return y,
-
-    def backward(self, x, gy):
-        cc = ReLUBackward(x, gy, self.hint,
-                          pos=(self.rank, self.fanout))
-
-        gx, = cc.execute_on()
-        gx.reset_buf_order()
-
-        return gx,

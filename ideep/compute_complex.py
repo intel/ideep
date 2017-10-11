@@ -51,20 +51,20 @@ class ComputeComplex(object):
     cache = {'f': cache_f, 'bd': cache_bd, 'bw': cache_bw}
 
     def __new__(cls, *args, **kwargs):
-        pos = kwargs.pop('pos')
-        assert isinstance(pos, tuple)
+        # pos = kwargs.pop('pos')
+        # assert isinstance(pos, tuple)
 
-        cache = cls.cache[cls.cc_type]
-        ret = cache.get(pos)
+        # cache = cls.cache[cls.cc_type]
+        # ret = cache.get(pos)
 
-        if ret and isinstance(ret, cls) and ret.match(*args, **kwargs):
-            ret.new = False
-        else:
-            ret = super(ComputeComplex, cls).__new__(cls)
-            # print("Create new CC: ", ret)
-            ret.new = True
-            cache[pos] = ret
-            ret.pos = pos
+        # if ret and isinstance(ret, cls) and ret.match(*args, **kwargs):
+        #     ret.new = False
+        # else:
+        ret = super(ComputeComplex, cls).__new__(cls)
+        # print("Create new CC: ", ret)
+        ret.new = True
+        # cache[pos] = ret
+        # ret.pos = pos
         return ret
 
     def __init__(self):

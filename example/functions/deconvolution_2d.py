@@ -2,10 +2,13 @@ import numpy
 
 import chainer
 from chainer import function_node
+from chainer.utils import conv
+from chainer.utils import type_check
 
 import example.functions
-import ideep.xnn as xnn
 from example.functions.convolution_2d import Convolution2DGradW
+
+import ideep.xnn as xnn
 
 
 def _pair(x):
@@ -61,12 +64,15 @@ class Deconvolution2DFucntion(function_node.FunctionNode):
             )
 
     def forward_cpu(self, inputs):
-        cc_data = xnn.ConvolutionBackwardData(
-            inputs, xnn.dummy_hint, stride=(self.sy, self.sx),
-            pad=(self.ph, self.pw), cover_all=self.cover_all,
-            pos=(0, 0))
+        self.retain_inputs((0, 1))  # retain x, W
 
-        gx = cc_data.execute_on()
+        cc = xnn.ConvolutionBackwardData(
+            inputs, stride=(self.sy, self.sx),
+            pad=(self.ph, self.pw), outsize=(self.outh, self.outw),
+            cover_all=self.cover_all)
+
+        gx = cc.execute_on()
+
         return gx
 
     def backward(self, indexes, grad_outputs):
@@ -99,14 +105,7 @@ class Deconvolution2DFucntion(function_node.FunctionNode):
             in_w != conv.get_conv_outsize(self.outw, kw, self.sx, self.pw))
 
 def deconvolution_2d(x, W, b=None, stride=1, pad=0, outsize=None, **kwargs):
-    argument.check_unexpected_kwargs(
-        kwargs, deterministic="deterministic argument is not "
-        "supported anymore. "
-        "Use chainer.using_config('cudnn_deterministic', value) "
-        "context where value is either `True` or `False`.")
-    argument.assert_kwargs_empty(kwargs)
-
-    func = Deconvolution2DFunction(stride, pad, outsize)
+    func = Deconvolution2DFucntion(stride, pad, outsize)
     if b is None:
         args = x, W
     else:

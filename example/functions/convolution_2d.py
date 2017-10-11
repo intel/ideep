@@ -46,10 +46,7 @@ class Convolution2DFunction(function_node.FunctionNode):
             )
 
     def forward_cpu(self, inputs):
-        if len(inputs) == 3:
-            self.retain_inputs((0, 1, 2))
-        else:
-            self.retain_inputs((0, 1))
+        self.retain_inputs((0, 1))
 
         cc = xnn.ConvolutionForward(
             inputs, stride=(self.sy, self.sx),
@@ -64,7 +61,7 @@ class Convolution2DFunction(function_node.FunctionNode):
         return y,
 
     def backward(self, indexes, grad_outputs):
-        inputs = self.get_retained_inputs()
+        x, W = self.get_retained_inputs()
         gy, = grad_outputs
 
         ret = []
@@ -100,11 +97,13 @@ class Convolution2DGradW(function_node.FunctionNode):
         self.retain_inputs((0, 1))
 
         cc = xnn.ConvolutionBackwardWeights(
-            inputs, self.hint, stride=(self.sy, self.sx),
-            pad=(self.ph, self.pw), cover_all=self.cover_all,
-            pos=(self.rank, self.fanout))
+            inputs, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
+            outsize=(self.kh, self.kw), cover_all=self.cover_all,
+            hint=self.hint, pos=(0, 0))
 
-        gW_b = cc_weight.execute_on()
+        gW_b = cc.execute_on()
+
+        return gW_b
 
     def backward(self, indexes, grad_outputs):
         x, gy = self.get_retained_inputs()

@@ -50,8 +50,7 @@ class Convolution2DFunction(function_node.FunctionNode):
 
         cc = xnn.ConvolutionForward(
             inputs, stride=(self.sy, self.sx),
-            pad=(self.ph, self.pw), cover_all=self.cover_all,
-            pos=(0, 0))
+            pad=(self.ph, self.pw), cover_all=self.cover_all)
 
         self.hint = cc.hint
         self.W = cc.W
@@ -99,7 +98,7 @@ class Convolution2DGradW(function_node.FunctionNode):
         cc = xnn.ConvolutionBackwardWeights(
             inputs, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
             outsize=(self.kh, self.kw), cover_all=self.cover_all,
-            hint=self.hint, pos=(0, 0))
+            hint=self.hint)
 
         gW_b = cc.execute_on()
 
@@ -111,7 +110,11 @@ class Convolution2DGradW(function_node.FunctionNode):
 
         ret = []
         if 0 in indexes:
-            pass
+            xh, xw = x.shape[2:]
+            gx = example.functions.deconvolution_2d(
+                gy, ggW, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
+                outsize=(xh, xw))
+            ret.append(gx)
         if 1 in indexes:
             ggy = convolution_2d(
                 x, ggW, stride=(self.sy, self.sx),

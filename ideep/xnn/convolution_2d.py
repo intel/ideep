@@ -1,7 +1,7 @@
 from ideep.mdarray import mdarray
 from ideep.cpu_engine import Engine
-from ideep.compute_complex import reorder_if_must, ComputeComplex
-from ideep.compute_complex import reuse_buffer
+import ideep.compute_complex as CC
+
 from ideep.array import array
 from ideep.utils import conv
 from ideep.api.support import forward, convolution_direct, zero
@@ -55,43 +55,7 @@ def create_forward_desc(d_creator, o_expect, inputs, geometry):
                          strides, padding_ul, padding_dr, zero)
 
 
-def create_backward_desc(d_creator, inputs, geometry):
-    inputs_d = [m.desc(v.shape, m.memory.f32, m.memory.any)
-                for v in inputs if v is not None]
-
-    strides = geometry[0]
-    padding_ul = geometry[1]
-    padding_dr = geometry[2]
-    """ As to backward data
-            in_desc1: diff_src_desc
-            in_desc2: weights_desc
-            in_desc3: diff_dst_desc
-        As to backward weight
-            in_desc1: src_desc
-            in_desc2: diff_weights_desc
-            in_desc3: diff_bias_desc
-            in_desc4: diff_dst_desc
-            or
-            in_desc1: src_desc
-            in_desc2: diff_weights_desc
-            in_desc3: diff_dst_desc
-    """
-    in_desc1 = inputs_d[0]
-    in_desc2 = inputs_d[1]
-    if len(inputs_d) == 4:
-        in_desc3 = inputs_d[2]
-        in_desc4 = inputs_d[3]
-        return d_creator(convolution_direct,
-                         in_desc1, in_desc2, in_desc3, in_desc4,
-                         strides, padding_ul, padding_dr, zero)
-    else:
-        in_desc3 = inputs_d[2]
-        return d_creator(convolution_direct,
-                         in_desc1, in_desc2, in_desc3,
-                         strides, padding_ul, padding_dr, zero)
-
-
-class ConvolutionForward(ComputeComplex):
+class ConvolutionForward(CC.ComputeComplex):
     cc_type = 'f'
 
     def __init__(self, inputs, stride=1, pad=0, cover_all=False,
@@ -121,7 +85,7 @@ class ConvolutionForward(ComputeComplex):
         cc_pd = conv_forward.primitive_desc(cc_d, e)
         w_mpd = cc_pd.weights_primitive_desc()
         self.usr_w = array(W, m.memory.oihw, e)
-        outputs = reorder_if_must(self.usr_w, w_mpd, e, self.dag)
+        outputs = CC.reorder_if_must(self.usr_w, w_mpd, e, self.dag)
         if len(outputs) == 2:
             self.W, self.itm_arr = outputs[:2]
         else:
@@ -177,7 +141,7 @@ class ConvolutionForward(ComputeComplex):
                 (self.num_inputs == len(inputs))
 
 
-class ConvolutionBackwardData(ComputeComplex):
+class ConvolutionBackwardData(CC.ComputeComplex):
     cc_type = 'bd'
 
     def __init__(
@@ -227,7 +191,7 @@ class ConvolutionBackwardData(ComputeComplex):
         return hint is self._hint
 
 
-class ConvolutionBackwardWeights(ComputeComplex):
+class ConvolutionBackwardWeights(CC.ComputeComplex):
     cc_type = 'bw'
 
     def __init__(

@@ -22,6 +22,15 @@ conv_bwb_op = conv_backweights.conv_bwb_op
 
 
 def create_dummy_hint():
+    """ Create a dummy hint
+
+    To create a convolution backward primitive, one needs a forward
+    primitive as a hint. Though there is no use of it in actual
+    implementations. A dummy hint can be a wordaround of this situation.
+    There would be a interface requires no hint in the furture.
+
+    """
+
     x_md = m.desc((128, 3, 227, 227), m.memory.f32, m.memory.any)
     W_md = m.desc((96, 3, 11, 11), m.memory.f32, m.memory.any)
     o_md = m.desc((128, 96, 55, 55), m.memory.f32, m.memory.any)
@@ -77,7 +86,6 @@ class ConvolutionForward(CC.ComputeComplex):
 
         y_d = m.desc(g.out_shape, m.memory.f32, m.memory.any)
 
-        self.geometry = g.geometry
         # Create primitive_desc from any
         cc_d = create_forward_desc(
             conv_forward.desc, y_d, (x, W, b), g.geometry)
@@ -112,33 +120,33 @@ class ConvolutionForward(CC.ComputeComplex):
         self._hint = cc_pd
         self.outputs = y,
 
-    def _reuse_cc(self, x, W, b):
-        reuse_buffer(self.x, x)
-        # Weight optimization starts from second iteration.
-        # check cc.W with W
-        if self.W is not W:
-            reuse_buffer(self.usr_w, W)
-        else:
-            if self.weight_reorder_opt is not None and \
-               self.weight_reorder_opt.optimized is False:
-                self.dag.erase(self.dag.begin() + \
-                self.weight_reorder_opt.reorder)
-                self.weight_reorder_opt.optimized = True
-
-        if b is not None:
-            reuse_buffer(self.b, b)
-
-    def match(self, inputs, stride=1, pad=0, cover_all=False, **kwargs):
-        x = inputs[0]
-        W = inputs[1]
-        if (self.x.shape != x.shape) or (self.W.shape != W.shape):
-            return False
-        if (isinstance(x, mdarray) and (x is not self.x)):
-            return False
-        g = conv.conv_geometry(x.shape, W.shape, stride, pad, cover_all)
-
-        return (self.geometry == g.geometry) and \
-                (self.num_inputs == len(inputs))
+#    def _reuse_cc(self, x, W, b):
+#        reuse_buffer(self.x, x)
+#        # Weight optimization starts from second iteration.
+#        # check cc.W with W
+#        if self.W is not W:
+#            reuse_buffer(self.usr_w, W)
+#        else:
+#            if self.weight_reorder_opt is not None and \
+#               self.weight_reorder_opt.optimized is False:
+#                self.dag.erase(self.dag.begin() + \
+#                self.weight_reorder_opt.reorder)
+#                self.weight_reorder_opt.optimized = True
+#
+#        if b is not None:
+#            reuse_buffer(self.b, b)
+#
+#    def match(self, inputs, stride=1, pad=0, cover_all=False, **kwargs):
+#        x = inputs[0]
+#        W = inputs[1]
+#        if (self.x.shape != x.shape) or (self.W.shape != W.shape):
+#            return False
+#        if (isinstance(x, mdarray) and (x is not self.x)):
+#            return False
+#        g = conv.conv_geometry(x.shape, W.shape, stride, pad, cover_all)
+#
+#        return (self.geometry == g.geometry) and \
+#                (self.num_inputs == len(inputs))
 
 
 class ConvolutionBackwardData(CC.ComputeComplex):
@@ -183,12 +191,12 @@ class ConvolutionBackwardData(CC.ComputeComplex):
         self._hint = hint
         self.outputs = gx,
 
-    def _reuse_cc(self, W, gy):
-        reuse_buffer(self.W, W)
-        reuse_buffer(self.gy, gy)
-
-    def match(self, inputs, **kwargs):
-        return hint is self._hint
+#    def _reuse_cc(self, W, gy):
+#        reuse_buffer(self.W, W)
+#        reuse_buffer(self.gy, gy)
+#
+#    def match(self, inputs, **kwargs):
+#        return hint is self._hint
 
 
 class ConvolutionBackwardWeights(CC.ComputeComplex):
@@ -235,9 +243,9 @@ class ConvolutionBackwardWeights(CC.ComputeComplex):
 
         self.outputs = gW, gb
 
-    def _reuse_cc(self, x, gy):
-        reuse_buffer(self.x, x)
-        reuse_buffer(self.gy, gy)
-
-    def match(self, inputs, grad_ouputs, hint, *args, **kwargs):
-        return (hint is self._hint)
+#    def _reuse_cc(self, x, gy):
+#        reuse_buffer(self.x, x)
+#        reuse_buffer(self.gy, gy)
+#
+#    def match(self, inputs, grad_ouputs, hint, *args, **kwargs):
+#        return (hint is self._hint)

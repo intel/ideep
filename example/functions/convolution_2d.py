@@ -79,6 +79,7 @@ class Convolution2DFunction(function_node.FunctionNode):
 
         return ret
 
+
 class Convolution2DGradW(function_node.FunctionNode):
 
     def __init__(self, conv2d):
@@ -106,7 +107,7 @@ class Convolution2DGradW(function_node.FunctionNode):
 
     def backward(self, indexes, grad_outputs):
         x, gy = self.get_retained_inputs()
-        ggW, = grad_outputs
+        ggW = grad_outputs[0]
 
         ret = []
         if 0 in indexes:

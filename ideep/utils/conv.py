@@ -73,10 +73,10 @@ class deconv_geometry(object):
         h, w = outsize
         if h is None:
             h = get_deconv_outsize(out_h, kh, sy, p_upper)
-            assert w > 0, 'Height in the output should be positive.'
+            assert h > 0, 'Height in the output should be positive.'
         if w is None:
             w = get_deconv_outsize(out_w, kw, sx, p_left)
-            assert h > 0, 'Width in the output should be positive.'
+            assert w > 0, 'Width in the output should be positive.'
 
         p_down = sy * (out_h - 1) + kh - h - p_upper
         p_right = sx * (out_w - 1) + kw - w - p_left

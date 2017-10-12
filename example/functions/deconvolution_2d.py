@@ -66,14 +66,32 @@ class Deconvolution2DFucntion(function_node.FunctionNode):
     def forward_cpu(self, inputs):
         self.retain_inputs((0, 1))  # retain x, W
 
+        x, W = inputs[:2]
+        kh, kw = W.shape[2:]
+        n, in_c, in_h, in_w = x.shape
+
+        if self.outh is None:
+            self.outh = conv.get_deconv_outsize(in_h, kh, self.sy, self.ph)
+            assert self.outh > 0, 'Height in the output should be positive.'
+        if self.outw is None:
+            self.outw = conv.get_deconv_outsize(in_w, kw, self.sx, self.pw)
+            assert self.outw > 0, 'Width in the output should be positive.'
+
+        self._set_cover_all(x, W)
+
         cc = xnn.ConvolutionBackwardData(
             inputs, stride=(self.sy, self.sx),
             pad=(self.ph, self.pw), outsize=(self.outh, self.outw),
             cover_all=self.cover_all)
 
-        gx = cc.execute_on()
+        self.hint = cc.hint
+        y, = cc.execute_on()
 
-        return gx
+        if len(inputs) == 3:
+            b = inputs[2]
+            y += b.reshape(1, b.size, 1, 1)
+
+        return y,
 
     def backward(self, indexes, grad_outputs):
         x, W = self.get_retained_inputs()
@@ -86,11 +104,11 @@ class Deconvolution2DFucntion(function_node.FunctionNode):
             gx = example.functions.convolution_2d(
                     gy, W, stride=(self.sy, self.sx),
                 pad=(self.ph, self.pw), cover_all=self.cover_all)
-            ret.apped(gx)
+            ret.append(gx)
         if 1 in indexes:
             if self.cover_all is None:
                 self._set_cover_all(x, W)
-            gW, = Convolution2DGradW(self).apply((gx, x))
+            gW = Convolution2DGradW(self).apply((gy, x))
             ret.append(gW[0])
 
             if 2 in indexes:

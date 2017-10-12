@@ -1,4 +1,4 @@
-# import mock
+import mock
 import unittest
 
 import numpy
@@ -8,99 +8,102 @@ from chainer import cuda
 import chainer.functions as F
 from chainer import gradient_check
 from chainer import testing
+from chainer.testing import attr
 from chainer.testing import condition
+from chainer.testing import parameterize
 from chainer.utils import conv
+
 
 import example.functions as E
 
 
-@testing.parameterize(*(
-    testing.product({
-        'in_shape': [(2, 3, 4, 3)],
-        'kernel_geo': [(2, 3, 3, 2, 1)],
-        'c_contiguous': [True, False],
-        'cover_all': [True, False],
-        'x_dtype': [numpy.float32],
-        'W_dtype': [numpy.float32], }) +
-    testing.product({
-        'in_shape': [(1, 3, 9, 9)],
-        'kernel_geo': [(8, 3, 3, 1, 0)],
-        'c_contiguous': [True, False],
-        'cover_all': [True, False],
-        'x_dtype': [numpy.float32],
-        'W_dtype': [numpy.float32], }) +
-    testing.product({
-        'in_shape': [(8, 3, 15, 15)],
-        'kernel_geo': [(3, 11, 11, 4, 0)],
-        'c_contiguous': [True],
-        'cover_all': [True, False],
-        'x_dtype': [numpy.float32],
-        'W_dtype': [numpy.float32]})
-    ))
-class TestConvolution2DFunction(unittest.TestCase):
+def _pair(x):
+    if hasattr(x, '__getitem__'):
+        return x
+    return x, x
+
+
+@parameterize(*(testing.product({
+    'c_contiguous': [True],
+    'test_outsize': [True, False],
+    'nobias': [True],
+    'stride': [1, 2],
+    'x_dtype': [numpy.float32],
+    'W_dtype': [numpy.float32],
+}) + testing.product({
+    'c_contiguous': [False],
+    'test_outsize': [True],
+    'nobias': [False],
+    'stride': [1, 2],
+    'x_dtype': [numpy.float32],
+    'W_dtype': [numpy.float32],
+})))
+class TestDeconvolution2DFunction(unittest.TestCase):
+
+    in_channels = 3
+    out_channels = 2
+    ksize = 3
+    pad = 1
 
     def setUp(self):
-        n, c, h, w = self.in_shape
-        out_c = self.kernel_geo[0]
-        kh, kw = (self.kernel_geo[1], self.kernel_geo[2])
-        self.stride = self.kernel_geo[3]
-        self.pad = self.kernel_geo[4]
+        kh, kw = _pair(self.ksize)
+        sh, sw = _pair(self.stride)
+        ph, pw = _pair(self.pad)
         self.W = numpy.random.normal(
-            0, numpy.sqrt(1. / (kh * kw * c)),
-            (out_c, c, kh, kw)).astype(self.W_dtype)
+            0, numpy.sqrt(1. / (kh * kw * self.in_channels)),
+            (self.in_channels, self.out_channels, kh, kw)
+        ).astype(self.W_dtype)
+        self.b = None if self.nobias else numpy.random.uniform(
+            -1, 1, self.out_channels).astype(self.x_dtype)
 
-        self.b = numpy.random.uniform(
-            -1, 1, out_c).astype(self.x_dtype)
-
+        N = 2
+        inh, inw = 4, 3
+        outh = conv.get_deconv_outsize(inh, kh, sh, ph)
+        outw = conv.get_deconv_outsize(inw, kw, sw, pw)
+        self.outsize = (outh, outw) if self.test_outsize else None
         self.x = numpy.random.uniform(
-            -1, 1, self.in_shape).astype(self.x_dtype)
-
-        out_h = conv.get_conv_outsize(
-            h, kh, self.stride, self.pad, cover_all=self.cover_all)
-
-        out_w = conv.get_conv_outsize(
-            w, kw,
-            self.stride, self.pad, cover_all=self.cover_all)
-
+            -1, 1, (N, self.in_channels, inh, inw)).astype(self.x_dtype)
         self.gy = numpy.random.uniform(
-            -1, 1,
-            (n, out_c, out_h, out_w)).astype(self.x_dtype)
+            -1, 1, (N, self.out_channels, outh, outw)).astype(self.x_dtype)
 
         self.ggx = numpy.random.uniform(-1, 1, self.x.shape).astype(
             self.x_dtype)
         self.ggW = numpy.random.uniform(-1, 1, self.W.shape).astype(
             self.W_dtype)
-        self.ggb = numpy.random.uniform(-1, 1, self.b.shape).astype(
-            self.x_dtype)
+        self.ggb = None if self.nobias else numpy.random.uniform(
+            -1, 1, self.b.shape).astype(self.x_dtype)
 
-        self.check_forward_options = {}
-        self.check_backward_options = {
-            'dtype': numpy.float32, 'atol': 5e-4, 'rtol': 5e-3}
-        self.check_double_backward_options = {'dtype': numpy.float32}
-        if self.x_dtype == numpy.float16 or self.W_dtype == numpy.float16:
-            self.check_forward_options = {'atol': 5e-4, 'rtol': 5e-3}
-            self.check_backward_options = {
-                'dtype': numpy.float64, 'atol': 5e-4, 'rtol': 5e-3}
+        self.test_forward_options = {}
+        self.check_backward_options = {'dtype': numpy.float64}
+        self.check_double_backward_options = {'dtype': numpy.float64}
+        if self.x_dtype == numpy.float16:
+            self.test_forward_options.update(atol=5e-3, rtol=5e-2)
+            self.check_backward_options.update(atol=5e-4, rtol=5e-3)
+            self.check_double_backward_options.update(atol=5e-3, rtol=5e-2)
+        elif self.W_dtype == numpy.float16:
+            self.check_backward_options.update(atol=5e-4, rtol=5e-3)
+            self.check_double_backward_options.update(atol=5e-3, rtol=5e-2)
 
-    def test_forward_consistency(self, nobias=False):
+    def test_forward_consistency(self):
         x_cpu = chainer.Variable(self.x)
         W_cpu = chainer.Variable(self.W)
-        b_cpu = None if nobias else chainer.Variable(self.b)
-        y_cpu = F.convolution_2d(
-                x_cpu, W_cpu, b_cpu, stride=self.stride, pad=self.pad,
-                cover_all=self.cover_all)
+        b_cpu = None if self.nobias else chainer.Variable(self.b)
+        y_cpu = F.deconvolution_2d(
+            x_cpu, W_cpu, b_cpu, stride=self.stride, pad=self.pad,
+            outsize=self.outsize)
 
         x_mkl = chainer.Variable(self.x)
         W_mkl = chainer.Variable(self.W)
-        b_mkl = None if nobias else chainer.Variable(self.b)
-        y_mkl = E.convolution_2d(
+        b_mkl = None if self.nobias else chainer.Variable(self.b)
+        y_mkl = E.deconvolution_2d(
             x_mkl, W_mkl, b_mkl, stride=self.stride, pad=self.pad,
-            cover_all=self.cover_all)
+            outsize=self.outsize)
 
+        self.assertEqual(y_cpu.data.dtype, self.x_dtype)
+        self.assertEqual(y_mkl.data.dtype, self.x_dtype)
         testing.assert_allclose(
-            y_cpu.data,
-            numpy.array(y_mkl.data, copy=False),
-            **self.check_forward_options)
+            y_cpu.data, numpy.array(y_mkl.data, copy=False),
+            **self.test_forward_options)
 
     def check_backward(self, x_data, W_data, b_data, y_grad):
         xp = cuda.get_array_module(x_data)
@@ -123,19 +126,15 @@ class TestConvolution2DFunction(unittest.TestCase):
             args = args + (b_data,)
 
         def f(*args):
-            return E.convolution_2d(*args, stride=self.stride, pad=self.pad,
-                                    cover_all=self.cover_all)
+            return E.deconvolution_2d(
+                *args, stride=self.stride, pad=self.pad, outsize=self.outsize)
 
         gradient_check.check_backward(
             f, args, y_grad, **self.check_backward_options)
 
-    @condition.retry(3)
+    @condition.retry(10)
     def test_backward_cpu(self):
         self.check_backward(self.x, self.W, self.b, self.gy)
-
-    @condition.retry(3)
-    def test_backward_cpu_nobias(self):
-        self.check_backward(self.x, self.W, None, self.gy)
 
     def check_double_backward(self, x_data, W_data, b_data, y_grad,
                               x_grad_grad, W_grad_grad, b_grad_grad):
@@ -170,22 +169,18 @@ class TestConvolution2DFunction(unittest.TestCase):
             grad_grads = grad_grads + (b_grad_grad,)
 
         def f(*args):
-            y = E.convolution_2d(*args, stride=self.stride, pad=self.pad,
-                                 cover_all=self.cover_all)
+            y = E.deconvolution_2d(
+                *args, stride=self.stride, pad=self.pad, outsize=self.outsize)
             return y * y  # make the function nonlinear
 
-        gradient_check.check_double_backward(f, args, y_grad, grad_grads,
-           **self.check_double_backward_options)
+        gradient_check.check_double_backward(
+            f, args, y_grad, grad_grads,
+            **self.check_double_backward_options)
 
-    @condition.retry(3)
+    @condition.retry(10)
     def test_double_backward_cpu(self):
         self.check_double_backward(self.x, self.W, self.b, self.gy,
                                    self.ggx, self.ggW, self.ggb)
-
-    @condition.retry(3)
-    def test_double_backward_cpu_nobias(self):
-        self.check_double_backward(self.x, self.W, None, self.gy,
-                                   self.ggx, self.ggW, None)
 
 
 testing.run_module(__name__, __file__)

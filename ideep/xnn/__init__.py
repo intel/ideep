@@ -5,3 +5,6 @@ from ideep.xnn.convolution_2d import ConvolutionBackwardData
 from ideep.xnn.convolution_2d import ConvolutionBackwardWeights
 from ideep.xnn.relu import ReLUForward
 from ideep.xnn.relu import ReLUBackward
+from ideep.xnn.linear import LinearForward
+from ideep.xnn.linear import LinearBackwardData
+from ideep.xnn.linear import LinearBackwardWeighs

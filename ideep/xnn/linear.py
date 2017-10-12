@@ -1,5 +1,6 @@
 from ideep.chainer.runtime import Engine
-from ideep.compute_complex import reorder_if_must, ComputeComplex, array, reuse_buffer
+from ideep.compute_complex import ComputeComplex, array
+from ideep.compute_complex import reuse_buffer, reorder_if_must
 
 # Most important thing
 from ideep.api.support import forward
@@ -54,6 +55,18 @@ def create_backward_desc(d_creator, *inputs):
 
 class LinearForward(ComputeComplex):
     cc_type = 'f'
+
+    def __init__(self, inputs, pos=(0, 0), e=Engine()):
+        super(LinearForward, self).__init__()
+        x = inputs[0]
+        W = inputs[1]
+        b = inputs[2] if len(inputs) == 3 else None
+        self.argc = len(inputs)
+
+        if self.new:
+            self._create_cc(x, W, b, e)
+        else:
+            self._reuse_cc(x, W, b, e)
 
     def _create_cc(self, x, W, b, e=Engine()):
         y_d = m.desc((x.shape[0], W.shape[0]), m.memory.f32, m.memory.any)
@@ -111,23 +124,12 @@ class LinearForward(ComputeComplex):
             return False
         x, W = inputs[:2]
         if (x.shape != self.x.shape) or (W.shape != self.W.shape):
-            print('WARNING: LinearForard x or w shape mismatch', x.shape, self.x.shape, W.shape, self.W.shape)
+            print('WARNING: LinearForard x or w shape mismatch',
+                  x.shape, self.x.shape, W.shape, self.W.shape)
             return False
         if(isinstance(x, mdarray) and (x is not self.x)):
             return False
         return True
-
-    def __init__(self, inputs, pos=(0, 0), e=Engine()):
-        super(LinearForward, self).__init__()
-        x = inputs[0]
-        W = inputs[1]
-        b = inputs[2] if len(inputs) == 3 else None
-        self.argc = len(inputs)
-
-        if self.new:
-            self._create_cc(x, W, b, e)
-        else:
-            self._reuse_cc(x, W, b, e)
 
 
 class LinearBackwardData(ComputeComplex):

@@ -1,13 +1,14 @@
-from ideep.chainer.runtime import Engine
-from ideep.compute_complex import ComputeComplex, array
-from ideep.compute_complex import reuse_buffer, reorder_if_must
+from ideep.cpu_engine import Engine
 
-# Most important thing
 from ideep.api.support import forward
+
+import ideep.compute_complex as CC
 import ideep.api.memory as m
 import ideep.api.inner_product_forward as ip_forward
 import ideep.api.inner_product_backward_data as ip_backdata
 import ideep.api.inner_product_backward_weights as ip_backweights
+
+from ideep.array import array
 from ideep.mdarray import mdarray
 
 from ideep.api.inner_product_forward import linear_f_op
@@ -53,7 +54,7 @@ def create_backward_desc(d_creator, *inputs):
     return d_creator(*inputs_d)
 
 
-class LinearForward(ComputeComplex):
+class LinearForward(CC.ComputeComplex):
     cc_type = 'f'
 
     def __init__(self, inputs, pos=(0, 0), e=Engine()):
@@ -78,7 +79,7 @@ class LinearForward(ComputeComplex):
         self.x = array(x, _x_format(x.ndim), e)
         w_mpd = cc_pd.weights_primitive_desc()
         self.usr_w = array(W, _W_format(W.ndim), e)
-        outputs = reorder_if_must(self.usr_w, w_mpd, e, self.dag_)
+        outputs = CC.reorder_if_must(self.usr_w, w_mpd, e, self.dag_)
         if len(outputs) == 2:
             self.W, self.itm_arr = outputs[:2]
         else:
@@ -113,26 +114,26 @@ class LinearForward(ComputeComplex):
         self._hint = cc_pd
         self.outputs = y,
 
-    def _reuse_cc(self, x, W, b, e=Engine()):
-        reuse_buffer(self.x, x)
-        reuse_buffer(self.W, W)
-        if b is not None:
-            reuse_buffer(self.b, b)
+#    def _reuse_cc(self, x, W, b, e=Engine()):
+#        reuse_buffer(self.x, x)
+#        reuse_buffer(self.W, W)
+#        if b is not None:
+#            reuse_buffer(self.b, b)
+#
+#    def match(self, inputs):
+#        if len(inputs) != self.argc:
+#            return False
+#        x, W = inputs[:2]
+#        if (x.shape != self.x.shape) or (W.shape != self.W.shape):
+#            print('WARNING: LinearForard x or w shape mismatch',
+#                  x.shape, self.x.shape, W.shape, self.W.shape)
+#            return False
+#        if(isinstance(x, mdarray) and (x is not self.x)):
+#            return False
+#        return True
 
-    def match(self, inputs):
-        if len(inputs) != self.argc:
-            return False
-        x, W = inputs[:2]
-        if (x.shape != self.x.shape) or (W.shape != self.W.shape):
-            print('WARNING: LinearForard x or w shape mismatch',
-                  x.shape, self.x.shape, W.shape, self.W.shape)
-            return False
-        if(isinstance(x, mdarray) and (x is not self.x)):
-            return False
-        return True
 
-
-class LinearBackwardData(ComputeComplex):
+class LinearBackwardData(CC.ComputeComplex):
     cc_type = 'bd'
 
     def __init__(self, inputs, grad_outputs, hint, fwd_W, pos=(0, 0), e=Engine()):
@@ -185,12 +186,12 @@ class LinearBackwardData(ComputeComplex):
         self._hint = hint
         self.outputs = gx,
 
-    def _reuse_cc(self, W, gy):
-        reuse_buffer(self.W, W)
-        reuse_buffer(self.gy, gy)
+#    def _reuse_cc(self, W, gy):
+#        reuse_buffer(self.W, W)
+#        reuse_buffer(self.gy, gy)
 
 
-class LinearBackwardWeighs(ComputeComplex):
+class LinearBackwardWeighs(CC.ComputeComplex):
     cc_type = 'bw'
 
     def _create_cc(self, x, W, b, gy, hint, e):
@@ -235,9 +236,9 @@ class LinearBackwardWeighs(ComputeComplex):
         else:
             self.outputs = gW, gb
 
-    def _reuse_cc(self, x, gy):
-        reuse_buffer(self.x, x)
-        reuse_buffer(self.gy, gy)
+#    def _reuse_cc(self, x, gy):
+#        reuse_buffer(self.x, x)
+#        reuse_buffer(self.gy, gy)
 
     def match(self, inputs, grad_outputs, hint, *args):
         if len(inputs) != self.argc:

@@ -4,6 +4,7 @@ import chainer
 from chainer import function_node
 from chainer import utils
 from chainer.utils import type_check
+
 from ideep import xnn
 
 
@@ -20,15 +21,12 @@ class ReLU(function_node.FunctionNode):
 
     def forward_cpu(self, x):
         self.retain_inputs((0,))
+        self.retain_outputs((0,))
 
         cc = xnn.ReLUForward(x[0])
-
         self.hint = cc.hint
-
         y, = cc.execute_on()
-        y.reset_buf_order()
 
-        self.retain_outputs((0,))
         return y,
 
     def backward(self, indexes, gy):
@@ -48,12 +46,9 @@ class ReLUGrad(function_node.FunctionNode):
         self.hint = hint
 
     def forward_cpu(self, inputs):
-        assert chainer.should_use_mkldnn('==always')
 
         cc = xnn.ReLUBackward(self.x, inputs[0], self.hint)
-
         gx, = cc.execute_on()
-        gx.reset_buf_order()
 
         return gx,
 

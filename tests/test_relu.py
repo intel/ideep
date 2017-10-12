@@ -21,7 +21,6 @@ class TestReLU(unittest.TestCase):
 
     def setUp(self):
         # Avoid unstability of numerical grad
-        # fanout.clear()
         x = numpy.random.uniform(-1, 1, self.shape).astype(self.dtype)
         for i in numpy.ndindex(self.shape):
             if -0.1 < x[i] < 0.1:
@@ -39,7 +38,7 @@ class TestReLU(unittest.TestCase):
         y_expect = F.relu(x)
         testing.assert_allclose(y_expect.data, y.data)
 
-#    @condition.retry(3)
+    @condition.retry(3)
     def test_forward_cpu(self):
         self.check_forward(self.x)
 
@@ -51,7 +50,7 @@ class TestReLU(unittest.TestCase):
                 f, x_data, y_grad,
                 **self.check_backward_options)
 
-#    @condition.retry(3)
+    @condition.retry(3)
     def test_backward_cpu(self):
         self.check_backward(self.x, self.gy)
 

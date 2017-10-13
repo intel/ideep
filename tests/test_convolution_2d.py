@@ -18,14 +18,14 @@ import example.functions as E
     testing.product({
         'in_shape': [(2, 3, 4, 3)],
         'kernel_geo': [(2, 3, 3, 2, 1)],
-        'c_contiguous': [True, False],
+        'c_contiguous': [True],
         'cover_all': [True, False],
         'x_dtype': [numpy.float32],
         'W_dtype': [numpy.float32], }) +
     testing.product({
         'in_shape': [(1, 3, 9, 9)],
         'kernel_geo': [(8, 3, 3, 1, 0)],
-        'c_contiguous': [True, False],
+        'c_contiguous': [True],
         'cover_all': [True, False],
         'x_dtype': [numpy.float32],
         'W_dtype': [numpy.float32], }) +
@@ -33,7 +33,7 @@ import example.functions as E
         'in_shape': [(8, 3, 15, 15)],
         'kernel_geo': [(3, 11, 11, 4, 0)],
         'c_contiguous': [True],
-        'cover_all': [True, False],
+        'cover_all': [True],
         'x_dtype': [numpy.float32],
         'W_dtype': [numpy.float32]})
     ))

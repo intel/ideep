@@ -134,6 +134,7 @@ PyObject *mdarray::py_mdarray_from(PyObject *o) const {
 
   if (o == nullptr) {
     PyErr_SetString(PyExc_BufferError, "Cannot create mdarray from input");
+
     return nullptr;
   }
 

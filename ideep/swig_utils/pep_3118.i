@@ -39,7 +39,12 @@
   , int flags = PyBUF_C_CONTIGUOUS | PyBUF_RECORDS) {
   view = new Py_buffer;
   res = PyObject_GetBuffer($input, view, flags);
+  if (!SWIG_IsOK(res)) {
+    // TODO: Better Error location print??
+    SWIG_exception_fail(SWIG_ArgError(res), "Python buffer protocol failed");
+
+    return 0;
+  }
   $1 = ($1_ltype) view;
-  // TODO: IF WE CONFRONT A F_CONTINGUOUS ONE???
 }
 %enddef

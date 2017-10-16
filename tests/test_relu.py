@@ -38,16 +38,13 @@ class TestReLU(unittest.TestCase):
         y_expect = F.relu(x)
         testing.assert_allclose(y_expect.data, y.data)
 
-    @condition.retry(3)
-    def test_forward_cpu(self):
-        self.check_forward(self.x)
+    #@condition.retry(3)
+    #def test_forward_cpu(self):
+    #    self.check_forward(self.x)
 
     def check_backward(self, x_data, y_grad):
-        def f(*args):
-            E.relu(*args)
-
         gradient_check.check_backward(
-                f, x_data, y_grad,
+                E.relu, x_data, y_grad,
                 **self.check_backward_options)
 
     @condition.retry(3)

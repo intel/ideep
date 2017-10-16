@@ -37,7 +37,7 @@ class ReLUForward(CC.ComputeComplex):
         y = mdarray(cc_pd.dst_primitive_desc())
 
         self.x = x
-        self.dag_.push_back(eltwise_forward.eltwise_forward(cc_pd,
+        self.dag.push_back(eltwise_forward.eltwise_forward(cc_pd,
                             at(x.memory), y.memory))
 
         self._hint = cc_pd
@@ -81,7 +81,7 @@ class ReLUBackward(CC.ComputeComplex):
         gy = array(gy, fmt, e)
 
         diff_pd = gy.memory.get_primitive_desc()
-        outputs = CC.reorder_if_must(x, diff_pd, e, self.dag_)
+        outputs = CC.reorder_if_must(x, diff_pd, e, self.dag)
 
         if len(outputs) == 2:
             x, self.itm_arr = outputs[:2]
@@ -98,7 +98,7 @@ class ReLUBackward(CC.ComputeComplex):
         # print("gx.format=", m.get_fmt(cc_pd.diff_src_primitive_desc()))
         gx = gy
 
-        self.dag_.push_back(eltwise_backward.eltwise_backward(cc_pd,
+        self.dag.push_back(eltwise_backward.eltwise_backward(cc_pd,
                             at(x.memory), at(gy.memory), gx.memory))
 
         self.x = x

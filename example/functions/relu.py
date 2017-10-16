@@ -23,7 +23,7 @@ class ReLU(function_node.FunctionNode):
         self.retain_inputs((0,))
         self.retain_outputs((0,))
 
-        cc = xnn.ReLUForward(x[0])
+        cc = xnn.ReLUForward(x)
         self.hint = cc.hint
         y, = cc.execute_on()
 
@@ -47,7 +47,7 @@ class ReLUGrad(function_node.FunctionNode):
 
     def forward_cpu(self, inputs):
 
-        cc = xnn.ReLUBackward(self.x, inputs[0], self.hint)
+        cc = xnn.ReLUBackward((self.x,), inputs, self.hint)
         gx, = cc.execute_on()
 
         return gx,

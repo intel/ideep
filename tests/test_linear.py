@@ -16,7 +16,8 @@ def _as_mat(x):
 
 
 @testing.parameterize(*testing.product({
-    'in_shape': [(4, 3), (4, 3, 1, 1)],
+    #'in_shape': [(4, 3), (4, 3, 1, 1)],
+    'in_shape': [(4, 3)],
     'out_shape': [(4, 2)],
     'x_dtype': [numpy.float32],
     'W_dtype': [numpy.float32],
@@ -47,14 +48,20 @@ class TestNonparameterizedLinear(unittest.TestCase):
         W = chainer.Variable(W_data)
         if b_data is None:
             y = E.linear(x, W)
+            W = chainer.Variable(W_data)
+            if W.ndim > 2:
+                W = _as_mat(W)
             y_expect = F.linear(x, W)
         else:
             b = chainer.Variable(b_data)
             y = E.linear(x, W, b)
+            W = chainer.Variable(W_data)
+            if W.ndim > 2:
+                W = _as_mat(W)
             y_expect = F.linear(x, W, b)
         self.assertEqual(y.data.dtype, self.x_dtype)
         testing.assert_allclose(
-            y_expect, y.data, **self.check_forward_options)
+            y_expect.data, y.data, **self.check_forward_options)
 
     @condition.retry(3)
     def test_forward_cpu(self):
@@ -69,15 +76,12 @@ class TestNonparameterizedLinear(unittest.TestCase):
         print("finish")
 
     def check_backward(self, x_data, W_data, b_data, y_grad):
-        def f(*args):
-            E.linear(*args)
-
         args = (x_data, W_data)
         if b_data is not None:
             args = args + (b_data,)
 
         gradient_check.check_backward(
-            f, args, y_grad,
+            E.linear, args, y_grad,
             eps=1e-2, **self.check_backward_options)
 
     @condition.retry(3)

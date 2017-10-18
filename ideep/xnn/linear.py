@@ -79,7 +79,7 @@ class LinearForward(CC.ComputeComplex):
         self.x = array(x, _x_format(x.ndim), e)
         w_mpd = cc_pd.weights_primitive_desc()
         self.usr_w = array(W, _W_format(W.ndim), e)
-        outputs = CC.reorder_if_must(self.usr_w, w_mpd, e, self.dag_)
+        outputs = CC.reorder_if_must(self.usr_w, w_mpd, e, self.dag)
         if len(outputs) == 2:
             self.W, self.itm_arr = outputs[:2]
         else:
@@ -87,9 +87,9 @@ class LinearForward(CC.ComputeComplex):
 
         if b is not None:
             self.b = array(b, m.memory.x, e)
-            y = linear_f_op(cc_pd, self.x, self.W, self.b, self.dag_)
+            y = linear_f_op(cc_pd, self.x, self.W, self.b, self.dag)
         else:
-            y = linear_f_op(cc_pd, self.x, self.W, self.dag_)
+            y = linear_f_op(cc_pd, self.x, self.W, self.dag)
 
         # Prepare output
         # y = mdarray(cc_pd.dst_primitive_desc())
@@ -167,7 +167,7 @@ class LinearBackwardData(CC.ComputeComplex):
         self.W = fwd_W
         self.gy = array(gy, m.memory.nc, e)
 
-        gx = linear_bd_op(cc_pd, self.gy, self.W, self.dag_)
+        gx = linear_bd_op(cc_pd, self.gy, self.W, self.dag)
 
         # # Prepare output mdarray
         # gx = mdarray(cc_pd.diff_src_primitive_desc())
@@ -203,9 +203,9 @@ class LinearBackwardWeighs(CC.ComputeComplex):
         self.gy = array(gy, m.memory.nc, e)
 
         if b is None:
-            gW = linear_bw_op(cc_pd, self.x, self.gy, self.dag_)
+            gW = linear_bw_op(cc_pd, self.x, self.gy, self.dag)
         else:
-            gW = linear_bwb_op(cc_pd, self.x, self.gy, self.dag_)
+            gW = linear_bwb_op(cc_pd, self.x, self.gy, self.dag)
             gb = gW.extra
 
         # Prepare outputs mdarray
@@ -250,7 +250,7 @@ class LinearBackwardWeighs(CC.ComputeComplex):
 
         return (hint is self._hint)
 
-    def __init__(self, inputs, grad_outputs, hint, pos, e=Engine()):
+    def __init__(self, inputs, grad_outputs, hint, pos=(0, 0), e=Engine()):
         super(LinearBackwardWeighs, self).__init__()
         x = inputs[0]
         gy = grad_outputs[0]

@@ -39,18 +39,19 @@ class LinearFunction(function_node.FunctionNode):
         y.reset_buf_order()
 
         if len(inputs) == 3:
-            self.retain_inputs((0, 1))
-        else:
             self.retain_inputs((0, 1, 2))
+        else:
+            self.retain_inputs((0, 1))
         return y,
 
     def backward(self, indexes, gy):
         inputs = self.get_retained_inputs()
+        inputs = tuple([input.data for input in self.inputs])
 
         ret = []
         if 0 in indexes:
             gx = LinearGradD(inputs, self.hint, self.W).apply(gy)
-            ret.append(gx)
+            ret.append(gx[0])
         if 1 in indexes or 2 in indexes:
             gW_b = LinearGradW(inputs, self.hint).apply(gy)
             if 1 in indexes:
@@ -63,7 +64,7 @@ class LinearFunction(function_node.FunctionNode):
 
 class LinearGradD(function_node.FunctionNode):
 
-    def __init__(self, inputs, ccW, hint):
+    def __init__(self, inputs, hint, ccW):
         super(LinearGradD, self).__init__()
 
         self.inputs = inputs
@@ -71,7 +72,7 @@ class LinearGradD(function_node.FunctionNode):
         self.hint = hint
 
     def forward_cpu(self, inputs):
-        cc = xnn.LinearBackwardData(self.inputs, inputs[0], self.hint, self.W)
+        cc = xnn.LinearBackwardData(self.inputs, inputs, self.hint, self.W)
 
         gx = cc.execute_on()
         gx[0].reset_buf_order()
@@ -105,7 +106,7 @@ class LinearGradW(function_node.FunctionNode):
         self.hint = hint
 
     def forward_cpu(self, inputs):
-        cc = xnn.LinearBackwardWeighs(self.inputs, inputs[0], self.hint)
+        cc = xnn.LinearBackwardWeighs(self.inputs, inputs, self.hint)
 
         gW_b = cc.execute_on()
         gW_b[0].reset_buf_order()

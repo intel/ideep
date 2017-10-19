@@ -1,6 +1,8 @@
 # ideep: Intel deep learning extension for python
 
-'ideep' is a python module for accelerating deep learning workload. Currently it uses intel MKL and MKL-DNN as acceleration engine. The interface object called Compute Complex (CC), support convolution, deconvolution, relu and linear. Refer example directory for more information.
+Intel deep learning extension for python is a python module for collection of accelerated deep learning operations like convolution, deconvolution, relu etc. It uses intel MKL and MKL-DNN as acceleration engine. The operator object called Compute Complex (CC), each operator are implemented as one Compute Complex, and its tensor oprand is called 'MD-Array'. 'MD-Array' supports python new buffer protocol and operates compatibily with NumPY ND-Array.
+
+Refer example and tests directories for more information.
 
 ## License
 Intel MKL-DNN is licensed under
@@ -24,7 +26,7 @@ Intel MKL-DNN is licensed under
 
 ### Install MKL
 
-Download and install intel MKL at https://software.intel.com/en-us/mkl
+Download and install intel MKL freely at https://software.intel.com/en-us/mkl
 
 ### Install MKL-DNN
 
@@ -42,7 +44,9 @@ refer https://github.com/01org/mkl-dnn for install instruction
 pip install --user .
 ```
 
-For example and tests to run, patch and reinstall chainer from source code. (in external/patch_for_chainer/chainer.patch)
+#### Notice
+
+For example and tests to run, patch and reinstall chainer from source code. (external/patch_for_chainer/chainer.patch)
 
 ## More information
 - github: https://github.com/intel/ideep.git

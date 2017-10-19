@@ -2,6 +2,10 @@
 
 'ideep' is a python module for accelerating deep learning workload. Currently it uses intel MKL and MKL-DNN as acceleration engine. The interface object called Compute Complex (CC), support convolution, deconvolution, relu and linear. Refer example directory for more information.
 
+## License
+Intel MKL-DNN is licensed under
+[Apache License Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).
+
 ## Requirements
 
 'ideep' preview is tested on Ubuntu and OS X, and examples are implemented as a suggestion for its integration of chainer v3.0.0.
@@ -24,7 +28,7 @@ Download and install intel MKL at https://software.intel.com/en-us/mkl
 
 ### Install MKL-DNN
 
-https://github.com/01org/mkl-dnn
+refer https://github.com/01org/mkl-dnn for install instruction
 
 #### Source intel mkl library environment
 
@@ -38,5 +42,7 @@ https://github.com/01org/mkl-dnn
 pip install --user .
 ```
 
+For example and tests to run, patch and reinstall chainer from source code. (in external/patch_for_chainer/chainer.patch)
+
 ## More information
-- github:
+- github: https://github.com/intel/ideep.git

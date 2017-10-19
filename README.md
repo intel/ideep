@@ -41,8 +41,17 @@ refer https://github.com/01org/mkl-dnn for install instruction
 #### Install ideep from source
 
 ```
-pip install --user .
+pip install [--user] .
 ```
+
+#### Patch and install chainer
+
+```
+git clone https://github.com/chainer/chainer.git
+git apply [where ideep]/external/patch_for_chainer/chainer.patch]
+```
+
+refer https://github.com/chainer/chainer.git for install from source instruction
 
 #### Notice
 

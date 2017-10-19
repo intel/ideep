@@ -185,7 +185,7 @@ setup(
     author='intel',
     author_email='',
     url='',
-    license='MIT License',
+    license='Apache License',
     packages=packages,
     ext_modules=ext_modules,
     cmdclass={'install': _install, 'build_py': _build_py},

@@ -34,14 +34,14 @@ Requirements for some features:
 ```
 
 ### Install MKL
--
--Download and install intel MKL at https://software.intel.com/en-us/mkl
--
+
+Download and install intel MKL at https://software.intel.com/en-us/mkl
+
 ### Install MKL-DNN
--
--Refer https://github.com/01org/mkl-dnn for install instruction
--
-### ideep Installation
+
+Refer https://github.com/01org/mkl-dnn for install instruction
+
+### Install ideep
 
 If you use old ``setuptools``, upgrade it:
 

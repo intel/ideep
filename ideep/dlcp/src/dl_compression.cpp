@@ -55,6 +55,16 @@ dl_comp_return_t dl_comp_decompress_buffer( const void *src,
                                             void *dst, 
                                             size_t dataCount )
 {
+    dl_comp_head *compHead = (dl_comp_head *)src;
+
+    if (compHead->magic != DL_COMP_HEAD_MAGIC) {
+        // This is a work-around for MLSL. Because in MPI_Test
+        // sometimes an already de-compressed buffer may be sent 
+        // to compress lib to do de-compressed buffer. So we
+        // simply ignore it in this case.
+        return DL_COMP_OK;
+    }
+
     size_t blockCount = dataCount % DL_COMP_BLOCK_NUM == 0 ? (dataCount / DL_COMP_BLOCK_NUM) : (dataCount / DL_COMP_BLOCK_NUM + 1);
     // do de-compression
     DLCompressBase *compInst = DLCompressBase::get_compression_instance(DL_COMP_DFP);

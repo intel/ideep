@@ -17,25 +17,19 @@
 
 LOCAL_DIR = $(shell pwd)
 
-#COMPILER ?= gnu
-COMPILER ?= intel
+DLCP_CXX ?= icpc
 
-FLAG_DEBUG       ?= 0
+FLAG_DEBUG ?= 0
 
 AR       	= ar
 CXXFLAGS    += -fPIC
 
-ifeq ($(COMPILER), intel)
-    CC        = icc
-    CXX       = icpc
+ifneq (,$(findstring icpc, $(DLCP_CXX)))
+    CXX       = $(DLCP_CXX)
     CXXFLAGS += -std=c++11
     LDFLAGS  += -static-intel
-else ifeq ($(COMPILER), gnu)
-    CC        = gcc
-    CXX       = g++
-    CXXFLAGS += -std=c++0x
 else
-    $(error Unsupported compiler $(COMPILER))
+    $(error Unsupported compiler $(DLCP_CXX))
 endif
 
 ifeq ($(FLAG_DEBUG), 1)
@@ -44,11 +38,11 @@ else
     CXXFLAGS += -O2
 endif
 
-ifeq ($(CXX), icpc)
+ifneq (,$(findstring icpc,$(CXX)))
     LDFLAGS += -static-intel 
 endif
 
-ifeq ($(CXX), icpc)
+ifneq (,$(findstring icpc,$(CXX)))
     CXXFLAGS += -qopenmp
 endif
 

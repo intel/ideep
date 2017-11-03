@@ -144,6 +144,17 @@ size_t dl_comp_convert_block_count(size_t dataCount);
 // return how many elements in one block
 size_t dl_comp_get_elem_num_in_block();
 
+// Check Running Environment.
+// Parameters:
+// N/A
+// Returns:
+// If check successful, return true. otherwise false.
+// If false, pls disable quantization functionality.
+// E.g. We sugguest not to use quantization on machine
+// not support avx512 instructions, because there's no 
+// performance gain.
+bool dl_comp_check_running_environ();
+
 // Uitl function for compress float32 data to int8
 // Parameters:
 // srcBuffer [in] src float32 data

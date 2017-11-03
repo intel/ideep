@@ -105,6 +105,12 @@ size_t dl_comp_convert_block_count(size_t dataCount)
     return blockCount;
 }
 
+bool dl_comp_check_running_environ()
+{
+  // Currently, we only check whether avx512 instruction supported.
+  return dl_comp_check_avx512_supported(); 
+}
+
 int dl_comp_compress_buffer_FLOAT32ToINT8( const void *srcBuffer,
                                             void *dstBuffer,
                                             void *diff,

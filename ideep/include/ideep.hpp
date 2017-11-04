@@ -98,21 +98,38 @@ struct stream: public mkldnn::stream {
 class tensor: public primitive  {
 private:
   std::shared_ptr<char> _handle;
+  static char *malloc(size_t size, size_t alignment) {
+    void *ptr;
+#ifdef _WIN32
+    ptr = _aligned_malloc(size, alignment);
+    int rc = ((ptr)? 0 : errno);
+#else
+    int rc = ::posix_memalign(&ptr, alignment, size);
+#endif /* _WIN32 */
+    return (rc == 0) ? (char*)ptr : nullptr;
+  }
+
+  static void free(void *p) {
+#ifdef _WIN32
+    _aligned_free((void*)p);
+#else
+    ::free((void*)p);
+#endif /* _WIN32 */
+  }
 
 public:
   using dims = mkldnn::memory::dims;
   using data_type = mkldnn::memory::data_type;
   using format = mkldnn::memory::format;
 
-  constexpr static const long invalid_buffer = 42;
+  constexpr static const long fortytwo = 42;
+#define invalid_buffer reinterpret_cast<void *>(tensor::fortytwo)
 
   /// A tensor descriptor.
   struct descriptor : public handle<mkldnn_primitive_desc_t> {
     descriptor() {}
 
-    /// The underlying C API data structure.
-
-    /// Constructs a memory primitive descriptor.
+    /// Wrapped a memory primitive descriptor.
     ///
     /// @param adims Data dimensions
     /// @param adata_type Data precision/type.
@@ -174,25 +191,7 @@ public:
       , "could not create a memory primitive");
 
     reset(result);
-    auto _malloc = [](size_t size, size_t alignment) {
-      void *ptr;
-#ifdef _WIN32
-      ptr = _aligned_malloc(size, alignment);
-      int rc = ((ptr)? 0 : errno);
-#else
-      int rc = ::posix_memalign(&ptr, alignment, size);
-#endif /* _WIN32 */
-      return (rc == 0) ? (char*)ptr : nullptr;
-    };
-
-    auto _free = [](char* p) {
-#ifdef _WIN32
-      _aligned_free((void*)p);
-#else
-      ::free((void*)p);
-#endif /* _WIN32 */
-    };
-    _handle.reset(_malloc(adesc.get_size(), 4096), _free);
+    _handle.reset(malloc(adesc.get_size(), 4096), free);
     set_data_handle(_handle.get());
   }
 
@@ -249,6 +248,26 @@ public:
               "could not set native handle");
   }
 
+  /// Materialize a tensor. For specific scenario tensor will allocate
+  /// internal buffer and manage it. As if it created with buffers.
+  /// Materialize a materialied tensor cause no effect at all.
+  void materialize() {
+    if (get_data_handle() == invalid_buffer) {
+      auto adesc = get_descriptor();
+
+      _handle.reset(malloc(adesc.get_size(), 4096), free);
+      // Will generate exception if malloc fail. So far so good
+      set_data_handle(_handle.get());
+    }
+  }
+
+  // void dematerialize() {
+  //   if (get_data_handle() != reinterpret_cast<void *>(invalid_buffer)) {
+  //     _handle.reset();
+  //     set_data_handle(reinterpret_cast<void *>(invalid_buffer));
+  //   }
+  // }
+
   // Must go away or be private:
   static mkldnn_data_type_t convert_to_c(data_type adata_type) {
       return static_cast<mkldnn_data_type_t>(adata_type);
@@ -260,7 +279,6 @@ public:
 
 using prop_kind = mkldnn::prop_kind;
 using algorithm = mkldnn::algorithm;
-using reorder = mkldnn::reorder;
 using padding_kind = mkldnn::padding_kind;
 
 template <typename T>
@@ -276,17 +294,28 @@ public:
   handle_group(size_type num_of_aux)
     : auxiliaries_(num_of_aux) {}
 
-  template <typename hT>
-  void push_auxiliary(hT &&handle) {
-    auxiliaries_.push_back(std::forward<hT>(handle));
-  }
-
   void reset(T handle) {
     major_.reset(handle);
   }
 
   T get() const {
     return major_.get();
+  }
+
+  inline bool need_reorder_input(input_index i) const {
+    return auxiliaries_[i] != nullptr;
+  }
+
+  inline bool need_reorder_src() const {
+    return need_reorder_for_input(src_pos);
+  }
+
+  inline bool need_reorder_weights() const {
+    return need_reorder_for_input(weights_pos);
+  }
+
+  inline bool need_reorder_dst() const {
+    return need_reorder_for_input(dst_pos);
   }
 
 protected:
@@ -330,25 +359,10 @@ public:
   }
 
   int num_of_inputs() const {
-      return mkldnn_primitive_desc_query_s32(get(),
-          mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
+      return mkldnn_primitive_desc_query_s32(get()
+          , mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
   }
 
-  inline bool need_reorder_for_input(input_index i) const {
-    return auxiliaries_[i] != nullptr;
-  }
-
-  inline bool need_reorder_for_src() const {
-    return need_reorder_for_input(src_pos);
-  }
-
-  inline bool need_reorder_for_weights() const {
-    return need_reorder_for_input(weights_pos);
-  }
-
-  inline bool need_reorder_for_dst() const {
-    return need_reorder_for_input(dst_pos);
-  }
 
 protected:
   void create_reorder_pds(std::vector<tensor::descriptor> descriptors) {
@@ -385,6 +399,29 @@ protected:
           , g.get(), inputs, outputs), "could not create a reorder");
 
     auxiliaries_[index].reset(result);
+  }
+
+  void execute(stream &parallel_control) {
+    std::vector<mkldnn_primitive_t> exe;
+    mkldnn_primitive_t c_api_error_primitive;
+
+    if (need_reorder_src())
+      exe.push_back(auxiliaries_[0].get());
+
+    if (need_reorder_weights())
+      exe.push_back(auxiliaries_[1].get());
+
+    // Operator
+    exe.push_back(get());
+
+    if (need_reorder_dst())
+      exe.push_back(auxiliaries_[2].get());
+
+    error::wrap_c_api(
+        mkldnn_stream_submit(parallel_control.get()
+          , exe.size(), &exe[0], &c_api_error_primitive)
+        , "could not execute convolution_forward"
+        , &c_api_error_primitive);
   }
 };
 
@@ -533,29 +570,12 @@ struct convolution_forward: public primitive_group {
       , const tensor::descriptor &src_desc
       , const tensor::descriptor &weights_desc
       , const tensor::descriptor &dst_desc)
-    : src_(src_desc, reinterpret_cast<void *>(tensor::invalid_buffer))
-      , weights_(weights_desc
-          , reinterpret_cast<void *>(tensor::invalid_buffer))
-      , dst_(dst_desc
-          , reinterpret_cast<void *>(tensor::invalid_buffer))
-      , direct_src_([&adesc](){
-        if (adesc.need_reorder_for_input(descriptor::src_pos)) {
-          return tensor(adesc.expected_src_descriptor());
-        } else {
-          return tensor(adesc.expected_src_descriptor()
-            , reinterpret_cast<void *>(tensor::invalid_buffer));}})
-    , direct_weights_([&adesc](){
-        if (adesc.need_reorder_for_input(descriptor::weights_pos)) {
-          return tensor(adesc.expected_weights_descriptor());
-        } else {
-          return tensor(adesc.expected_weights_descriptor()
-            , reinterpret_cast<void *>(tensor::invalid_buffer));}})
-    , direct_dst_([&adesc](){
-        if (adesc.need_reorder_for_input(descriptor::dst_pos)) {
-          return tensor(adesc.expected_dst_descriptor());
-        } else {
-          return tensor(adesc.expected_dst_descriptor()
-            , reinterpret_cast<void *>(tensor::invalid_buffer));}}) {
+    : src_(src_desc, invalid_buffer)
+      , weights_(weights_desc, invalid_buffer)
+      , dst_(dst_desc, invalid_buffer)
+      , direct_src_(adesc.expected_src_descriptor(), invalid_buffer)
+      , direct_weights_(adesc.expected_weights_descriptor(), invalid_buffer)
+      , direct_dst_(adesc.expected_dst_descriptor(), invalid_buffer) {
 
     mkldnn_primitive_t result = nullptr;
     const_mkldnn_primitive_t outputs[] = { direct_dst_.get() };
@@ -567,10 +587,8 @@ struct convolution_forward: public primitive_group {
               adesc.get(), inputs, outputs),
           "could not create a convolution forward bias primitive");
     } else if (adesc.num_of_inputs() == 3) {
-      tensor bias_tmp(adesc.expected_bias_descriptor()
-          , reinterpret_cast<void *>(tensor::invalid_buffer));
+      tensor bias_tmp(adesc.expected_bias_descriptor(), invalid_buffer);
 
-      // TODO: operator = for memory primitive
       bias_ = std::move(bias_tmp);
 
       mkldnn_primitive_at_t inputs[] = { { direct_src_.get(), 0 }
@@ -582,20 +600,25 @@ struct convolution_forward: public primitive_group {
 
     reset(result);
 
-    if (adesc.need_reorder_for_src()) {
+    if (adesc.need_reorder_src()) {
+      direct_src_.materialize();
       create_reorder_for(descriptor::src_pos, adesc, src_, direct_src_);
     }
     else
       src_ = direct_src_;
 
-    if (adesc.need_reorder_for_weights())
+    if (adesc.need_reorder_weights()) {
+      direct_weights_.materialize();
       create_reorder_for(descriptor::weights_pos, adesc, weights_
           , direct_weights_);
+    }
     else
       weights_ = direct_weights_;
 
-    if (adesc.need_reorder_for_dst())
+    if (adesc.need_reorder_dst()) {
+      direct_dst_.materialize();
       create_reorder_for(descriptor::dst_pos, adesc, dst_, direct_dst_);
+    }
     else
       dst_ = direct_dst_;
   }
@@ -631,20 +654,9 @@ struct convolution_forward: public primitive_group {
       return parallel_control;
   }
 private:
-    // Placeholders for further input interface
-    tensor src_, weights_, dst_, bias_;
-    tensor direct_src_, direct_weights_, direct_dst_;
-
-    void execute(stream &parallel_control) {
-      std::vector<mkldnn_primitive_t> exe {get()};
-      mkldnn_primitive_t c_api_error_primitive;
-
-      error::wrap_c_api(
-          mkldnn_stream_submit(parallel_control.get()
-            , exe.size(), &exe[0], &c_api_error_primitive)
-          , "could not execute convolution_forward"
-          , &c_api_error_primitive);
-    }
+  // Placeholders for further input interface
+  tensor src_, weights_, dst_, bias_;
+  tensor direct_src_, direct_weights_, direct_dst_;
 };
 
 #if 0

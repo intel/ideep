@@ -35,14 +35,47 @@ namespace ideep {
 using error = mkldnn::error;
 
 /// Same class for resource management, except public default constructor
-template <typename T> class handle: public mkldnn::handle<T>{
+template <typename T> class c_wrapper: public mkldnn::handle<T>{
   public:
     using mkldnn::handle<T>::handle;
     using mkldnn::handle<T>::operator ==;
     using mkldnn::handle<T>::operator !=;
 };
 
-using primitive = mkldnn::primitive;
+/// C wrappers which form a functioning complex, in case multiple
+/// Primitives needed to finish certain task.
+template <typename T>
+class c_wrapper_complex : public c_wrapper<T> {
+public:
+  using size_type = typename std::vector<c_wrapper<T>>::size_type;
+  enum input_index {
+    src_pos = 0, weights_pos = 1, dst_pos = 2
+  };
+
+  c_wrapper_complex(): auxiliaries_(3) {}
+
+  c_wrapper_complex(size_type num_of_aux)
+    : auxiliaries_(num_of_aux) {}
+
+  inline bool need_reorder_input(input_index i) const {
+    return auxiliaries_[i] != nullptr;
+  }
+
+  inline bool need_reorder_src() const {
+    return need_reorder_for_input(src_pos);
+  }
+
+  inline bool need_reorder_weights() const {
+    return need_reorder_for_input(weights_pos);
+  }
+
+  inline bool need_reorder_dst() const {
+    return need_reorder_for_input(dst_pos);
+  }
+
+protected:
+  std::vector<c_wrapper<T>> auxiliaries_;
+};
 
 /// cpu execution engine only.
 struct engine: public mkldnn::engine {
@@ -95,28 +128,7 @@ struct stream: public mkldnn::stream {
 
 /// Tensor that describes the data/tensor/blob. It resembles MKLDNN's memory
 /// But with less burden interface
-class tensor: public primitive  {
-private:
-  std::shared_ptr<char> _handle;
-  static char *malloc(size_t size, size_t alignment) {
-    void *ptr;
-#ifdef _WIN32
-    ptr = _aligned_malloc(size, alignment);
-    int rc = ((ptr)? 0 : errno);
-#else
-    int rc = ::posix_memalign(&ptr, alignment, size);
-#endif /* _WIN32 */
-    return (rc == 0) ? (char*)ptr : nullptr;
-  }
-
-  static void free(void *p) {
-#ifdef _WIN32
-    _aligned_free((void*)p);
-#else
-    ::free((void*)p);
-#endif /* _WIN32 */
-  }
-
+class tensor: public c_wrapper<mkldnn_primitive_t> {
 public:
   using dims = mkldnn::memory::dims;
   using data_type = mkldnn::memory::data_type;
@@ -126,7 +138,7 @@ public:
 #define invalid_buffer reinterpret_cast<void *>(tensor::fortytwo)
 
   /// A tensor descriptor.
-  struct descriptor : public handle<mkldnn_primitive_desc_t> {
+  struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
     descriptor() {}
 
     /// Wrapped a memory primitive descriptor.
@@ -179,6 +191,11 @@ public:
 
       return any;
     }
+
+    /// Returns C API mkldnn_memory_desc_t structure
+    mkldnn_memory_desc_t get_mkldnn_memory_desc_t() const {
+      return *mkldnn_primitive_desc_query_memory_d(get());
+    }
   };
 
   /// Constructs a tensor and allocating internal buffer.
@@ -191,17 +208,17 @@ public:
       , "could not create a memory primitive");
 
     reset(result);
-    _handle.reset(malloc(adesc.get_size(), 4096), free);
-    set_data_handle(_handle.get());
+    buffer_.reset(malloc(adesc.get_size(), 4096), free);
+    set_data_handle(buffer_.get());
   }
 
   tensor(const descriptor &adesc, void *ahandle) {
-      mkldnn_primitive_t result;
-      error::wrap_c_api(
-              mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
-              "could not create a memory primitive");
-      reset(result);
-      set_data_handle(ahandle);
+    mkldnn_primitive_t result;
+    error::wrap_c_api(
+            mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
+            "could not create a memory primitive");
+    reset(result);
+    set_data_handle(ahandle);
   }
     
   /// Allow empty construction
@@ -209,15 +226,17 @@ public:
 
   /// Construct tensor from another tensor
   template <typename tT>
-  tensor(tT &&atensor) : primitive(std::forward(atensor)) {
-    _handle = std::forward(atensor._handle);
+  tensor(tT &&atensor)
+  : c_wrapper<mkldnn_primitive_t>(std::forward<tT>(atensor)) {
+    buffer_ = std::forward<tT>(atensor.buffer_);
     set_data_handle(atensor.get_data_handle());
   }
 
   /// Copy tensor from another tensor
   template <typename tT>
   tensor &operator == (tT && atensor) {
-    _handle = std::forward<tT>(atensor._handle);
+    reset(atensor.get());
+    buffer_ = std::forward<tT>(atensor.buffer_);
     set_data_handle(atensor.get_data_handle());
     return *this;
   }
@@ -255,9 +274,9 @@ public:
     if (get_data_handle() == invalid_buffer) {
       auto adesc = get_descriptor();
 
-      _handle.reset(malloc(adesc.get_size(), 4096), free);
+      buffer_.reset(malloc(adesc.get_size(), 4096), free);
       // Will generate exception if malloc fail. So far so good
-      set_data_handle(_handle.get());
+      set_data_handle(buffer_.get());
     }
   }
 
@@ -275,58 +294,38 @@ public:
   static mkldnn_memory_format_t convert_to_c(format aformat) {
       return static_cast<mkldnn_memory_format_t>(aformat);
   }
+
+private:
+  std::shared_ptr<char> buffer_;
+  static char *malloc(size_t size, size_t alignment) {
+    void *ptr;
+#ifdef _WIN32
+    ptr = _aligned_malloc(size, alignment);
+    int rc = ((ptr)? 0 : errno);
+#else
+    int rc = ::posix_memalign(&ptr, alignment, size);
+#endif /* _WIN32 */
+    return (rc == 0) ? (char*)ptr : nullptr;
+  }
+
+  static void free(void *p) {
+#ifdef _WIN32
+    _aligned_free((void*)p);
+#else
+    ::free((void*)p);
+#endif /* _WIN32 */
+  }
 };
 
 using prop_kind = mkldnn::prop_kind;
 using algorithm = mkldnn::algorithm;
 using padding_kind = mkldnn::padding_kind;
 
-template <typename T>
-class handle_group {
-public:
-  using size_type = typename std::vector<handle<T>>::size_type;
-  enum input_index {
-    src_pos = 1, weights_pos = 2, dst_pos = 3
-  };
-
-  handle_group(): auxiliaries_(3) {}
-
-  handle_group(size_type num_of_aux)
-    : auxiliaries_(num_of_aux) {}
-
-  void reset(T handle) {
-    major_.reset(handle);
-  }
-
-  T get() const {
-    return major_.get();
-  }
-
-  inline bool need_reorder_input(input_index i) const {
-    return auxiliaries_[i] != nullptr;
-  }
-
-  inline bool need_reorder_src() const {
-    return need_reorder_for_input(src_pos);
-  }
-
-  inline bool need_reorder_weights() const {
-    return need_reorder_for_input(weights_pos);
-  }
-
-  inline bool need_reorder_dst() const {
-    return need_reorder_for_input(dst_pos);
-  }
-
-protected:
-  handle<T> major_;
-  std::vector<handle<T>> auxiliaries_;
-};
-
-class descriptor_group: public handle_group<mkldnn_primitive_desc_t> {
+/// Descriptor group, create relative descriptors all in one
+class descriptor_group: public c_wrapper_complex<mkldnn_primitive_desc_t> {
 public:
   descriptor_group()
-    : handle_group() {}
+    : c_wrapper_complex() {}
 
   tensor::descriptor expected_descriptor_of(mkldnn::query q
       , int index = 0) const {
@@ -363,7 +362,6 @@ public:
           , mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
   }
 
-
 protected:
   void create_reorder_pds(std::vector<tensor::descriptor> descriptors) {
     mkldnn::query qmap[] = { mkldnn::src_pd, mkldnn::weights_pd
@@ -383,13 +381,13 @@ protected:
   }
 };
 
-class primitive_group: public handle_group<mkldnn_primitive_t> {
+class primitive_group: public c_wrapper_complex<mkldnn_primitive_t> {
 public:
   primitive_group()
-    : handle_group() {}
+    : c_wrapper_complex() {}
 
 protected:
-  void create_reorder_for(descriptor_group::input_index index
+  void create_reorder_for(input_index index
       , const descriptor_group &g, tensor &in, tensor &out) {
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
@@ -402,24 +400,25 @@ protected:
   }
 
   void execute(stream &parallel_control) {
-    std::vector<mkldnn_primitive_t> exe;
+    std::vector<mkldnn_primitive_t> execution_sequence;
     mkldnn_primitive_t c_api_error_primitive;
 
     if (need_reorder_src())
-      exe.push_back(auxiliaries_[0].get());
+      execution_sequence.push_back(auxiliaries_[src_pos].get());
 
     if (need_reorder_weights())
-      exe.push_back(auxiliaries_[1].get());
+      execution_sequence.push_back(auxiliaries_[weights_pos].get());
 
     // Operator
-    exe.push_back(get());
+    execution_sequence.push_back(get());
 
     if (need_reorder_dst())
-      exe.push_back(auxiliaries_[2].get());
+      execution_sequence.push_back(auxiliaries_[dst_pos].get());
 
     error::wrap_c_api(
         mkldnn_stream_submit(parallel_control.get()
-          , exe.size(), &exe[0], &c_api_error_primitive)
+          , execution_sequence.size(), &execution_sequence[0]
+          , &c_api_error_primitive)
         , "could not execute convolution_forward"
         , &c_api_error_primitive);
   }
@@ -602,14 +601,14 @@ struct convolution_forward: public primitive_group {
 
     if (adesc.need_reorder_src()) {
       direct_src_.materialize();
-      create_reorder_for(descriptor::src_pos, adesc, src_, direct_src_);
+      create_reorder_for(src_pos, adesc, src_, direct_src_);
     }
     else
       src_ = direct_src_;
 
     if (adesc.need_reorder_weights()) {
       direct_weights_.materialize();
-      create_reorder_for(descriptor::weights_pos, adesc, weights_
+      create_reorder_for(weights_pos, adesc, weights_
           , direct_weights_);
     }
     else
@@ -617,13 +616,13 @@ struct convolution_forward: public primitive_group {
 
     if (adesc.need_reorder_dst()) {
       direct_dst_.materialize();
-      create_reorder_for(descriptor::dst_pos, adesc, dst_, direct_dst_);
+      create_reorder_for(dst_pos, adesc, dst_, direct_dst_);
     }
     else
       dst_ = direct_dst_;
   }
 
-  stream operator() (tensor &src, tensor &weights, tensor &dst
+  stream operator() (const tensor &src, const tensor &weights, tensor &dst
       , stream &parallel_control) {
       assert (src.get_descriptor() == src_.get_descriptor());
       assert (weights.get_descriptor() == weights_.get_descriptor());
@@ -638,7 +637,8 @@ struct convolution_forward: public primitive_group {
       return parallel_control;
   }
 
-  stream operator() (tensor &src, tensor &weights, tensor &bias, tensor &dst
+  stream operator() (const tensor &src, const tensor &weights
+      , const tensor &bias, tensor &dst
       , stream &parallel_control) {
       assert (src.get_descriptor() == src_.get_descriptor());
       assert (weights.get_descriptor() == weights_.get_descriptor());
@@ -656,6 +656,8 @@ struct convolution_forward: public primitive_group {
 private:
   // Placeholders for further input interface
   tensor src_, weights_, dst_, bias_;
+
+  // Actual inputs for primitive
   tensor direct_src_, direct_weights_, direct_dst_;
 };
 
@@ -1344,64 +1346,58 @@ struct pooling_backward : public primitive {
     }
 };
 
-struct eltwise_forward : public primitive {
-    struct desc {
-        mkldnn_eltwise_desc_t data;
-        template <typename T>
-        desc(prop_kind aprop_kind, algorithm alg_kind,
-                const memory::desc &src_desc, T alpha = 0, T beta = 0) {
-            error::wrap_c_api(mkldnn_eltwise_forward_desc_init(&data,
-                        mkldnn::convert_to_c(aprop_kind),
-                        mkldnn::convert_to_c(alg_kind), &src_desc.data,
-                        static_cast<float>(alpha), static_cast<float>(beta)),
-                    "could not create a eltwise forward descriptor");
-        }
+#endif
 
-        /** @deprecated: api backward compatibility for relu */
-        template <typename T>
-        MKLDNN_DEPRECATED
-        desc(prop_kind aprop_kind, const memory::desc &src_desc,
-                T negative_slope)
-        : desc(aprop_kind, eltwise_relu, src_desc, negative_slope) {}
-    };
+struct eltwise_forward : public primitive_group {
+  struct descriptor : public c_wrapper<mkldnn_primitive_desc_t>{
+    template <typename T>
+    descriptor(prop_kind aprop_kind, algorithm alg_kind
+        , const tensor::descriptor &src_desc, T alpha = 0, T beta = 0) {
+      mkldnn_eltwise_desc_t data;
+      mkldnn_memory_desc_t mdesc = src_desc.get_mkldnn_memory_desc_t();
+      error::wrap_c_api(mkldnn_eltwise_forward_desc_init(&data
+            , mkldnn::convert_to_c(aprop_kind)
+            , mkldnn::convert_to_c(alg_kind), &mdesc
+            , static_cast<float>(alpha), static_cast<float>(beta)),
+              "could not create a eltwise forward descriptor");
 
-    struct primitive_desc : public handle<mkldnn_primitive_desc_t> {
-        primitive_desc(const desc &adesc, const engine &aengine) {
-            mkldnn_primitive_desc_t result;
-            error::wrap_c_api(mkldnn_primitive_desc_create(
-                        &result, &adesc.data, aengine.get(), nullptr),
-                    "could not create a eltwise forward primitive descriptor");
-            reset(result);
-        }
-
-        memory::primitive_desc dst_primitive_desc() const {
-            memory::primitive_desc adesc;
-            mkldnn_primitive_desc_t cdesc;
-            const_mkldnn_primitive_desc_t const_cdesc =
-                mkldnn_primitive_desc_query_pd(get(),
-                        mkldnn::convert_to_c(dst_pd), 0);
-            error::wrap_c_api(
-                    mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
-                    "could not clone a dst primitive descriptor");
-            adesc.reset(cdesc);
-            return adesc;
-        }
-
-        engine get_engine() { return engine::query(*this); }
-    };
-
-    eltwise_forward(const primitive_desc &aprimitive_desc,
-            const primitive::at &src, const memory &dst) {
-        mkldnn_primitive_t result;
-        mkldnn_primitive_at_t inputs[] = { src.data };
-        const_mkldnn_primitive_t outputs[] = { dst.get() };
-        error::wrap_c_api(mkldnn_primitive_create(&result,
-                aprimitive_desc.get(), inputs, outputs),
-            "could not create a eltwise forward primitive");
-        reset(result);
+      mkldnn_primitive_desc_t result;
+      error::wrap_c_api(mkldnn_primitive_desc_create(
+                &result, &data, engine::cpu_engine().get(), nullptr)
+        , "could not create a eltwise forward primitive descriptor");
+      reset(result);
     }
+  };
+
+  eltwise_forward(const descriptor &adesc, const tensor::descriptor &src_desc)
+    : direct_src_(src_desc, invalid_buffer)
+      , direct_dst_(src_desc, invalid_buffer) {
+    mkldnn_primitive_t result;
+    mkldnn_primitive_at_t inputs[] = { {direct_src_.get(), 0} };
+    const_mkldnn_primitive_t outputs[] = { direct_dst_.get() };
+    error::wrap_c_api(mkldnn_primitive_create(&result,
+            adesc.get(), inputs, outputs),
+        "could not create a eltwise forward primitive");
+    reset(result);
+  }
+
+  stream operator() (const tensor &src, tensor &dst
+      , stream &parallel_control) {
+    assert(src.get_descriptor() == direct_src_.get_descriptor());
+    assert(dst.get_descriptor() == direct_dst_.get_descriptor());
+
+    direct_src_.set_data_handle(src.get_data_handle());
+    direct_dst_.set_data_handle(dst.get_data_handle());
+
+    execute(parallel_control);
+    return parallel_control;
+  }
+
+private:
+  tensor direct_src_, direct_dst_;
 };
 
+#if 0
 typedef eltwise_forward relu_forward;
 
 struct eltwise_backward : public primitive {

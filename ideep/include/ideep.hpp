@@ -198,6 +198,60 @@ public:
     }
   };
 
+  struct reorder: public c_wrapper<mkldnn_primitive_t> {
+    struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
+      descriptor(tensor::descriptor &input
+          , const tensor::descriptor &output) {
+        mkldnn_primitive_desc_t result;
+        error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
+              &result, input.get(), output.get()),
+            "could not create a reorder primitive descriptor");
+        reset(result);
+      }
+    };
+
+    reorder(const tensor &input, const tensor &output) {
+      auto input_d = input.get_descriptor();
+      auto output_d = output.get_descriptor();
+
+      auto reorder_d = descriptor(input_d, output_d);
+
+      mkldnn_primitive_t result;
+      mkldnn_primitive_at_t inputs[] = {{input.get(), 0}};
+      const_mkldnn_primitive_t outputs[] = {output.get() };
+      error::wrap_c_api(mkldnn_primitive_create(&result,
+            reorder_d.get(), inputs, outputs),
+          "could not create a reorder primitive");
+      reset(result);
+    }
+
+    reorder() {}
+
+    void operator()(const tensor &input, const tensor &output) {
+      auto input_d = input.get_descriptor();
+      auto output_d = output.get_descriptor();
+
+      auto reorder_d = descriptor(input_d, output_d);
+
+      mkldnn_primitive_t result;
+      mkldnn_primitive_at_t inputs[] = {{input.get(), 0}};
+      const_mkldnn_primitive_t outputs[] = {output.get() };
+      error::wrap_c_api(mkldnn_primitive_create(&result,
+            reorder_d.get(), inputs, outputs),
+          "could not create a reorder primitive");
+      reset(result);
+
+      std::vector<mkldnn_primitive_t> execution_sequence = {result};
+      mkldnn_primitive_t c_api_error_primitive;
+
+      error::wrap_c_api(
+          mkldnn_stream_submit(stream::default_stream().get()
+            , execution_sequence.size(), &execution_sequence[0]
+            , &c_api_error_primitive)
+          , "could not execute reorder", &c_api_error_primitive);
+    }
+  };
+
   /// Constructs a tensor and allocating internal buffer.
   ///
   /// @param adesc tensor descriptor.
@@ -295,6 +349,18 @@ public:
       return static_cast<mkldnn_memory_format_t>(aformat);
   }
 
+  void reorder_in(const dims adims, data_type adata_type
+      , format aformat, void *array, size_t size = 0) {
+    auto src_tensor = tensor({adims, adata_type, aformat}, array);
+    reorder() (src_tensor, *this);
+  }
+
+  void reorder_out(const dims adims, data_type adata_type
+      , format aformat, void *array, size_t size = 0) {
+    auto dst_tensor = tensor({adims, adata_type, aformat}, array);
+    reorder() (*this, dst_tensor);
+  }
+
 private:
   std::shared_ptr<char> buffer_;
   static char *malloc(size_t size, size_t alignment) {
@@ -316,6 +382,7 @@ private:
 #endif /* _WIN32 */
   }
 };
+
 
 using prop_kind = mkldnn::prop_kind;
 using algorithm = mkldnn::algorithm;

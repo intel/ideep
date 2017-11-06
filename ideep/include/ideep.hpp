@@ -117,8 +117,8 @@ private:
 /// A default stream
 struct stream: public mkldnn::stream {
   using mkldnn::stream::stream;
-  static stream &default_stream() {
-      static stream def(mkldnn::stream::kind::eager);
+  static stream default_stream() {
+      stream def(mkldnn::stream::kind::eager);
       return def;
   }
 };
@@ -175,6 +175,16 @@ public:
       return mkldnn_memory_primitive_desc_get_size(get());
     }
 
+    template<typename T>
+    static data_type type_to_id() {
+      return data_type::data_undef;
+    }
+
+    template<typename T>
+    descriptor(dims adims, format aformat)
+      : descriptor(adims, type_to_id<T>, aformat) {
+    }
+
     /// Returns C API mkldnn_memory_desc_t structure which had same 
     /// dimension and data type but without format constrain.
     mkldnn_memory_desc_t format_any() const {
@@ -210,21 +220,6 @@ public:
       }
     };
 
-    reorder(const tensor &input, const tensor &output) {
-      auto input_d = input.get_descriptor();
-      auto output_d = output.get_descriptor();
-
-      auto reorder_d = descriptor(input_d, output_d);
-
-      mkldnn_primitive_t result;
-      mkldnn_primitive_at_t inputs[] = {{input.get(), 0}};
-      const_mkldnn_primitive_t outputs[] = {output.get() };
-      error::wrap_c_api(mkldnn_primitive_create(&result,
-            reorder_d.get(), inputs, outputs),
-          "could not create a reorder primitive");
-      reset(result);
-    }
-
     reorder() {}
 
     void operator()(const tensor &input, const tensor &output) {
@@ -234,8 +229,8 @@ public:
       auto reorder_d = descriptor(input_d, output_d);
 
       mkldnn_primitive_t result;
-      mkldnn_primitive_at_t inputs[] = {{input.get(), 0}};
-      const_mkldnn_primitive_t outputs[] = {output.get() };
+      mkldnn_primitive_at_t inputs[] = { {input.get(), 0} };
+      const_mkldnn_primitive_t outputs[] = { output.get() };
       error::wrap_c_api(mkldnn_primitive_create(&result,
             reorder_d.get(), inputs, outputs),
           "could not create a reorder primitive");
@@ -274,7 +269,7 @@ public:
     reset(result);
     set_data_handle(ahandle);
   }
-    
+
   /// Allow empty construction
   tensor () {}
 
@@ -351,12 +346,14 @@ public:
 
   void reorder_in(const dims adims, data_type adata_type
       , format aformat, void *array, size_t size = 0) {
+    (void)(size);
     auto src_tensor = tensor({adims, adata_type, aformat}, array);
     reorder() (src_tensor, *this);
   }
 
   void reorder_out(const dims adims, data_type adata_type
       , format aformat, void *array, size_t size = 0) {
+    (void)(size);
     auto dst_tensor = tensor({adims, adata_type, aformat}, array);
     reorder() (*this, dst_tensor);
   }
@@ -383,6 +380,20 @@ private:
   }
 };
 
+template<>
+tensor::data_type tensor::descriptor::type_to_id<float>() {
+  return data_type::f32;
+}
+
+template<>
+tensor::data_type tensor::descriptor::type_to_id<signed char>() {
+  return data_type::s8;
+}
+
+template<>
+tensor::data_type tensor::descriptor::type_to_id<unsigned char>() {
+  return data_type::u8;
+}
 
 using prop_kind = mkldnn::prop_kind;
 using algorithm = mkldnn::algorithm;
@@ -690,35 +701,35 @@ struct convolution_forward: public primitive_group {
   }
 
   stream operator() (const tensor &src, const tensor &weights, tensor &dst
-      , stream &parallel_control) {
-      assert (src.get_descriptor() == src_.get_descriptor());
-      assert (weights.get_descriptor() == weights_.get_descriptor());
-      assert (dst.get_descriptor() == dst_.get_descriptor());
+    , stream &parallel_control) {
+    assert (src.get_descriptor() == src_.get_descriptor());
+    assert (weights.get_descriptor() == weights_.get_descriptor());
+    assert (dst.get_descriptor() == dst_.get_descriptor());
 
-      src_.set_data_handle(src.get_data_handle());
-      weights_.set_data_handle(weights.get_data_handle());
-      dst_.set_data_handle(dst.get_data_handle());
+    src_.set_data_handle(src.get_data_handle());
+    weights_.set_data_handle(weights.get_data_handle());
+    dst_.set_data_handle(dst.get_data_handle());
 
-      execute(parallel_control);
+    execute(parallel_control);
 
-      return parallel_control;
+    return parallel_control;
   }
 
   stream operator() (const tensor &src, const tensor &weights
-      , const tensor &bias, tensor &dst
-      , stream &parallel_control) {
-      assert (src.get_descriptor() == src_.get_descriptor());
-      assert (weights.get_descriptor() == weights_.get_descriptor());
-      assert (dst.get_descriptor() == dst_.get_descriptor());
+    , const tensor &bias, tensor &dst
+    , stream &parallel_control) {
+    assert (src.get_descriptor() == src_.get_descriptor());
+    assert (weights.get_descriptor() == weights_.get_descriptor());
+    assert (dst.get_descriptor() == dst_.get_descriptor());
 
-      src_.set_data_handle(src.get_data_handle());
-      weights_.set_data_handle(weights.get_data_handle());
-      bias_.set_data_handle(bias.get_data_handle());
-      dst_.set_data_handle(dst.get_data_handle());
+    src_.set_data_handle(src.get_data_handle());
+    weights_.set_data_handle(weights.get_data_handle());
+    bias_.set_data_handle(bias.get_data_handle());
+    dst_.set_data_handle(dst.get_data_handle());
 
-      execute(parallel_control);
+    execute(parallel_control);
 
-      return parallel_control;
+    return parallel_control;
   }
 private:
   // Placeholders for further input interface

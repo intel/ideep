@@ -11,7 +11,7 @@ set(IDEEP_VERSION
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-install(DIRECTORY include/DESTINATION include/ideep
+install(DIRECTORY include DESTINATION include/ideep
   FILES_MATCHING PATTERN *.hpp
   PATTERN ideep.hpp EXCLUDE)
 install(FILES include/ideep.hpp DESTINATION include)

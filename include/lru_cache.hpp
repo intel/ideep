@@ -1,8 +1,10 @@
 #ifndef _LRU_CACHE_CPP
 #define _LRU_CACHE_CPP
 
+#include <string>
 #include <unordered_map>
 #include <list>
+#include <ideep/tensor.hpp>
 
 namespace ideep {
 namespace utils {
@@ -82,6 +84,12 @@ public:
     to_vlist_.clear();
   }
 
+  // Can we?
+  // template <class... Args>
+  // std::pair<iterator, bool> emplace(Args&&... args) {
+  // }
+
+
   std::pair<iterator, bool> insert(const value_type& value) {
     auto it = to_vlist_.find(value->first);
 
@@ -115,40 +123,57 @@ public:
     std::swap(capacity_, other.capacity_);
   }
 
-  // Can we?
-  // template <class... Args>
-  // std::pair<iterator, bool> emplace(Args&&... args) {
-  // }
-
 private:
   std::list<node_t> vlist_;
-  std::unordered_map<key_t, iterator> to_vlist_;
+  // std::unordered_map<key_t, iterator> to_vlist_;
+  std::unordered_multimap<key_t, iterator> to_vlist_;
   size_type capacity_;
 };
 
+// TODO: mutex it
 template <class computation_t, class key_t = std::string, size_t capacity = 1024>
 class computation_cache {
 public:
-  typedef typename lru_cache<key_t, computation_t>::size_type size_type;
-  typedef typename lru_cache<key_t, computation_t>::value_type value_type;
-  typedef typename lru_cache<key_t, computation_t>::iterator iterator;
-  typedef typename lru_cache<key_t, computation_t>::const_iterator const_iterator;
-
-  const_iterator get(const key_t& key) {
+  template <typename ...Ts>
+  static inline computation_t fetch_or_create(const key_t& key, Ts&&... args) {
     const auto it = g_store().find(key);
-    return it;
+
+    if (it != g_store().end()) {
+      computation_t comp = std::move(it->second);
+      g_store().erase(it);
+      return comp;
+    }
+
+    return computation_t(std::forward<Ts>(args)...);
   }
 
-  bool put(const key_t& key, const value_type& computation) {
-    auto results = g_store().insert(key, computation);
-    return results->second;
+  static inline bool release(
+      const key_t& key, const computation_t& computation) {
+    g_store().insert(std::make_pair(key, computation));
   }
 
-  lru_cache<key_t, computation_t> &g_store() {
-    static lru_cache<key_t, computation_t> g_store_(capacity);
+  static lru_cache<key_t, computation_t> &g_store() {
+    static lru_cache<key_t, std::list<computation_t>> g_store_(capacity);
     return g_store_;
   }
 };
+
+template <typename T>
+inline std::string to_string(const T& arg) {
+  return arg.to_string();
+}
+
+inline std::string to_string(const tensor::dims arg) {
+  return std::accumulate(std::next(arg.begin()), arg.end(),
+      std::to_string(arg[0]), [](std::string a, int b) {
+        return a + std::to_string(b);
+      });
+}
+
+template <typename T, typename ...Ts>
+inline std::string to_string(T&& arg, Ts&&... args) {
+  return to_string(std::forward<T>(arg)) + to_string(std::forward<Ts>(args)...);
+}
 
 }
 }

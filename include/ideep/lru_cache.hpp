@@ -8,6 +8,7 @@
 
 namespace ideep {
 namespace utils {
+
 template <class key_t, class value_t>
 class lru_cache {
 public:

@@ -690,6 +690,11 @@ struct convolution_forward: public computation,
     init(forward_descriptor, src_desc, weights_desc);
   }
 
+  template <typename ...Ts>
+  convolution_forward(Ts&&... args) {
+    reinit(std::forward<Ts>(args)...);
+  }
+
   void execute(const tensor& src, const tensor& weights, const tensor& dst) {
     computation::execute(src, weights, dst);
   }

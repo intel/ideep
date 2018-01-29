@@ -137,6 +137,17 @@ else:
 # Declare extensions and package
 ###############################################################################
 
+install_requires = [
+    'numpy>=1.9.0'
+    'protobuf>=3.0.0',
+    'six>=1.9.0'
+]
+
+tests_require = [
+    'mock',
+    'pytest',
+]
+
 ext_modules = []
 
 ext = Extension(
@@ -151,11 +162,11 @@ packages = ['ideep4py', 'ideep4py.cosim']
 
 setup(
     name='ideep4py',
-    version='0.0',
-    description='',
+    version='1.0',
+    description='ideep4py is a wrapper for iDeep library.',
     author='Intel',
     author_email='',
-    url='',
+    url='https://github.com/intel/ideep',
     license='MIT License',
     packages=packages,
     package_dir={'ideep4py': 'ideep4py/'},
@@ -163,4 +174,6 @@ setup(
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     zip_safe=False,
+    install_requires=install_requires,
+    tests_require=tests_require,
 )

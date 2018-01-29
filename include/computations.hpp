@@ -701,11 +701,11 @@ struct convolution_forward: public computation,
 
   // TODO: Refine it with any format and reorder
   template <typename ...Ts>
-  static descriptor compute_impl(const tensor& src, const tensor& weights,
+  static tensor::descriptor compute_impl(const tensor& src, const tensor& weights,
       const tensor& bias, const tensor::dims& result_dims, void *result,
       Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
-    std::string key = to_string(src.get_data_type(), src.get_dims(),
+    std::string key = utils::to_string(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), result_dims, args...);
 
     auto comp = fetch_or_create(key, src.get_descriptor(),
@@ -721,10 +721,10 @@ struct convolution_forward: public computation,
   }
 
   template <typename ...Ts>
-  static descriptor compute_impl(const tensor& src, const tensor& weights,
+  static tensor::descriptor compute_impl(const tensor& src, const tensor& weights,
       const tensor::dims& result_dims, void *result, Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
-    std::string key = to_string(src.get_data_type(), src.get_dims(),
+    std::string key = utils::to_string(src.get_data_type(), src.get_dims(),
         weights.get_dims(), result_dims, args...);
 
     auto comp = fetch_or_create(key, src.get_descriptor(),
@@ -738,7 +738,7 @@ struct convolution_forward: public computation,
     return comp.expected_dst_descriptor();
   }
 
-  static descriptor compute(const tensor &src, const tensor& weights,
+  static tensor::descriptor compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, void *result, const tensor::dims strides,
       const tensor::dims dilateds, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -749,7 +749,7 @@ struct convolution_forward: public computation,
         padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
   }
 
-  static descriptor compute(const tensor &src, const tensor& weights,
+  static tensor::descriptor compute(const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims,
       void *result, const tensor::dims strides,
       const tensor::dims dilateds, const tensor::dims padding_l,
@@ -761,7 +761,7 @@ struct convolution_forward: public computation,
         dilateds, padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
   }
 
-  static descriptor compute(const tensor &src, const tensor& weights,
+  static tensor::descriptor compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, void *result, const tensor::dims strides,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalogorithm = algorithm::convolution_direct,
@@ -771,7 +771,7 @@ struct convolution_forward: public computation,
         padding_r, aalogorithm, aprop_kind, appading_kind);
   }
 
-  static descriptor compute(const tensor &src, const tensor& weights,
+  static tensor::descriptor compute(const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims, void *result,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,

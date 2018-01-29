@@ -15,3 +15,5 @@ install(DIRECTORY include/ DESTINATION include/ideep
   FILES_MATCHING PATTERN *.hpp
   PATTERN ideep.hpp EXCLUDE)
 install(FILES include/ideep.hpp DESTINATION include)
+
+add_subdirectory(tests)

@@ -11,11 +11,22 @@ namespace utils {
 template <class key_t, class value_t>
 class lru_cache {
 public:
-  typedef typename std::pair<key_t, value_t> node_t;
+  class node_t;
+
+  typedef typename std::pair<key_t, value_t> value_type;
+
   typedef typename std::list<node_t>::iterator iterator;
   typedef typename std::list<node_t>::const_iterator const_iterator;
+
+  typedef typename std::unordered_multimap<key_t, iterator>::iterator map_it;
+  typedef typename std::unordered_multimap<key_t, iterator>::const_iterator
+    const_map_it;
+
+  class node_t : public std::pair<map_it, value_t> {};
+
+  typedef typename std::pair<key_t, iterator> map_type;
+
   typedef typename std::list<node_t>::size_type size_type;
-  typedef node_t value_type;
 
   lru_cache(size_type capacity) : capacity_(capacity) {}
 
@@ -65,7 +76,7 @@ public:
   }
 
   // Is this feasible?
-  const iterator find(const key_t &key) const {
+  const_iterator find(const key_t &key) const {
     const auto it = to_vlist_.find(key);
     if (it == to_vlist_.end()) {
       return end();
@@ -91,11 +102,11 @@ public:
 
 
   std::pair<iterator, bool> insert(const value_type& value) {
-    auto it = to_vlist_.find(value->first);
+    auto it = to_vlist_.find(value.first);
 
     if (it == to_vlist_.end()) {
-      vlist_.push_front(value);
-      to_vlist_[value->first] = vlist_.begin();
+      vlist_.push_front(std::make_pair(it, value.second));
+      to_vlist_.insert(std::make_pair(value.first, vlist_.begin()));
     } else
       return std::make_pair(it->second, false);
 
@@ -153,14 +164,14 @@ public:
   }
 
   static lru_cache<key_t, computation_t> &g_store() {
-    static lru_cache<key_t, std::list<computation_t>> g_store_(capacity);
+    static lru_cache<key_t, computation_t> g_store_(capacity);
     return g_store_;
   }
 };
 
 template <typename T>
-inline std::string to_string(const T& arg) {
-  return arg.to_string();
+inline std::string to_string(const T arg) {
+  return to_string<T>(arg);
 }
 
 inline std::string to_string(const tensor::dims arg) {

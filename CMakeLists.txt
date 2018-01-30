@@ -13,6 +13,11 @@ include(cmake/settings.cmake)
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-install(DIRECTORY include DESTINATION include)
+install(DIRECTORY include/ DESTINATION include)
 
+macro(install)
+endmacro()
 add_subdirectory(tests)
+macro(install)
+  _install(${ARGN})
+endmacro()

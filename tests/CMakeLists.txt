@@ -1,3 +1,5 @@
+project(tests)
+
 add_subdirectory(googletest)
 include(../cmake/settings.cmake)
 
@@ -8,6 +10,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 
 file(GLOB __native_test_src
   test_lru_cache.cc
+  test_tensor.cc
   )
 
 foreach(__test_file ${__native_test_src})

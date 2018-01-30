@@ -16,7 +16,7 @@ public:
 
   typedef typename std::pair<key_t, value_t> value_type;
 
-  // Only need opaque structure node_t pointer, it'll compile
+  // Only need opaque node_t pointer, it'll compile
   typedef typename std::list<node_t>::iterator iterator;
   typedef typename std::list<node_t>::const_iterator const_iterator;
 
@@ -131,9 +131,9 @@ public:
   }
 
   iterator erase(const_iterator pos) {
-    auto it = map_.erase(pos->first);
-    vlist_.erase(pos);
-    return it->first;
+    auto map_pos = pos->first;
+    map_.erase(map_pos);
+    return vlist_.erase(pos);
   }
 
   // Warning: carefully check iterator validity
@@ -167,7 +167,7 @@ public:
     return value_t(std::forward<Ts>(args)...);
   }
 
-  static inline bool release(
+  static inline void release(
       const key_t& key, const value_t& computation) {
     g_store().insert(std::make_pair(key, computation));
   }
@@ -180,19 +180,20 @@ public:
 
 template <typename T>
 inline std::string to_string(const T arg) {
-  return to_string<T>(arg);
+  return std::to_string(arg);
 }
 
 inline std::string to_string(const tensor::dims arg) {
   return std::accumulate(std::next(arg.begin()), arg.end(),
       std::to_string(arg[0]), [](std::string a, int b) {
-        return a + std::to_string(b);
+        return a + 'x' + std::to_string(b);
       });
 }
 
 template <typename T, typename ...Ts>
 inline std::string to_string(T&& arg, Ts&&... args) {
-  return to_string(std::forward<T>(arg)) + to_string(std::forward<Ts>(args)...);
+  return to_string(std::forward<T>(arg)) +
+    '*' + to_string(std::forward<Ts>(args)...);
 }
 
 }

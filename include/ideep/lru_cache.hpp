@@ -16,6 +16,7 @@ public:
 
   typedef typename std::pair<key_t, value_t> value_type;
 
+  // Only need opaque structure node_t pointer, it'll compile
   typedef typename std::list<node_t>::iterator iterator;
   typedef typename std::list<node_t>::const_iterator const_iterator;
 
@@ -23,38 +24,43 @@ public:
   typedef typename std::unordered_multimap<key_t, iterator>::const_iterator
     const_map_it;
 
-  class node_t : public std::pair<map_it, value_t> {};
-
-  typedef typename std::pair<key_t, iterator> map_type;
+  // Only class possible, we can't use typedef or using. Or can we?
+  class node_t : public std::pair<map_it, value_t> {
+  public:
+    node_t (const std::pair<map_it, value_t> &l) :
+      std::pair<map_it, value_t>(l) {}
+    node_t (std::pair<map_it, value_t> &&l) :
+      std::pair<map_it, value_t>(std::move(l)) {}
+  };
 
   typedef typename std::list<node_t>::size_type size_type;
 
   lru_cache(size_type capacity) : capacity_(capacity) {}
 
-  size_type size() const { to_vlist_.size(); }
+  size_type size() const { map_.size(); }
   size_type max_size() const { return capacity_; }
   void resize(size_type new_capacity) {
     capacity_ = new_capacity;
 
     // Trim cache
-    while (to_vlist_.size() > capacity_) {
+    while (map_.size() > capacity_) {
       auto last = vlist_.end();
       last --;
-      to_vlist_.erase(last->first);
+      map_.erase(last->first);
       vlist_.pop_back();
     }
   }
 
   iterator begin() noexcept {
-    auto it = to_vlist_.begin();
-    if (it == to_vlist_.end()) {
+    auto it = map_.begin();
+    if (it == map_.end()) {
       return vlist_.end();
     }
     return it->second;
   }
   const_iterator begin() const noexcept {
-    const auto it = to_vlist_.begin();
-    if (it == to_vlist_.end()) {
+    const auto it = map_.begin();
+    if (it == map_.end()) {
       return vlist_.end();
     }
     return it->second;
@@ -67,22 +73,22 @@ public:
   }
 
   iterator find(const key_t &key) {
-    auto it = to_vlist_.find(key);
-    if (it == to_vlist_.end()) {
+    auto it = map_.find(key);
+    if (it == map_.end()) {
       return end();
     } else {
-      to_vlist_.splice(to_vlist_.begin(), to_vlist_, it->second);
+      vlist_.splice(vlist_.begin(), vlist_, it->second);
       return it->second;
     }
   }
 
   // Is this feasible?
   const_iterator find(const key_t &key) const {
-    const auto it = to_vlist_.find(key);
-    if (it == to_vlist_.end()) {
+    const auto it = map_.find(key);
+    if (it == map_.end()) {
       return end();
     } else {
-      // to_vlist_.splice(to_vlist_.begin(), to_vlist_, it->second);
+      vlist_.splice(vlist_.begin(), vlist_, it->second);
       return it->second;
     }
   }
@@ -93,7 +99,7 @@ public:
 
   void clear() noexcept {
     vlist_.clear();
-    to_vlist_.clear();
+    map_.clear();
   }
 
   // Can we?
@@ -101,21 +107,23 @@ public:
   // std::pair<iterator, bool> emplace(Args&&... args) {
   // }
 
-
   std::pair<iterator, bool> insert(const value_type& value) {
-    auto it = to_vlist_.find(value.first);
+    auto map_it = map_.find(value.first);
 
-    if (it == to_vlist_.end()) {
-      vlist_.push_front(std::make_pair(it, value.second));
-      to_vlist_.insert(std::make_pair(value.first, vlist_.begin()));
+    if (map_it == map_.end()) {
+      vlist_.push_front(std::make_pair(map_it, value.second));
+      auto list_it = vlist_.begin();
+      auto updated = map_.insert(std::make_pair(value.first, list_it));
+      // Update node to pointer to new map position
+      list_it->first = updated;
     } else
-      return std::make_pair(it->second, false);
+      return std::make_pair(map_it->second, false);
 
     // Trim cache
-    while (to_vlist_.size() > capacity_) {
+    while (map_.size() > capacity_) {
       auto last = vlist_.end();
       last --;
-      to_vlist_.erase(last->first);
+      map_.erase(last->first);
       vlist_.pop_back();
     }
 
@@ -123,7 +131,7 @@ public:
   }
 
   iterator erase(const_iterator pos) {
-    auto it = to_vlist_.erase(pos->first);
+    auto it = map_.erase(pos->first);
     vlist_.erase(pos);
     return it->first;
   }
@@ -131,41 +139,41 @@ public:
   // Warning: carefully check iterator validity
   void swap(lru_cache & other) {
     std::swap(vlist_, other.vlist_);
-    std::swap(to_vlist_, other.to_vlist_);
+    std::swap(map_, other.map_);
     std::swap(capacity_, other.capacity_);
   }
 
 private:
   std::list<node_t> vlist_;
-  // std::unordered_map<key_t, iterator> to_vlist_;
-  std::unordered_multimap<key_t, iterator> to_vlist_;
+  // std::unordered_map<key_t, iterator> map_;
+  std::unordered_multimap<key_t, iterator> map_;
   size_type capacity_;
 };
 
 // TODO: mutex it
-template <class computation_t, class key_t = std::string, size_t capacity = 1024>
+template <class value_t, class key_t = std::string, size_t capacity = 1024>
 class computation_cache {
 public:
   template <typename ...Ts>
-  static inline computation_t fetch_or_create(const key_t& key, Ts&&... args) {
+  static inline value_t fetch_or_create(const key_t& key, Ts&&... args) {
     const auto it = g_store().find(key);
 
     if (it != g_store().end()) {
-      computation_t comp = std::move(it->second);
+      value_t comp = std::move(it->second);
       g_store().erase(it);
       return comp;
     }
 
-    return computation_t(std::forward<Ts>(args)...);
+    return value_t(std::forward<Ts>(args)...);
   }
 
   static inline bool release(
-      const key_t& key, const computation_t& computation) {
+      const key_t& key, const value_t& computation) {
     g_store().insert(std::make_pair(key, computation));
   }
 
-  static lru_cache<key_t, computation_t> &g_store() {
-    static lru_cache<key_t, computation_t> g_store_(capacity);
+  static lru_cache<key_t, value_t> &g_store() {
+    static lru_cache<key_t, value_t> g_store_(capacity);
     return g_store_;
   }
 };

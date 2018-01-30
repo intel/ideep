@@ -338,9 +338,15 @@ static T * sum_along_axis(T *src, int src_ndims, mkldnn_dims_t src_dims,
                 for (int o = 0; o < cur_ws_size; o++) ws[o] = 0;
 
                 // kernel
-                for (int w = 0; w < cur_ws_size; w++) {
+                for (int base = 0, off = 0, w = 0; w < cur_ws_size;) {
                     for (int t = 0; t < cur_dims[cur_axis[a]]; t++) {
-                        ws[w] += cur_src[w + t * cur_tail];
+                        ws[w] += cur_src[off + t * cur_tail];
+                    }
+                    w++; if (0 == w % cur_tail) {
+                        off = base + cur_tail * cur_dims[cur_axis[a]];
+                        base = off;
+                    } else {
+                        off += 1;
                     }
                 }
 

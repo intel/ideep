@@ -1,5 +1,9 @@
 # iDeep: Intel Deep Learning Package
 
+[![GitHub license](https://img.shields.io/github/license/intel/ideep.svg)](https://github.com/intel/ideep)
+[![travis](https://img.shields.io/travis/intel/ideep/ideep4py.svg)](https://travis-ci.org/intel/ideep)
+
+
 Intel Deep Learning Package (iDeep) is an open source performance library of primitives for accelerating deep learning frameworks on Intel Architecture. iDeep provides user-friendly API and highly tuned implementations for DNN standard routines.
 
 The package provides C and Python API.

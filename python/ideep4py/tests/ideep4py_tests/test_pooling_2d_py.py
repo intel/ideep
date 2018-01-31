@@ -19,8 +19,8 @@ except Exception as ex:
 
 @testing.parameterize(*testing.product({
     'dtype': [numpy.float32],
-    'channel': [1, 2, 4, 8, 10, 16, 24, 32, 64],
-    'bs': [0, 1, 2, 4, 6, 8, 10, 16, 24, 32, 64],
+    'channel': [1, 2, 4, 8, 10, 16, 24, 32, 64, ],
+    'bs': [0, 1, 2, 4, 5, 6, 8, 10, 16, 24, 32, 64, 96, 128, 196, 256, ],
     'stride': [2, ],
 }))
 class TestPooling2DPyF32(unittest.TestCase):

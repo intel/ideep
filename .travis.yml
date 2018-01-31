@@ -1,0 +1,56 @@
+language: python
+
+cache:
+  - pip
+  - ccache
+
+matrix:
+  include:
+    - os: linux
+      python: "2.7"
+    - os: linux
+      python: "3.5"
+
+before_install:
+  - export LD_LIBRARY_PATH=$HOME/.chainer/lib:$HOME/.local/lib:/usr/local/lib
+  - export LIBRARY_PATH=$LD_LIBRARY_PATH
+  - export C_INCLUDE_PATH=$HOME/.chainer/include:$HOME/.local/include
+  - export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
+  - export PATH="$HOME/.local/bin:/usr/local/cuda/bin/:$PATH"
+  - wget https://nchc.dl.sourceforge.net/project/swig/swig/swig-3.0.12/swig-3.0.12.tar.gz
+  - tar -xf swig-3.0.12.tar.gz
+  - cd swig-3.0.12/
+  - ./configure
+  - make -j
+  - sudo make install
+  - cd ../
+  - git clone https://github.com/google/glog
+  - cd glog
+  - ./autogen.sh
+  - ./configure
+  - make -j
+  - sudo make install
+  - cd ../
+
+
+install:
+  - pip install --upgrade pip
+  - pip install pytest
+
+
+script:
+  - cd python
+  - python setup.py install
+  - cd ideep4py/tests
+  - CHAINER_TEST_GPU_LIMIT=0 pytest -m "not slow and not cudnn" ideep4py_tests
+
+
+addons:
+  apt:
+    packages:
+      - gfortran
+      - libhdf5-serial-dev
+      - liblapack-dev
+      - libssl-dev
+      - libboost-dev
+      - libboost-system1.54

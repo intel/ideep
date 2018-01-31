@@ -28,7 +28,7 @@ def _set_cover_all(self, x, W):
     'dtype': [numpy.float32, ],
     'cover_all': [False, True],
     'channel': [1, 2, 4, 8, 10, ],
-    'bs': [1, 2, 4, 8, 10, 16, 32, 64, ],
+    'bs': [1, 2, 4, 5, 8, 10, 16, 32, 64, 96, 128, 192, 256, 512, ],
     'with_bias': [True, ],
 }))
 @testing.fix_random()

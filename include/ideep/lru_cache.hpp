@@ -172,6 +172,11 @@ public:
     g_store().insert(std::make_pair(key, computation));
   }
 
+  static inline void release(
+      const key_t& key, value_t&& computation) {
+    g_store().insert(std::make_pair(key, std::move(computation)));
+  }
+
   static lru_cache<key_t, value_t> &g_store() {
     static lru_cache<key_t, value_t> g_store_(capacity);
     return g_store_;

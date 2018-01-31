@@ -43,6 +43,7 @@
 #include <ideep/fast_math.hpp>
 #include <ideep/tensor.hpp>
 #include <ideep/lru_cache.hpp>
+#include <ideep/scope_guard.hpp>
 #endif
 
 namespace ideep {
@@ -717,11 +718,12 @@ struct convolution_forward: public computation,
         weights.get_descriptor(), bias.get_descriptor(),
         result_desc, std::forward<Ts>(args)...);
 
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
     tensor dst(comp.expected_dst_descriptor(), result);
     comp.execute(src, weights, bias, dst);
-
-    release(key, comp);
-
     return comp.expected_dst_descriptor();
   }
 
@@ -735,11 +737,12 @@ struct convolution_forward: public computation,
     auto comp = fetch_or_create(key, src.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
     tensor dst(comp.expected_dst_descriptor(), result);
     comp.execute(src, weights, dst);
-
-    release(key, comp);
-
     return comp.expected_dst_descriptor();
   }
 

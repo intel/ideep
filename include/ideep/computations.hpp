@@ -48,7 +48,8 @@
 
 namespace ideep {
 
-struct reorder: public c_wrapper<mkldnn_primitive_t> {
+struct reorder: public c_wrapper<mkldnn_primitive_t>,
+  public utils::computation_cache<reorder> {
   struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
     descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input
         , const tensor::descriptor &output) {
@@ -114,6 +115,11 @@ struct reorder: public c_wrapper<mkldnn_primitive_t> {
     reset(result);
   }
 
+  template<typename... Ts>
+  reorder(Ts&&... args) {
+    reinit(std::forward<Ts>(args)...);
+  }
+
   void operator() (const tensor &input, const tensor &output) {
     assert(input.get_descriptor() == in.get_descriptor()
         && output.get_descriptor() == out.get_descriptor());
@@ -129,6 +135,29 @@ struct reorder: public c_wrapper<mkldnn_primitive_t> {
           &c_api_error_primitive),
         "could not execute reorder", &c_api_error_primitive);
   }
+
+  static const tensor::descriptor compute(
+      const tensor& input, const tensor& output) {
+    const auto input_desc = input.get_descriptor();
+    const auto output_desc = output.get_descriptor();
+
+    auto key = utils::create_key(input.get_dims(), input.get_data_type(),
+        input.get_internal_format(), output.get_dims(), output.get_data_type(),
+        output.get_internal_format());
+
+    auto op = fetch_or_create(key, input_desc, output_desc);
+    auto sg = utils::make_guard([&key, &op]() {
+        release(key, std::move(op));
+        });
+
+    op(input, output);
+
+    return output_desc;
+  }
+
+  // static void split(const tensor& input, const tensor::view& subregion,
+  //     const tensor output) {
+  // }
 protected:
   param in, out;
 };
@@ -400,7 +429,8 @@ struct computation : public primitive_group {
       const tensor::descriptor &desc) {
     if (adesc.need_reorder_input(index)) {
       inouts_.at((unsigned)index) = { desc, invalid_buffer };
-      direct_inputs_[(unsigned)index].materialize();
+      // Delay malloc to first execution
+      // direct_inputs_[(unsigned)index].materialize();
       create_reorder_for(
           (unsigned)index, adesc, inouts_[(unsigned)index],
           direct_inputs_[(unsigned)index]);
@@ -459,9 +489,10 @@ struct computation : public primitive_group {
   void connect_handle_for(int index, const param& atensor) {
     if ((unsigned)index < direct_inputs_.size()) {
       if (inouts_.at((unsigned)index).get_descriptor()
-          == atensor.get_descriptor())
+          == atensor.get_descriptor()) {
         inouts_[(unsigned)index].set_data_handle(atensor.get_data_handle());
-      else if(direct_inputs_.at((unsigned)index).get_descriptor()
+        direct_inputs_[(unsigned)index].materialize();
+      } else if(direct_inputs_.at((unsigned)index).get_descriptor()
           == atensor.get_descriptor()) {
         // Destructional move, assume we never change back
         direct_inputs_[(unsigned)index].dematerialize();
@@ -691,9 +722,9 @@ struct convolution_forward: public computation,
     init(forward_descriptor, src_desc, weights_desc);
   }
 
-  template <typename ...Ts>
-  convolution_forward(Ts&&... args) {
-    reinit(std::forward<Ts>(args)...);
+  template <typename T, typename ...Ts>
+  convolution_forward(T arg, Ts&&... args) {
+    reinit(std::forward<T>(arg), std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& src, const tensor& weights, const tensor& dst) {
@@ -705,13 +736,12 @@ struct convolution_forward: public computation,
     computation::execute(src, weights, bias, dst);
   }
 
-  // TODO: Refine it with any format and reorder
   template <typename ...Ts>
   static tensor::descriptor compute_impl(const tensor& src, const tensor& weights,
       const tensor& bias, const tensor::dims& result_dims, void *result,
       Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
-    std::string key = utils::to_string(src.get_data_type(), src.get_dims(),
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), result_dims, args...);
 
     auto comp = fetch_or_create(key, src.get_descriptor(),

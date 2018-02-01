@@ -518,8 +518,6 @@ public:
     return mkldnn_primitive_desc_query_memory_d(cdesc);
   }
 
-  /// Returns the descriptor of the memory primitive. Becareful here the
-  /// returned descriptor is not manage the real backend object
   descriptor get_descriptor() const {
     mkldnn_primitive_desc_t clone;
     error::wrap_c_api(mkldnn_primitive_desc_clone(&clone,

@@ -201,6 +201,13 @@ inline std::string to_string(T&& arg, Ts&&... args) {
     '*' + to_string(std::forward<Ts>(args)...);
 }
 
+using key_t = std::string;
+
+template <typename ...Ts>
+inline key_t create_key(Ts&&... args) {
+  return to_string(std::forward<Ts>(args)...);
+}
+
 }
 }
 #endif

@@ -31,7 +31,7 @@
 #include "mdarray.h"
 #include <mkl_vml_functions.h>
 #include "mkldnn_ex.h"
-#include "dlcp_py.h"
+// #include "dlcp_py.h"
 
 namespace implementation {
 
@@ -135,7 +135,7 @@ void g_init() {
   OpenMpManager::printVerboseInformation();
 #endif
 
-  dlCompression::init();
+  // dlCompression::init();
 
 #if PY_VERSION_HEX >= 0x03000000
   return 0;

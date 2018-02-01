@@ -62,7 +62,7 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep4py/py/mm',
              '-Iideep4py/py/primitives',
              '-Iideep4py/py/swig_utils',
-             '-Iideep4py/py/dlcp',
+             # '-Iideep4py/py/dlcp',
              '-Iideep4py/include/primitives/',
              '-Iideep4py/include/mm/']
 
@@ -80,20 +80,20 @@ includes = [get_include(),
             'ideep4py/include/mm',
             'ideep4py/py/mm',
             'ideep4py/py/primitives',
-            'ideep4py/py/dlcp',
+            # 'ideep4py/py/dlcp',
             'ideep4py/include/primitives',
             'ideep4py/include/blas',
             'ideep4py/include/primitives/ops',
             'ideep4py/include/primitives/prim_mgr',
             'external/include']
 
-libraries = ['mkldnn', 'mklml_intel', 'dlcomp']
+libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
 
 if system() == 'Linux':
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
     libraries += ['glog', 'm']
     src = ['ideep4py/py/ideep4py.i',
-           'ideep4py/py/dlcp/dlcp_py.cc',
+           # 'ideep4py/py/dlcp/dlcp_py.cc',
            'ideep4py/mm/mem.cc',
            'ideep4py/mm/tensor.cc',
            'ideep4py/py/mm/mdarray.cc',

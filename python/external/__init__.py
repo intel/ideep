@@ -13,7 +13,7 @@ TARGET_LIB_PATH =\
     os.path.split(os.path.realpath(__file__))[0] + '/../ideep4py/lib'
 
 target_libs = [
-    'libdlcomp.so',
+    # 'libdlcomp.so',
     'libiomp5.so',
     'libmkldnn.so*',
 ]
@@ -28,7 +28,7 @@ def prepare():
         os.system('mkdir %s' % EXT_INCLUDE_PATH)
 
     mkldnn.prepare(mkldnn_version)
-    dlcp.prepare()
+    # dlcp.prepare()
 
     if os.path.exists(TARGET_LIB_PATH):
         os.system('rm -rf %s' % TARGET_LIB_PATH)

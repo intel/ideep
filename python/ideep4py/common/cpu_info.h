@@ -25,13 +25,13 @@
 #ifndef _CPU_INFO_H
 #define _CPU_INFO_H
 
-#include <boost/thread/thread.hpp>
 #include <sched.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <set>
 #include <vector>
+#include <thread>
 //#include "utils.h"
 
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
@@ -129,11 +129,11 @@ class OpenMpManager {
   static void bindOpenMpThreads();
   static void printVerboseInformation();
 
-  static bool isMajorThread(boost::thread::id currentThread);
+  static bool isMajorThread();
   static unsigned getProcessorSpeedMHz();
 
  private:
-  boost::thread::id mainThreadId;
+  std::thread::id mainThreadId;
   Collection &collection;
 
   bool isGpuEnabled;

@@ -162,7 +162,7 @@ packages = ['ideep4py', 'ideep4py.cosim']
 
 setup(
     name='ideep4py',
-    version='1.0',
+    version='1.0.0',
     description='ideep4py is a wrapper for iDeep library.',
     author='Intel',
     author_email='',

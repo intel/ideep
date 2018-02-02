@@ -752,8 +752,20 @@ struct convolution_forward: public computation,
         release(key, std::move(comp));
         });
 
+    // Performance evaluation
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init(comp.expected_descriptor_of());
+      reorder::compute(src, src_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init(comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
     tensor dst(comp.expected_dst_descriptor(), result);
-    comp.execute(src, weights, bias, dst);
+    comp.execute(src_in, weights_in, bias, dst);
     return comp.expected_dst_descriptor();
   }
 
@@ -771,8 +783,20 @@ struct convolution_forward: public computation,
         release(key, std::move(comp));
         });
 
+    // Performance evaluation
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init(comp.expected_descriptor_of());
+      reorder::compute(src, src_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init(comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
     tensor dst(comp.expected_dst_descriptor(), result);
-    comp.execute(src, weights, dst);
+    comp.execute(src_in, weights_in, dst);
     return comp.expected_dst_descriptor();
   }
 

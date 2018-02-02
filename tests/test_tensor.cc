@@ -50,9 +50,7 @@ int main() {
   tensor _4d_src ({view_dim4, type}, const_cast<float *>(data));
   auto _4d_view = _4d.create_view(view_dim4, off_dim4);
   
-  reorder filler;
-
-  filler.reinit(_4d_src.get_descriptor(), _4d_view, _4d.get_descriptor());
+  reorder filler (_4d_src.get_descriptor(), _4d_view, _4d.get_descriptor());
   filler(_4d_src, _4d);
 
   _3d.reorder_from(dim3, type, static_cast<const void *>(data));

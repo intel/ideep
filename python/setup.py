@@ -1,11 +1,11 @@
 from setuptools import Command, distutils, Extension, setup
-from numpy import get_include
 from platform import system
 
 import external
 import sys
 
 import setuptools.command.install
+import setuptools.command.build_ext
 import distutils.command.build
 import distutils.command.clean
 
@@ -33,6 +33,13 @@ class build(distutils.command.build.build):
     ] + distutils.command.build.build.sub_commands
 
 
+class build_ext(setuptools.command.build_ext.build_ext):
+    def run(self):
+        import numpy
+        self.include_dirs.append(numpy.get_include())
+        setuptools.command.build_ext.build_ext.run(self)
+
+
 class install(setuptools.command.install.install):
     def run(self):
         if not self.skip_build:
@@ -48,6 +55,7 @@ class clean(distutils.command.clean.clean):
 
 cmdclass = {
     'build': build,
+    'build_ext': build_ext,
     'build_deps': build_deps,
     'install': install,
     'clean': clean,
@@ -73,8 +81,7 @@ ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas']
 link_opts = ['-Wl,-z,now', '-Wl,-z,noexecstack',
              '-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './external/lib']
 
-includes = [get_include(),
-            'ideep4py/include',
+includes = ['ideep4py/include',
             'ideep4py/include/mkl',
             'ideep4py/common',
             'ideep4py/include/mm',
@@ -138,9 +145,7 @@ else:
 ###############################################################################
 
 install_requires = [
-    'numpy>=1.9.0'
-    'protobuf>=3.0.0',
-    'six>=1.9.0'
+    'numpy>=1.9,<=1.13',
 ]
 
 tests_require = [

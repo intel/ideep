@@ -39,6 +39,9 @@ pip install -U setuptools
 
 Then, install ideep from the source code:
 ```
+pip install .
+```
+```
 python setup.py install
 ```
 

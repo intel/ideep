@@ -7,7 +7,7 @@ x1 = numpy.ndarray(shape=(2, 2, 2, 2), dtype=numpy.float32, order='C')
 x = ideep4py.mdarray(x1)
 x = x + 1
 testing.assert_allclose(x1 + 1, x)
-
+#second
 x = ideep4py.mdarray(x1)
 
 print(x)
@@ -17,6 +17,7 @@ print("size=", x.size)
 print("dtype=", x.dtype)
 print("is_mdarry=", x.is_mdarray)
 
+#
 x1 += x
 x += x
 x2 = numpy.array(x)

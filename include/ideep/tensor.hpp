@@ -459,6 +459,7 @@ public:
 
     reset(result);
     set_data_handle(ahandle);
+    buffer_.reset();
     public_format_ = adesc.public_format_;
   }
 

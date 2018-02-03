@@ -737,9 +737,9 @@ struct convolution_forward: public computation,
   }
 
   template <typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src, const tensor& weights,
-      const tensor& bias, const tensor::dims& result_dims, void *result,
-      Ts&&... args) {
+  static tensor::descriptor compute_impl(const tensor& src,
+      const tensor& weights, const tensor& bias,
+      const tensor::dims& result_dims, void *result, Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), result_dims, args...);
@@ -752,11 +752,12 @@ struct convolution_forward: public computation,
         release(key, std::move(comp));
         });
 
-    // Performance evaluation
+    // XXX: Performance evaluation
+    // TODO: Custom allocator support
     auto src_in = src;
     auto weights_in = weights;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_descriptor_of());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
     if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
@@ -770,8 +771,9 @@ struct convolution_forward: public computation,
   }
 
   template <typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src, const tensor& weights,
-      const tensor::dims& result_dims, void *result, Ts&&... args) {
+  static tensor::descriptor compute_impl(const tensor& src,
+      const tensor& weights, const tensor::dims& result_dims,
+      void *result, Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
     std::string key = utils::to_string(src.get_data_type(), src.get_dims(),
         weights.get_dims(), result_dims, args...);
@@ -787,7 +789,7 @@ struct convolution_forward: public computation,
     auto src_in = src;
     auto weights_in = weights;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_descriptor_of());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
     if (weights.get_descriptor() != comp.expected_weights_descriptor()) {

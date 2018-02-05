@@ -8,6 +8,8 @@
 
 namespace ideep {
 
+INIT_GLOBAL_ENGINE
+
 inline size_t map_index(const mkldnn_memory_desc_t *md, size_t index) {
   mkldnn::memory::desc dup_md(*md);
   return ::map_index(dup_md, index);

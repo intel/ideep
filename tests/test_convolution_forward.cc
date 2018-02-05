@@ -14,27 +14,31 @@ class convolution_forward_tests :
   public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
   virtual void SetUp() {
-    test_convolution_params_t p = 
+    test_convolution_params_t p =
       ::testing::TestWithParam<test_convolution_params_t>::GetParam();
     test_convolution_sizes_t cd = p.sizes;
 
     tensor::descriptor src_desc ({cd.mb, cd.ic, cd.ih, cd.iw},
-        data_traits<data_t_src>::data_type, p.formats.src_format);
+        data_traits<data_t_src>::data_type, 
+        static_cast<format>(p.formats.src_format));
 
-    auto weights_desc = cd.ng > 1 ? 
+    auto weights_desc = cd.ng > 1 ?
       tensor::descriptor(
           {cd.ng, cd.oc/cd.ng, cd.ic/cd.ng, cd.kh, cd.kw},
-          data_traits<data_t_wei>::data_type, p.formats.weights_format) :
+          data_traits<data_t_wei>::data_type,
+          static_cast<format>(p.formats.weights_format)) :
       tensor::descriptor(
           {cd.oc, cd.ic, cd.kh, cd.kw},
-          data_traits<data_t_wei>::data_type, p.formats.weights_format);
+          data_traits<data_t_wei>::data_type,
+          static_cast<format>(p.formats.weights_format));
 
-    bool with_bias = p.formats.bias_format != format::format_undef;
+    bool with_bias = p.formats.bias_format !=
+      static_cast<mkldnn_memory_format_t>(format::format_undef);
     auto bias_desc = with_bias ?
           tensor::descriptor({cd.oc}, data_traits<data_t_dst>::data_type,
-              p.formats.dst_format) :
+              static_cast<format>(p.formats.dst_format)) :
             tensor::descriptor({}, data_traits<data_t_dst>::data_type,
-                p.formats.dst_format);
+              static_cast<format>(p.formats.dst_format));
 
     tensor src(src_desc);
     tensor weights(weights_desc);
@@ -85,3 +89,9 @@ protected:
         cd, attr, src, weights, bias, ref_dst);
   }
 };
+
+using convolution_forward_test =
+    convolution_forward_tests<float, float, float, float>;
+
+TEST_P(convolution_forward_test, TestConvolution) {
+}

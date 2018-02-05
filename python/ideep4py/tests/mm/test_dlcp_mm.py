@@ -23,7 +23,8 @@ class TestDlcp(unittest.TestCase):
     @unittest.skip("demonstrating skipping, not support yes")
     def test_dlcp(self):
         am = ideep4py.array(self.a)
-        ret = dlCompression.Compress(am, am, None, 4, dlCompression.dl_comp_dfp)
+        ret = dlCompression.Compress(
+            am, am, None, 4, dlCompression.dl_comp_dfp)
         assert(ret == dlCompression.dl_comp_ok)
 
         ret = dlCompression.Decompress(am, am)

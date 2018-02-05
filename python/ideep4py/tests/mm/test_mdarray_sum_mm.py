@@ -17,25 +17,34 @@ class TestMdarraySum(unittest.TestCase):
         x = numpy.arange(24, dtype=numpy.float32)
         x = x.reshape((2, 3, 2, 2))
         mx = mdarray(x)
-        numpy.testing.assert_allclose(mx.sum((0, 2, 3)), x.sum((0, 2, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((0, 2, 3)), x.sum((0, 2, 3)), **self.check_options)
 
     def test_sum2(self):
         x = numpy.arange(24, dtype=numpy.float32)
         x = x.reshape((2, 3, 2, 2))
         mx = mdarray(x)
-        numpy.testing.assert_allclose(mx.sum((1, 2)), x.sum((1, 2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((1, 2)), x.sum((1, 2)), **self.check_options)
 
     def test_sum3(self):
         x = numpy.arange(24, dtype=numpy.float32)
         x = x.reshape((2, 3, 2, 2))
         mx = mdarray(x)
-        numpy.testing.assert_allclose(mx.sum((0, 2)), x.sum((0, 2)), **self.check_options)
-        numpy.testing.assert_allclose(mx.sum((1, 3)), x.sum((1, 3)), **self.check_options)
-        numpy.testing.assert_allclose(mx.sum((0)), x.sum((0)), **self.check_options)
-        numpy.testing.assert_allclose(mx.sum((1, 2, 3)), x.sum((1, 2, 3)), **self.check_options)
-        numpy.testing.assert_allclose(mx.sum((0, 1, 2)), x.sum((0, 1, 2)), **self.check_options)
-        numpy.testing.assert_allclose(mx.sum((3)), x.sum((3)), **self.check_options)
-        numpy.testing.assert_allclose(mx.sum((1)), x.sum((1)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((0, 2)), x.sum((0, 2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((1, 3)), x.sum((1, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((0)), x.sum((0)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((1, 2, 3)), x.sum((1, 2, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((0, 1, 2)), x.sum((0, 1, 2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((3)), x.sum((3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            mx.sum((1)), x.sum((1)), **self.check_options)
 
     def test_sum4(self):
         x = numpy.random.rand(256, 384, 13, 13)
@@ -43,16 +52,26 @@ class TestMdarraySum(unittest.TestCase):
         y = numpy.maximum(x, 0, dtype=numpy.float32)
         mx = mdarray(x)
         my = relu.Forward(mx)
-        numpy.testing.assert_allclose(my.sum((0, 2, 3)), y.sum((0, 2, 3)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((1, 2, 3)), y.sum((1, 2, 3)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((0, 1, 2)), y.sum((0, 1, 2)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((0, 2)), y.sum((0, 2)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((1, 3)), y.sum((1, 3)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((1, 2)), y.sum((1, 2)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((0)), y.sum((0)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((3)), y.sum((3)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((2)), y.sum((2)), **self.check_options)
-        numpy.testing.assert_allclose(my.sum((0, 2, 3)), y.sum((0, 2, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((0, 2, 3)), y.sum((0, 2, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((1, 2, 3)), y.sum((1, 2, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((0, 1, 2)), y.sum((0, 1, 2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((0, 2)), y.sum((0, 2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((1, 3)), y.sum((1, 3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((1, 2)), y.sum((1, 2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((0)), y.sum((0)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((3)), y.sum((3)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((2)), y.sum((2)), **self.check_options)
+        numpy.testing.assert_allclose(
+            my.sum((0, 2, 3)), y.sum((0, 2, 3)), **self.check_options)
         numpy.testing.assert_allclose(
             my.sum((0, 2, 3), keepdims=True),
             y.sum((0, 2, 3), keepdims=True), **self.check_options)

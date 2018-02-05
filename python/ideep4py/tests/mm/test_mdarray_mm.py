@@ -33,13 +33,15 @@ class TestMdarray(unittest.TestCase):
         x = ideep4py.mdarray(self.xOne)
         y = x + self.xOne
         y2 = numpy.array(y)
-        numpy.testing.assert_allclose(y2, self.xOne+self.xOne, **self.check_options)
+        numpy.testing.assert_allclose(
+            y2, self.xOne + self.xOne, **self.check_options)
 
     def test_mul(self):
         x = ideep4py.mdarray(self.xOne)
         y = x * self.xOne
         y2 = numpy.array(y)
-        numpy.testing.assert_allclose(y2, self.xOne * self.xOne, **self.check_options)
+        numpy.testing.assert_allclose(
+            y2, self.xOne * self.xOne, **self.check_options)
         # testing.assert_allclose(y2, self.xOne * self.xOne)
 
     def test_md(self):

@@ -2,7 +2,7 @@ import sys
 import unittest
 import numpy
 import ideep4py
-from ideep4py import dlCompression
+# from ideep4py import dlCompression
 try:
     import testing
 except Exception as ex:

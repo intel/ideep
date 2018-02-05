@@ -1,13 +1,13 @@
-project(tests)
-
 add_subdirectory(googletest)
 add_subdirectory(rapidcheck)
 include(../cmake/settings.cmake)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}/googletest/googletest/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/googletest/googlemock/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/rapidcheck/include
+include_directories(
+  googletest/googletest/include
+  googletest/googlemock/include
+  rapidcheck/include
+  ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtest
+  ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtest/in
   )
 
 file(GLOB __native_test_src

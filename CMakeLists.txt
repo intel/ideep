@@ -8,6 +8,8 @@ set(IDEEP_VERSION_PATCH 1)
 set(IDEEP_VERSION
   "${IDEEP_VERSION_MAJOR}.${IDEEP_VERSION_MINOR}.${IDEEP_VERSION_PATCH}")
 
+set(USE_MKLDNN_INTERNAL 1)
+include(cmake/mkldnn.cmake)
 include(cmake/settings.cmake)
 
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -15,9 +17,9 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 install(DIRECTORY include/ DESTINATION include)
 
-macro(install)
-endmacro()
+function(install)
+endfunction()
 add_subdirectory(tests)
-macro(install)
+function(install)
   _install(${ARGN})
-endmacro()
+endfunction()

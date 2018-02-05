@@ -4,6 +4,14 @@ endif()
 set(__MKLDNN_INCLUDE)
 
 if (USE_MKLDNN_INTERNAL)
+  if (NOT IS_DIRECTORY ${PROJECT_SOURCE_DIR}/mkl-dnn/external)
+    execute_process(COMMAND "${PROJECT_SOURCE_DIR}/mkl-dnn/scripts/prepare_mkl.sh"
+      RESULT_VARIABLE __result)
+  endif()
+  add_subdirectory(mkl-dnn)
+else()
+  include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
+  # find mkldnn first
   set(mkldnn_PREFIX ${PROJECT_SOURCE_DIR}/mkl-dnn)
 
   if (UNIX)
@@ -36,6 +44,4 @@ if (USE_MKLDNN_INTERNAL)
     ${mkldnn_PREFIX}/src/common)
   set(MKLDNN_LIBRARY_DIR ${mkldnn_PREFIX}/build/src)
   list(APPEND iDeep_EXTERNAL_DEPENDENCIES mkldnn_external)
-else()
-  find_package(MKLDNN)
 endif()

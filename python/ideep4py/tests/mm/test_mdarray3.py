@@ -1,6 +1,6 @@
 import numpy
-from chainer import testing  # NOQA
-from chainer import utils  # NOQA
+import testing  # NOQA
+# import utils  # NOQA
 import ideep4py
 
 x1 = numpy.ndarray(shape=(2, 2), dtype=numpy.float32, order='C')

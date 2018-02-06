@@ -145,7 +145,7 @@ else:
 ###############################################################################
 
 install_requires = [
-    'numpy>=1.9,<=1.13',
+    'numpy==1.13',
 ]
 
 tests_require = [
@@ -167,7 +167,7 @@ packages = ['ideep4py', 'ideep4py.cosim']
 
 setup(
     name='ideep4py',
-    version='1.0.1',
+    version='1.0.2',
     description='ideep4py is a wrapper for iDeep library.',
     author='Intel',
     author_email='',

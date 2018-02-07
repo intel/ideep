@@ -21,7 +21,7 @@ Above recommended environments are tested. We cannot guarantee that ideep4py wor
 
 
 Minimum requirements:
-- Numpy 1.9+
+- Numpy 1.13
 - Six 1.9+
 - Swig 3.0.12
 - Glog 0.3.5
@@ -37,7 +37,12 @@ If you use old ``setuptools``, upgrade it:
 pip install -U setuptools
 ```
 
-Then, install ideep from the source code:
+Then, install ideep:
+```
+pip install ideep4py
+```
+
+Or, install ideep from the source code:
 ```
 pip install .
 ```

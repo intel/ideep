@@ -11,8 +11,66 @@ namespace ideep {
 INIT_GLOBAL_ENGINE
 
 inline size_t map_index(const mkldnn_memory_desc_t *md, size_t index) {
-  mkldnn::memory::desc dup_md(*md);
-  return ::map_index(dup_md, index);
+  using fmt = mkldnn::memory::format;
+  const fmt fwd_weights_g = fmt::gOIhw8i16o2i;
+  const fmt fwd_weights = fmt::OIhw8i16o2i;
+  const fmt bwd_weights_g = fmt::gOIhw8o16i2o;
+  const fmt bwd_weights = fmt::OIhw8o16i2o;
+
+  const bool with_groups = (md->format == fwd_weights_g)
+                        || (md->format == bwd_weights_g);
+
+  const int ndims = md->ndims;
+  const int *dims = md->dims;
+  const int *pdims = md->layout_desc.blocking.padding_dims;
+  const int *optd = md->layout_desc.blocking.offset_padding_to_data;
+
+  auto *strides_block = md->layout_desc.blocking.strides[0];
+  auto *strides_within_block = md->layout_desc.blocking.strides[1];
+
+  size_t ph_index = 0;
+  size_t oc_16 = 0, ic_2 = 0,
+      oc_2 = 0, ic_16 = 0;
+
+  for (int rd = 0; rd < ndims; ++rd) {
+      int d = ndims - rd - 1;
+
+      EXPECT_LE(dims[d], pdims[d]);
+
+      int cur_dim = dims[d];
+      EXPECT_GT(cur_dim, 0);
+      int cur_block = md->layout_desc.blocking.block_dims[d];
+
+      size_t pos_d = /*static_cast<ssize_t>*/(index % cur_dim);
+      EXPECT_GE(optd[d], 0);
+      size_t cur_pos = optd[d] + pos_d;
+
+      size_t cur_pos_block = cur_pos / cur_block;
+      size_t cur_pos_within_block = cur_pos % cur_block;
+
+      if (d == (with_groups + 0)) { oc_16 = pos_d % 16; oc_2 = pos_d % 2; }
+      if (d == (with_groups + 1)) { ic_2 = pos_d % 2; ic_16 = pos_d % 16; }
+
+      ph_index += cur_pos_block*strides_block[d];
+      ph_index += cur_pos_within_block*strides_within_block[d];
+
+      index /= cur_dim;
+  }
+  if (md->format == fwd_weights_g || md->format == fwd_weights) {
+      //ph_index += -16 * ic_2 + oc_16 + ic_2;
+      ph_index += oc_16 + ic_2;
+      EXPECT_GE(ph_index, 16*ic_2);
+      ph_index -= 16*ic_2;
+  } else
+      if (md->format == bwd_weights_g || md->format == bwd_weights) {
+          //ph_index += -16 * oc_2 + ic_16 + oc_2;
+          ph_index += ic_16 + oc_2;
+          EXPECT_GE(ph_index, 16 * oc_2);
+          ph_index -= 16 * oc_2;
+      }
+  ph_index += md->layout_desc.blocking.offset_padding;
+
+  return ph_index;
 }
 
 template <typename data_t_src, typename data_t_wei,
@@ -89,6 +147,42 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
           }
         }
       }
+    }
+  }
+}
+
+template <typename data_t>
+static void compare_data(tensor& ref, tensor &dst) {
+  ASSERT_TRUE(data_traits<data_t>::data_type == mkldnn::memory::data_type::f32 ||
+      data_traits<data_t>::data_type == mkldnn::memory::data_type::s32);
+
+  auto *ref_desc = ref.get_mkldnn_memory_desc_t();
+  auto *dst_desc = dst.get_mkldnn_memory_desc_t();
+
+  ASSERT_TRUE(ref_desc->ndims == dst_desc->ndims);
+  auto ndims = ref_desc->ndims;
+  for (auto d = 0; d < ndims; ++d) {
+    ASSERT_TRUE(ref_desc->dims[d] == dst_desc->dims[d]);
+  }
+
+  auto num = std::accumulate(ref_desc->dims, &ref_desc->dims[ref_desc->ndims],
+      1, std::multiplies<int>());
+
+  data_t *ref_data = (data_t *)ref.get_data_handle();
+  data_t *dst_data = (data_t *)dst.get_data_handle();
+
+# pragma omp parallel for schedule(static)
+  for (ptrdiff_t i = 0; i < num; i ++) {
+    data_t ref = ref_data[map_index(ref_desc, i)];
+    data_t got = dst_data[map_index(dst_desc, i)];
+
+    if (data_traits<data_t>::data_type == mkldnn::memory::data_type::f32) {
+      data_t diff = got - ref;
+      data_t e = (std::abs(ref) > (data_t)1e-4) ? diff / ref : diff;
+      EXPECT_NEAR(e, (data_t)0.0, (data_t)1e-4)
+        << "Index: " << i << " Total: " << num;
+    } else {
+      EXPECT_EQ(ref, got) << "Index: " << i << " Total: " << num;
     }
   }
 }

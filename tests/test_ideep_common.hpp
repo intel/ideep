@@ -152,7 +152,7 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
 }
 
 template <typename data_t>
-static void compare_data(tensor& ref, tensor &dst) {
+static void compare_tensor(const tensor& ref, const tensor &dst) {
   ASSERT_TRUE(data_traits<data_t>::data_type == mkldnn::memory::data_type::f32 ||
       data_traits<data_t>::data_type == mkldnn::memory::data_type::s32);
 

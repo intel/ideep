@@ -6,7 +6,8 @@ import unittest
 
 @testing.parameterize(*testing.product({
     'dtype': [numpy.float32],
-    'shape': [(3, 16, 2, 4), (2, 7, 1, 1), (2, 7, 3, 2), (2, 2, 2, 2), (3, 4), (1, 1)],
+    'shape': [(3, 16, 2, 4), (2, 7, 1, 1),
+              (2, 7, 3, 2), (2, 2, 2, 2), (3, 4), (1, 1)],
 }))
 class TestMemcpy(unittest.TestCase):
     def setUp(self):

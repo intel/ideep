@@ -409,7 +409,7 @@ protected:
 };
 
 struct computation : public primitive_group {
-  computation() {}
+  computation() = default;
 
   void connect_reorder_for(const descriptor_group& adesc,
       const std::vector<tensor::descriptor>& args) {
@@ -721,6 +721,8 @@ struct convolution_forward: public computation,
 
     computation::init(forward_descriptor, src_desc, weights_desc);
   }
+
+  convolution_forward() = default;
 
   template <typename T, typename ...Ts>
   convolution_forward(T arg, Ts&&... args) {

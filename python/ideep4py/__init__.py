@@ -113,6 +113,40 @@ def all_ready(inputs, supported_ndim=(2, 4)):
         return check_type(inputs)
 
 
+def split(x, indices_or_sections, axis=0):
+    if all_ready((x,)):
+        offsets = intVector()
+        for i in indices_or_sections:
+            offsets.push_back(i)
+        ys = concat.Backward(x, offsets, axis)
+
+        if ys:
+            # indices_or_sections = [0, ...]
+            # axis = 0
+            if axis == 0 and indices_or_sections[0] == 0:
+                shape = x.shape
+                shape = (0, ) + shape[1:]
+                y1 = numpy.ndarray(shape, dtype=x.dtype)
+                ys = list((y1,) + ys)
+        else:
+            # For performance improvement
+            # indices_or_sections = [0]
+            # axis = 0
+            if axis == 0 and indices_or_sections[0] == 0 \
+                    and len(indices_or_sections) == 1:
+                shape = x.shape
+                shape = (0, ) + shape[1:]
+                y1 = numpy.ndarray(shape, dtype=x.dtype)
+                ys = list((y1,) + (x,))
+            # other not support scenarios
+            else:
+                ys = numpy.split(x, indices_or_sections, axis)
+    else:
+        ys = numpy.split(x, indices_or_sections, axis)
+
+    return ys
+
+
 def tanh(x):
     if all_ready((x,)):
         y = _ideep4py.tanh.Forward(array(x))  # NOQA

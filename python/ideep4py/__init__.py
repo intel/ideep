@@ -116,8 +116,10 @@ def all_ready(inputs, supported_ndim=(2, 4)):
 def split(x, indices_or_sections, axis=0):
     if all_ready((x,)):
         offsets = intVector()
+        # FIXME
+        # bypass python3 issue
         for i in indices_or_sections:
-            offsets.push_back(i)
+            offsets.push_back(int(i))
         ys = concat.Backward(x, offsets, axis)
 
         if ys:

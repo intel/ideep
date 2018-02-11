@@ -116,25 +116,44 @@ def all_ready(inputs, supported_ndim=(2, 4)):
 def split(x, indices_or_sections, axis=0):
     if all_ready((x,)):
         offsets = intVector()
-        # FIXME
-        # bypass python3 issue
-        for i in indices_or_sections:
-            offsets.push_back(int(i))
+        if numpy.isscalar(indices_or_sections):
+            if indices_or_sections == 0:
+                raise ValueError(
+                    'integer division or modulo by zero')
+            elif x.shape[axis] % indices_or_sections:
+                raise ValueError(
+                    'array split does not result in an equal division')
+            for i in range(x.shape[axis] / indices_or_sections,
+                           x.shape[axis],
+                           x.shape[axis] / indices_or_sections):
+                offsets.push_back(int(i))
+        else:
+            # FIXME
+            # bypass python3 issue
+            for i in indices_or_sections:
+                offsets.push_back(int(i))
+
         ys = concat.Backward(x, offsets, axis)
 
         if ys:
             # indices_or_sections = [0, ...]
             # axis = 0
-            if axis == 0 and indices_or_sections[0] == 0:
+            if not numpy.isscalar(indices_or_sections) and \
+                    axis == 0 and indices_or_sections[0] == 0:
                 shape = x.shape
                 shape = (0, ) + shape[1:]
                 y1 = numpy.ndarray(shape, dtype=x.dtype)
                 ys = list((y1,) + ys)
         else:
             # For performance improvement
+
+            # indices_or_sections = 1
+            if numpy.isscalar(indices_or_sections) and \
+                    indices_or_sections == 1:
+                ys = [x]
             # indices_or_sections = [0]
             # axis = 0
-            if axis == 0 and indices_or_sections[0] == 0 \
+            elif axis == 0 and indices_or_sections[0] == 0 \
                     and len(indices_or_sections) == 1:
                 shape = x.shape
                 shape = (0, ) + shape[1:]

@@ -71,7 +71,7 @@ dl_comp_return_t DLCompressDFP::compress_block(float *src, int8_t *dst, float *d
 
     if (NULL != diff) {
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd
 #endif
         for (size_t i = 0; i < count; ++i) {
             src[i] += diff[i];
@@ -287,9 +287,6 @@ dl_comp_return_t DLCompressDFP::avx512_decompress_block(const int8_t *src, float
     size_t num_group = count / group_size;
     __m512 scale_factor = _mm512_set1_ps(pow2_scale_inv);
 
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (size_t idx = 0; idx < count; idx += group_size) {
         __m512 float_vec    = _mm512_set_ps((float)src[idx + 15], (float)src[idx + 14],
                                             (float)src[idx + 13], (float)src[idx + 12],
@@ -311,7 +308,7 @@ dl_comp_return_t DLCompressDFP::decompress_block(const int8_t *src, float *dst, 
     // only handle int8_t as src and float as dst
     float pow2_scale_inv = 1.0f / std::pow(2, scale);
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd
 #endif
     for (size_t i = 0; i < count; ++i) {
         dst[i] = (float)src[i];
@@ -444,7 +441,7 @@ dl_comp_return_t DLCompressDFP::compress_block_sum(const int8_t *invec, int8_t *
     inoutvec    += sizeof(dl_comp_head);
     
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd
 #endif
     for (size_t i = 0; i < count; i++) {
         left = invec[i] >> inScaleGap;
@@ -460,14 +457,14 @@ dl_comp_return_t DLCompressDFP::compress_block_sum(const int8_t *invec, int8_t *
     if (max_abs >= 128) {
         minScale -= 1;
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd
 #endif
         for (size_t i = 0; i < count; i++) {
             inoutvec[i] = resvec[i] >> 1;
         }
     } else {
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd
 #endif
         for (size_t i = 0; i < count; i++) {
             inoutvec[i] = resvec[i];
@@ -657,7 +654,7 @@ dl_comp_return_t decompress_helper(const int8_t *src, float *dst, dl_comp_method
 void dl_comp_float_vector_add(const float* invec, float *inoutvec, size_t count)
 {
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd
 #endif
     for (size_t i = 0; i < count; ++i) {
         inoutvec[i] += invec[i];
@@ -681,9 +678,6 @@ void dl_comp_avx512_float_vector_add(const float* invec, float *inoutvec, size_t
     }
 
     size_t group_size = 16;
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
     for (size_t idx = 0; idx < count; idx += group_size) {
         const float *fvec1  = invec + idx;
         float *fvec2        = inoutvec + idx;

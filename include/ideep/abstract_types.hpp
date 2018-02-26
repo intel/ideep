@@ -10,11 +10,56 @@ namespace ideep {
 using error = mkldnn::error;
 
 /// Same class for resource management, except public default constructor
-template <typename T> class c_wrapper: public mkldnn::handle<T>{
-  public:
-    using mkldnn::handle<T>::handle;
-    using mkldnn::handle<T>::operator ==;
-    using mkldnn::handle<T>::operator !=;
+template <typename T, typename traits = mkldnn::handle_traits<T>>
+class c_wrapper{
+protected:
+  std::shared_ptr<typename std::remove_pointer<T>::type> _data;
+public:
+  /// Constructs a C handle wrapper.
+  /// @param t The C handle to wrap.
+  /// @param weak A flag to specify whether to construct a weak wrapper.
+  c_wrapper(T t = nullptr, bool weak = false): _data(t, [weak]() {
+    auto dummy = [](T) {
+      return decltype(traits::destructor(0))(0);
+    };
+    return weak? dummy : traits::destructor;
+  }()) {}
+
+  bool operator==(const T other) const { return other == _data.get(); }
+  bool operator!=(const T other) const { return !(*this == other); }
+
+  c_wrapper(const c_wrapper& other): _data(other._data) {}
+  c_wrapper(c_wrapper&& movable) : _data(std::move(movable._data)) {}
+
+  c_wrapper &operator=(c_wrapper&& other) {
+    _data = std::move(other._data);
+    return *this;
+  }
+
+  c_wrapper &operator=(const c_wrapper& other) {
+    _data = other._data;
+    return *this;
+  }
+
+  /// Resets the value of a C handle.
+  /// @param t The new value of the C handle.
+  /// @param weak A flag to specify whether the wrapper should be weak.
+  void reset(T t, bool weak = false) {
+    auto dummy_destructor = [](T) {
+      return decltype(traits::destructor(0))(0);
+    };
+    _data.reset(t, weak ? dummy_destructor : traits::destructor);
+  }
+
+  /// Returns the value of the underlying C handle.
+  T get() const { return _data.get(); }
+
+  bool operator==(const c_wrapper &other) const {
+    return other._data.get() == _data.get();
+  }
+  bool operator!=(const c_wrapper &other) const {
+    return !(*this == other);
+  }
 };
 
 /// C wrappers which form a functioning complex, in case multiple
@@ -23,20 +68,17 @@ template <typename T>
 class c_wrapper_complex : public c_wrapper<T> {
 public:
   using size_type = typename std::vector<c_wrapper<T>>::size_type;
+  constexpr static int max_reorder_needed = 3;
 
-  c_wrapper_complex(): auxiliaries_(3) {}
-
-  c_wrapper_complex(size_type num_of_aux)
-    : auxiliaries_(num_of_aux) {}
+  c_wrapper_complex() {}
 
   inline bool need_reorder_input(int pos) const {
-    if (pos < auxiliaries_.size())
+    if (pos < max_reorder_needed/* auxiliaries_.size()*/)
       return auxiliaries_[pos] != nullptr;
     return false;
   }
-
 protected:
-  std::vector<c_wrapper<T>> auxiliaries_;
+  c_wrapper<T> auxiliaries_[max_reorder_needed];
 };
 
 using batch_normalization_flag = mkldnn::batch_normalization_flag;

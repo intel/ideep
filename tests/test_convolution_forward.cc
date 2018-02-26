@@ -36,9 +36,9 @@ protected:
       static_cast<mkldnn_memory_format_t>(format::format_undef);
     auto bias_desc = with_bias_ ?
           tensor::descriptor({cd.oc}, data_traits<data_t_dst>::data_type,
-              static_cast<format>(p.formats.dst_format)) :
+              static_cast<format>(p.formats.bias_format)) :
             tensor::descriptor({}, data_traits<data_t_dst>::data_type,
-              static_cast<format>(p.formats.dst_format));
+              static_cast<format>(p.formats.bias_format));
 
     src_.init(src_desc);
     weights_.init(weights_desc);
@@ -69,7 +69,7 @@ protected:
 
     dst_dims_ = {cd.mb, cd.oc, cd.oh, cd.ow};
     auto dst_size = std::accumulate(dst_dims_.begin(), dst_dims_.end(),
-        1, std::multiplies<int>());
+        sizeof(float), std::multiplies<int>());
     raw_dst_.reset(new char [dst_size]);
 
   }
@@ -84,28 +84,63 @@ protected:
 using convolution_test =
     convolution_forward_tests<float, float, float, float>;
 
-TEST_P(convolution_test, TestConvolution) {
-    test_convolution_params_t p =
-      ::testing::TestWithParam<test_convolution_params_t>::GetParam();
-    test_convolution_sizes_t cd = p.sizes;
+// Test for moving, copy, cache behavior
+TEST_P(convolution_test, TestManipulation) {
+  convolution_forward empty;
+  tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());
+  test_convolution_params_t p =
+    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
+  test_convolution_sizes_t cd = p.sizes;
+  auto key = utils::create_key(src_.get_data_type(), src_.get_dims(),
+      weights_.get_dims(), bias_.get_dims(), dst_dims_);
 
-    auto dst_desc = with_bias_ ?
-      convolution_forward::compute(src_, weights_, bias_, dst_dims_,
-          raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
-          tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
-          padR_) :
-      convolution_forward::compute(src_, weights_, dst_dims_,
-          raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
-          tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
-          padR_);
+  auto comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
+      weights_.get_descriptor(),
+      dst_desc, tensor::dims {cd.strh, cd.strw},
+      tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
 
-    tensor ref_dst(dst_desc);
-    test_convolution_attr_t attr = p.attr;
-    attr.mkldnn_attr_recreate();
-    compute_ref_conv_fwd<float, float, float, float>(
-        cd, attr, src_, weights_, bias_, ref_dst);
+  auto dup = comp;
 
-    compare_tensor<float>(ref_dst, tensor {dst_desc, raw_dst_.get()});
+  // Empty comp it should be
+  convolution_forward::release(key, std::move(comp));
+  EXPECT_TRUE(comp.get() == nullptr);
+  EXPECT_TRUE(comp.need_reorder_input(0) == false);
+  EXPECT_TRUE(comp.need_reorder_input(1) == false);
+
+  // Get back old one
+  auto comp1 = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
+      weights_.get_descriptor(),
+      dst_desc, tensor::dims {cd.strh, cd.strw},
+      tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
+
+  // Should be the same
+  EXPECT_TRUE(dup.get() == comp1.get());
+  EXPECT_TRUE(dup.need_reorder_input(0) == comp1.need_reorder_input(0));
+  EXPECT_TRUE(dup.need_reorder_input(1) == comp1.need_reorder_input(1));
+}
+
+TEST_P(convolution_test, TestCompute) {
+  test_convolution_params_t p =
+    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
+  test_convolution_sizes_t cd = p.sizes;
+
+  auto dst_desc = with_bias_ ?
+    convolution_forward::compute(src_, weights_, bias_, dst_dims_,
+        raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
+        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
+        padR_) :
+    convolution_forward::compute(src_, weights_, dst_dims_,
+        raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
+        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
+        padR_);
+
+  tensor ref_dst(dst_desc);
+  test_convolution_attr_t attr = p.attr;
+  attr.mkldnn_attr_recreate();
+  compute_ref_conv_fwd<float, float, float, float>(
+      cd, attr, src_, weights_, bias_, ref_dst);
+
+  compare_tensor<float>(ref_dst, tensor {dst_desc, raw_dst_.get()});
 }
 
 #define FP32

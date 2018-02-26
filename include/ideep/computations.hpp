@@ -209,9 +209,6 @@ public:
   descriptor_group()
     : c_wrapper_complex() {}
 
-  descriptor_group(size_type num_of_aux)
-    : c_wrapper_complex(num_of_aux) {}
-
   tensor::descriptor expected_descriptor_of(mkldnn::query q
       , int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
@@ -299,9 +296,6 @@ class primitive_group: public c_wrapper_complex<mkldnn_primitive_t> {
 public:
   primitive_group()
     : c_wrapper_complex() {}
-
-  primitive_group(size_type num_of_aux)
-    : c_wrapper_complex(num_of_aux) {}
 
   /// Returns the internal structure of primitive descriptor.
   const_mkldnn_primitive_desc_t get_mkldnn_primitive_desc_t() const {
@@ -430,27 +424,26 @@ struct computation : public primitive_group {
     if (adesc.need_reorder_input(index)) {
       inouts_.at((unsigned)index) = { desc, invalid_buffer };
       // Delay malloc to first execution
-      // direct_inputs_[(unsigned)index].materialize();
+      // primitive_inputs_[(unsigned)index].materialize();
       create_reorder_for(
           (unsigned)index, adesc, inouts_[(unsigned)index],
-          direct_inputs_[(unsigned)index]);
+          primitive_inputs_[(unsigned)index]);
     } else {
-      inouts_.at((unsigned)index) = { direct_inputs_[(unsigned)index] };
+      inouts_.at((unsigned)index) = { primitive_inputs_[(unsigned)index] };
     }
-
   }
 
   inline void init_internal(
       const descriptor_group &adesc, int n_inputs, int n_outputs) {
     // init contents
-    direct_inputs_ = std::vector<param>((unsigned)n_inputs);
+    primitive_inputs_ = std::vector<param>((unsigned)n_inputs);
     inouts_ = std::vector<param>((unsigned)(n_inputs + n_outputs));
 
     mkldnn_primitive_at_t inputs[n_inputs];
     for (int i =0; i < n_inputs; i ++) {
-      direct_inputs_.at((unsigned)i) = {
+      primitive_inputs_.at((unsigned)i) = {
           adesc.expected_input_descriptor(i), invalid_buffer};
-      inputs[i] = { direct_inputs_.at((unsigned)i).get(), 0 };
+      inputs[i] = { primitive_inputs_.at((unsigned)i).get(), 0 };
     }
 
     const_mkldnn_primitive_t outputs[n_outputs];
@@ -487,23 +480,26 @@ struct computation : public primitive_group {
   }
 
   void connect_handle_for(int index, const param& atensor) {
-    if ((unsigned)index < direct_inputs_.size()) {
+    if ((unsigned)index < primitive_inputs_.size() &&
+        inouts_[index] != primitive_inputs_[index]) {
+      // Connect inputs
       if (inouts_.at((unsigned)index).get_descriptor()
           == atensor.get_descriptor()) {
         inouts_[(unsigned)index].set_data_handle(atensor.get_data_handle());
-        direct_inputs_[(unsigned)index].materialize();
-      } else if(direct_inputs_.at((unsigned)index).get_descriptor()
+        primitive_inputs_[(unsigned)index].materialize();
+      } else if(primitive_inputs_.at((unsigned)index).get_descriptor()
           == atensor.get_descriptor()) {
         // Destructional move, assume we never change back
-        direct_inputs_[(unsigned)index].dematerialize();
-        direct_inputs_[(unsigned)index].set_data_handle(
+        primitive_inputs_[(unsigned)index].dematerialize();
+        primitive_inputs_[(unsigned)index].set_data_handle(
             atensor.get_data_handle());
 
         // We throw the reorder away.
-        auxiliaries_.at((unsigned)index).reset(nullptr);
+        auxiliaries_[index].reset(nullptr);
       } else
         throw error(mkldnn_runtime_error, "Cannot accept incompatible input");
     } else {
+      // Connect outputs
       assert(inouts_.at((unsigned)index).get_descriptor()
           == atensor.get_descriptor());
       inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle());
@@ -542,7 +538,7 @@ struct computation : public primitive_group {
 private:
   // outputs after inputs
   std::vector<param> inouts_;
-  std::vector<param> direct_inputs_;
+  std::vector<param> primitive_inputs_;
 };
 
 struct convolution_forward: public computation,
@@ -782,7 +778,6 @@ struct convolution_forward: public computation,
 
     auto comp = fetch_or_create(key, src.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
-
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
         });
@@ -1403,9 +1398,7 @@ public:
 class sum : public computation {
   struct descriptor : public descriptor_group {
     descriptor(const std::vector<float> &scales,
-        const std::vector<tensor::descriptor> &inputs) :
-      descriptor_group(inputs.size())
-    {
+        const std::vector<tensor::descriptor> &inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
@@ -1434,9 +1427,7 @@ public:
 class concat : public computation {
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension,
-        const std::vector<tensor::descriptor> &inputs) :
-      descriptor_group(inputs.size())
-    {
+        const std::vector<tensor::descriptor> &inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(

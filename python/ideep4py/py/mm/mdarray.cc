@@ -24,7 +24,6 @@
 
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include <glog/logging.h>
 #if defined(OPENMP_AFFINITY)
 #include "cpu_info.h"
 #endif
@@ -129,8 +128,8 @@ void g_init() {
   import_array();
 
 #if defined(OPENMP_AFFINITY)
-  google::SetStderrLogging(1);
-  google::InitGoogleLogging("mkldnn");
+  // google::SetStderrLogging(1);
+  // google::InitGoogleLogging("mkldnn");
   OpenMpManager::bindOpenMpThreads();
   OpenMpManager::printVerboseInformation();
 #endif

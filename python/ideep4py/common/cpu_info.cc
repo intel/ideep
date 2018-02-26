@@ -22,13 +22,13 @@
  */
 
 
-#include <glog/logging.h>
 
 #include <fstream>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "logging.h"
 #include "cpu_info.h"
 
 Processor::Processor() {

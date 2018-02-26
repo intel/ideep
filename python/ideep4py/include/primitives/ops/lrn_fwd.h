@@ -26,10 +26,10 @@
 #ifndef _LRN_FWD_H_
 #define _LRN_FWD_H_
 
-#include <glog/logging.h>
 #include <iostream>
 #include <mkldnn.hpp>
 #include <vector>
+#include "logging.h"
 #include "op.h"
 
 template <typename T>

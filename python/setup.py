@@ -98,7 +98,7 @@ libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
 
 if system() == 'Linux':
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
-    libraries += ['glog', 'm']
+    libraries += ['m']
     src = ['ideep4py/py/ideep4py.i',
            # 'ideep4py/py/dlcp/dlcp_py.cc',
            'ideep4py/mm/mem.cc',

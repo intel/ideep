@@ -22,7 +22,6 @@
  */
 
 
-#include <glog/logging.h>
 #include <iostream>
 #include "mkldnn.hpp"
 #include "eltwise_bwd.h"

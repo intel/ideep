@@ -114,6 +114,7 @@ TEST_P(convolution_test, TestManipulation) {
       tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
 
   // Should be the same
+  EXPECT_TRUE(dup == comp1);
   EXPECT_TRUE(dup.get() == comp1.get());
   EXPECT_TRUE(dup.need_reorder_input(0) == comp1.need_reorder_input(0));
   EXPECT_TRUE(dup.need_reorder_input(1) == comp1.need_reorder_input(1));

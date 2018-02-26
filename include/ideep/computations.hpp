@@ -844,7 +844,8 @@ struct convolution_forward: public computation,
   }
 };
 
-struct convolution_backward_data : public computation {
+struct convolution_backward_data : public computation,
+  public utils::computation_cache<convolution_backward_data> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &grady_desc,
         const tensor::descriptor &weights_desc,
@@ -919,6 +920,13 @@ public:
   using computation::computation;
   using computation::expected_gradx_descriptor;
 
+  convolution_backward_data () = default;
+
+  template <typename T, typename ...Ts>
+  convolution_backward_data (T arg, Ts&&... args) {
+    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+  }
+
   template<typename ...Ts>
   void init(const tensor::descriptor &grady_desc,
       const tensor::descriptor &weights_desc,
@@ -928,8 +936,61 @@ public:
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
   }
 
-  void execute(const tensor& src, const tensor&weights, const tensor& dst) {
-    computation::execute(src, weights, dst);
+  void execute(const tensor& grady, const tensor& weights,
+      const tensor& gradx) {
+    computation::execute(grady, weights, gradx);
+  }
+
+  template <typename ...Ts>
+  static tensor::descriptor compute_impl(const tensor& grady,
+      const tensor& weights, const tensor::dims& gradx_dims, void *result,
+      Ts&&... args) {
+    tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        weights.get_dims(), gradx_dims, args...);
+
+    auto comp = fetch_or_create(key, grady.get_descriptor(),
+        weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    // XXX: Performance evaluation
+    // TODO: Custom allocator support
+    auto grady_in = grady;
+    auto weights_in = weights;
+    if (grady.get_descriptor() != comp.expected_src_descriptor()) {
+      grady_in.init(comp.expected_src_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init(comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor gradx(comp.expected_gradx_descriptor(), result);
+    comp.execute(grady_in, weights_in, gradx);
+    return comp.expected_gradx_descriptor();
+  }
+
+  static tensor::descriptor compute(const tensor& grady, const tensor& weights,
+      const tensor::dims& gradx_dims, void *result, const tensor::dims strides,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(grady, weights, gradx_dims, result, strides, padding_l,
+        padding_r, aalgorithm, apadding_kind);
+  }
+
+  static tensor::descriptor compute(const tensor& grady, const tensor& weights,
+      const tensor::dims& gradx_dims, void *result, const tensor::dims strides,
+      const tensor::dims dilates, const tensor::dims padding_l,
+      const tensor::dims padding_r,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(grady, weights, gradx_dims, result, strides, dilates,
+        padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };
 
@@ -1070,9 +1131,15 @@ struct convolution_backward_weights : public computation {
     convolution_forward::descriptor hint_;
   };
 public:
-  using computation::computation;
   using computation::expected_gradw_descriptor;
   using computation::expected_gradb_descriptor;
+
+  convolution_backward_weights () = default;
+
+  template <typename T, typename ...Ts>
+  convolution_backward_weights (T arg, Ts&&... args) {
+    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+  }
 
   template <typename ...Ts>
   void init(const tensor::descriptor &x_desc,
@@ -1081,6 +1148,126 @@ public:
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc,
         std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
+  }
+
+  void execute(const tensor& src, const tensor& grady, const tensor& gradw,
+      const tensor& grad_bias) {
+    computation::execute(src, grady, gradw, grad_bias);
+  }
+
+  void execute(const tensor& src, const tensor& grady, const tensor& gradw) {
+    computation::execute(src, grady, gradw);
+  }
+
+  template <typename ...Ts>
+  static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
+      const tensor::dims& gradw_dims, void *gradw_r, void *gbias_r,
+      Ts&&... args) {
+    tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
+    tensor::descriptor gradb_desc(
+        tensor::dims {gradw_dims[0]}, src.get_data_type());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        grady.get_dims(), gradw_dims, args...);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        grady.get_descriptor(), gradw_desc, gradb_desc,
+        std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    // XXX: Performance evaluation
+    // TODO: Custom allocator support
+    auto src_in = src;
+    auto grady_in = grady;
+    if (src_in.get_descriptor() != comp.expected_weights_descriptor()) {
+      src_in.init(comp.expected_weights_descriptor());
+      reorder::compute(src, src_in);
+    }
+    if (grady.get_descriptor() != comp.expected_src_descriptor()) {
+      grady_in.init(comp.expected_src_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    tensor gradw(comp.expected_gradx_descriptor(), gradw_r);
+    tensor gbias(comp.expected_gradb_descriptor(), gbias_r);
+    comp.execute(src_in, grady_in, gradw, gbias);
+    return comp.expected_gradw_descriptor();
+  }
+
+  template <typename ...Ts>
+  static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
+      const tensor::dims& gradw_dims, void *gradw_r, Ts&&... args) {
+    tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        grady.get_dims(), gradw_dims, args...);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    // XXX: Performance evaluation
+    // TODO: Custom allocator support
+    auto src_in = src;
+    auto grady_in = grady;
+    if (src_in.get_descriptor() != comp.expected_weights_descriptor()) {
+      src_in.init(comp.expected_weights_descriptor());
+      reorder::compute(src, src_in);
+    }
+    if (grady.get_descriptor() != comp.expected_src_descriptor()) {
+      grady_in.init(comp.expected_src_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    tensor gradw(comp.expected_gradx_descriptor(), gradw_r);
+    comp.execute(src_in, grady_in, gradw);
+    return comp.expected_gradw_descriptor();
+  }
+
+  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+      const tensor::dims& gradw_dims, void *gradw_r,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(src, grady, gradw_dims, gradw_r, strides, dilates,
+        padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
+  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+      const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(src, grady, gradw_dims, gradw_r, gradb_r, strides,
+        dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
+  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+      const tensor::dims& gradw_dims, void *gradw_r,
+      const tensor::dims strides, const tensor::dims padding_l,
+      const tensor::dims padding_r,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(src, grady, gradw_dims, gradw_r, strides,
+        padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
+  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+      const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
+      const tensor::dims strides, const tensor::dims padding_l,
+      const tensor::dims padding_r,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(src, grady, gradw_dims, gradw_r, gradb_r, strides,
+        padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };
 

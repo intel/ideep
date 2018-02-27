@@ -214,6 +214,89 @@ void compute_ref_conv_bwd_data(const test_convolution_sizes_t &c,
 }
 
 template <typename data_t>
+void compute_ref_conv_bwd_bias(const test_convolution_sizes_t &c,
+        const tensor& diff_dst, const tensor& diff_bias)
+{
+  data_t *diff_bias_data = (data_t *)diff_bias.get_data_handle();
+  data_t *diff_dst_data = (data_t *)diff_dst.get_data_handle();
+
+  const auto *bias_d = diff_bias.get_mkldnn_memory_desc_t();
+  const auto *dst_d = diff_dst.get_mkldnn_memory_desc_t();
+
+# pragma omp parallel for collapse(2) schedule(static)
+  for (int g = 0; g < c.ng; ++g) {
+    for (int oc = 0; oc < c.oc / c.ng; ++oc) {
+      int bidx = g * c.oc / c.ng + oc;
+      diff_bias_data[map_index(bias_d, bidx)] = 0.0;
+      for (int mb = 0; mb < c.mb; ++mb) {
+        for (int oh = 0; oh < c.oh; ++oh) {
+          for (int ow = 0; ow < c.ow; ++ow) {
+            int oidx = mb * c.oc * c.oh * c.ow
+                    + g * c.oc / c.ng * c.oh * c.ow
+                    + oc * c.oh * c.ow + oh * c.ow + ow;
+            diff_bias_data[map_index(bias_d, bidx)]
+                += diff_dst_data[map_index(dst_d, oidx)];
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
+        const tensor& src, const tensor& diff_dst, const tensor& diff_weights)
+{
+  data_t *src_data = (data_t *)src.get_data_handle();
+  data_t *diff_weights_data = (data_t *)diff_weights.get_data_handle();
+  data_t *diff_dst_data = (data_t *)diff_dst.get_data_handle();
+
+  const auto *src_d = src.get_mkldnn_memory_desc_t();
+  const auto *weights_d = diff_weights.get_mkldnn_memory_desc_t();
+  const auto *dst_d = diff_dst.get_mkldnn_memory_desc_t();
+
+# pragma omp parallel for collapse(5) schedule(static)
+  for (int g = 0; g < c.ng; ++g) {
+    for (int oc = 0; oc < c.oc / c.ng; oc++) {
+      for (int ic = 0; ic < c.ic / c.ng; ++ic) {
+        for (int kh = 0; kh < c.kh; kh++) {
+          for (int kw = 0; kw < c.kw; kw++) {
+            int widx = g * c.oc / c.ng * c.ic / c.ng * c.kh * c.kw
+              + oc * c.ic / c.ng * c.kh * c.kw
+              + ic * c.kh * c.kw + kh * c.kw + kw;
+            diff_weights_data[map_index(weights_d, widx)] = 0.0;
+            for (int mb = 0; mb < c.mb; ++mb) {
+              for (int oh = 0; oh < c.oh; ++oh) {
+                for (int ow = 0; ow < c.ow; ++ow) {
+                  if (ow*c.strw + kw * (1 + c.dilw) < c.padw ||
+                      oh*c.strh + kh * (1 + c.dilh) < c.padh ||
+                      ow*c.strw + kw * (1 + c.dilw) >= c.iw + c.padw ||
+                      oh*c.strh + kh * (1 + c.dilh)>= c.ih + c.padh)
+                      continue;
+
+                  int ih = oh * c.strh - c.padh + kh * (1 + c.dilh);
+                  int iw = ow * c.strw - c.padw + kw * (1 + c.dilw);
+                  int sidx = mb * c.ic * c.ih * c.iw
+                    + g * c.ic / c.ng * c.ih * c.iw
+                    + ic * c.ih * c.iw + ih * c.iw + iw;
+                  int didx = mb * c.oc * c.oh * c.ow
+                    + g * c.oc / c.ng * c.oh * c.ow
+                    + oc * c.oh * c.ow + oh * c.ow + ow;
+
+                  diff_weights_data[map_index(weights_d, widx)]
+                    += src_data[map_index(src_d, sidx)]
+                    * diff_dst_data[map_index(dst_d, didx)];
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
 static void compare_tensor(const tensor& ref, const tensor& dst) {
   ASSERT_TRUE(data_traits<data_t>::data_type == mkldnn::memory::data_type::f32 ||
       data_traits<data_t>::data_type == mkldnn::memory::data_type::s32);

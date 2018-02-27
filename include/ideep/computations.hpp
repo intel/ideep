@@ -62,7 +62,7 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     }
   };
 
-  reorder() {}
+  reorder() = default;
 
   void init(const tensor::descriptor& src_desc,
       const tensor::descriptor& dst_desc) {
@@ -1166,10 +1166,10 @@ public:
       Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
     tensor::descriptor gradb_desc(
-        tensor::dims {gradw_dims[0]}, src.get_data_type());
+        tensor::dims {grady.get_dim(1)}, src.get_data_type());
 
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        grady.get_dims(), gradw_dims, args...);
+        grady.get_dims(), gradw_dims, grady.get_dim(1), args...);
 
     auto comp = fetch_or_create(key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, gradb_desc,

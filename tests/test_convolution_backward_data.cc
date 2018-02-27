@@ -21,9 +21,6 @@ protected:
     auto data_type_grady = data_traits<data_t_grady>::data_type;
     auto data_type_w = data_traits<data_t_w>::data_type;
 
-    tensor::descriptor src_desc({cd.mb, cd.ic, cd.ih, cd.iw}, data_type_gradx,
-        static_cast<format>(p.formats.src_format));
-
     auto weights_desc = cd.ng > 1 ? tensor::descriptor (
         {cd.ng, cd.oc/cd.ng, cd.ic/cd.ng, cd.kh, cd.kw}, data_type_w,
         static_cast<format>(p.formats.weights_format)) :

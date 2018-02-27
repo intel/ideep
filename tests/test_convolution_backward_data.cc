@@ -37,6 +37,14 @@ protected:
     weights_.init(weights_desc);
     grady_.init(grady_desc);
 
+    fill_data<data_t_w>(
+        weights_.get_size() / sizeof(data_t_w),
+        reinterpret_cast<data_t_w *>(weights_.get_data_handle()));
+
+    fill_data<data_t_grady>(
+        grady_.get_size() / sizeof(data_t_grady),
+        reinterpret_cast<data_t_grady *>(grady_.get_data_handle()));
+
     padR_ = {cd.padh, cd.padw};
     for (int i = 0; i < 2; ++i) {
       if ((cd.ih - ((cd.kh - 1) * (cd.dilh + 1) + 1) + cd.padh + padR_[0])

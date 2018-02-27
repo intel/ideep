@@ -943,7 +943,7 @@ public:
 
   template <typename ...Ts>
   static tensor::descriptor compute_impl(const tensor& grady,
-      const tensor& weights, const tensor::dims& gradx_dims, void *result,
+      const tensor& weights, const tensor::dims& gradx_dims, void *gradx_r,
       Ts&&... args) {
     tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
@@ -969,7 +969,7 @@ public:
       reorder::compute(weights, weights_in);
     }
 
-    tensor gradx(comp.expected_gradx_descriptor(), result);
+    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
     comp.execute(grady_in, weights_in, gradx);
     return comp.expected_gradx_descriptor();
   }

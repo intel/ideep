@@ -242,7 +242,8 @@ static void compare_tensor(const tensor& ref, const tensor& dst) {
       data_t diff = got - ref;
       data_t e = (std::abs(ref) > (data_t)1e-4) ? diff / ref : diff;
       EXPECT_NEAR(e, (data_t)0.0, (data_t)1e-4)
-        << "Index: " << i << " Total: " << num;
+        << "Ref: " << ref << " GOT: " << got
+        << " Index: " << i << " Total: " << num;
     } else {
       EXPECT_EQ(ref, got) << "Index: " << i << " Total: " << num;
     }

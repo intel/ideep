@@ -1509,7 +1509,8 @@ public:
   }
 };
 
-struct eltwise_forward : public computation {
+struct eltwise_forward : public computation,
+  public utils::computation_cache<eltwise_forward> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         float alpha = 0.0, float beta = 0.0,
@@ -1541,9 +1542,40 @@ public:
     computation::init(forward_descriptor, x_desc);
   }
 
+  eltwise_forward() = default;
+
+  template <typename T, typename ...Ts>
+  eltwise_forward(T arg, Ts&&... args) {
+    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+  }
+
   void execute(const tensor& x, const tensor& y) {
     computation::execute(x, y);
   }
+
+  template<typename ...Ts>
+  static tensor::descriptor compute_impl(const tensor& src,
+      void *result, Ts&&... args) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(), src.get_internal_format(), args...);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(), std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor dst(src.get_descriptor(), result);
+    comp.execute(src, dst);
+    return dst.get_descriptor();
+  }
+
+  static tensor::descriptor compute(const tensor &src, void *result,
+      algorithm aalogorithm = algorithm::eltwise_relu,
+      prop_kind aprop_kind = prop_kind::forward,
+      float alpha = 0.0, float beta = 0.0) {
+    return compute_impl(src, result, alpha, beta, aalogorithm, aprop_kind);
+  }
+
 };
 
 struct eltwise_backward : public computation {

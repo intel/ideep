@@ -30,3 +30,10 @@ class TestAccSum(unittest.TestCase):
         mx = ideep4py.basic_acc_sum((mx1, mx2, mx3, mx4))
         # mx = numpy.asarray(mx)
         numpy.testing.assert_allclose(mx, x, **self.check_options)
+
+    def test_multi_add(self):
+        mx1 = ideep4py.mdarray(self.x1)
+        mx2 = ideep4py.mdarray(self.x2)
+        x = self.x1 + self.x2 + self.x3 + self.x4
+        mx = ideep4py.multi_add((mx1, mx2, self.x3, self.x4))
+        numpy.testing.assert_allclose(mx, x, **self.check_options)

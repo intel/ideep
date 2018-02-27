@@ -76,8 +76,7 @@ def check_ndim(inputs, supported_ndim=(2, 4)):
 
 
 def check_type(inputs):
-    if isinstance(inputs[0], numpy.ndarray) or \
-            isinstance(inputs[0], mdarray):
+    if isinstance(inputs[0], (numpy.ndarray, mdarray)):
         _should_use_ideep = True
 
         for x in inputs:
@@ -175,6 +174,12 @@ def tanh(x):
     else:
         y = numpy.tanh(x)
 
+    return y
+
+
+def multi_add(xs):
+    xs = tuple([array(x) for x in xs])
+    y = basic_acc_sum(xs)
     return y
 
 

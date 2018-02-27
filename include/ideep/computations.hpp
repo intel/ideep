@@ -890,7 +890,7 @@ struct convolution_backward_data : public computation,
         algorithm aalgorithm = algorithm::convolution_direct,
         const padding_kind apadding_kind = padding_kind::zero)
       : hint_(gradx_desc, weights_desc, grady_desc,
-          strides, padding_l, padding_r)  {
+          strides, dilates, padding_l, padding_r)  {
       mkldnn::memory::validate_dims(strides);
       mkldnn::memory::validate_dims(dilates);
       mkldnn::memory::validate_dims(padding_l);

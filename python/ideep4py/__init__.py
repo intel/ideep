@@ -76,7 +76,8 @@ def check_ndim(inputs, supported_ndim=(2, 4)):
 
 
 def check_type(inputs):
-    if isinstance(inputs[0], numpy.ndarray):
+    if isinstance(inputs[0], numpy.ndarray) or \
+            isinstance(inputs[0], mdarray):
         _should_use_ideep = True
 
         for x in inputs:

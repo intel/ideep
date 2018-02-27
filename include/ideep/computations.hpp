@@ -1575,12 +1575,12 @@ public:
       float alpha = 0.0, float beta = 0.0) {
     return compute_impl(src, result, alpha, beta, aalogorithm, aprop_kind);
   }
-
 };
 
-struct eltwise_backward : public computation {
+struct eltwise_backward : public computation,
+  public utils::computation_cache<eltwise_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &gradx_desc,
+    descriptor(const tensor::descriptor &grady_desc,
         const tensor::descriptor &x_desc,
         float alpha = 0.0, float beta = 0.0,
         algorithm alg_kind = algorithm::eltwise_relu)
@@ -1588,7 +1588,7 @@ struct eltwise_backward : public computation {
       mkldnn_eltwise_desc_t data;
       error::wrap_c_api(mkldnn_eltwise_backward_desc_init(&data,
             mkldnn::convert_to_c(alg_kind),
-            gradx_desc.get_mkldnn_memory_desc_t(),
+            grady_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(),
             static_cast<float>(alpha),
             static_cast<float>(beta)),
@@ -1607,15 +1607,47 @@ public:
   using computation::expected_gradx_descriptor;
 
   template <typename ...Ts>
-  void init(const tensor::descriptor &gradx_desc,
+  void init(const tensor::descriptor &grady_desc,
       const tensor::descriptor &x_desc, Ts&&... args) {
     descriptor backward_descriptor(
-        gradx_desc, x_desc, std::forward<Ts>(args)...);
-    computation::init(backward_descriptor, gradx_desc, x_desc);
+        grady_desc, x_desc, std::forward<Ts>(args)...);
+    computation::init(backward_descriptor, grady_desc, x_desc);
+  }
+
+  eltwise_backward() = default;
+
+  template <typename T, typename ...Ts>
+  eltwise_backward(T grady_desc, T src_desc, Ts&&... args) {
+    init(std::forward<T>(grady_desc), std::forward<T>(src_desc),
+        std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &x, const tensor& grady, const tensor& gradx) {
     computation::execute(x, grady, gradx);
+  }
+
+  template<typename ...Ts>
+  static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
+      void *result, Ts&&... args) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), grady.get_internal_format(), args...);
+
+    auto comp = fetch_or_create(key, grady.get_descriptor(),
+        src.get_descriptor(), std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor gradx(comp.expected_gradx_descriptor(), result);
+    comp.execute(src, grady, gradx);
+    return gradx.get_descriptor();
+  }
+
+  static tensor::descriptor compute(const tensor &src, const tensor &grady,
+      void *result, algorithm aalogorithm = algorithm::eltwise_relu,
+      float alpha = 0.0, float beta = 0.0) {
+    return compute_impl(src, grady, result, alpha, beta, aalogorithm);
   }
 };
 

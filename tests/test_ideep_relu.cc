@@ -35,28 +35,65 @@ void check_relu_fwd(data_t negative_slope, const tensor &src, const tensor &dst)
 }
 
 template <typename data_t>
+void check_relu_bwd(data_t negative_slope, const tensor &src, const tensor &grady, const tensor &gradx)
+{
+  data_t *src_data = (data_t *)src.get_data_handle();
+  data_t *grady_data = (data_t *)grady.get_data_handle();
+  data_t *gradx_data = (data_t *)gradx.get_data_handle();
+
+  const mkldnn::memory::desc src_d =
+      mkldnn::memory::desc(*src.get_mkldnn_memory_desc_t());
+  const mkldnn::memory::desc gradx_d =
+      mkldnn::memory::desc(*gradx.get_mkldnn_memory_desc_t());
+
+  ASSERT_EQ(src.ndims(), 4);
+  ASSERT_EQ(grady.ndims(), 4);
+  ASSERT_EQ(src.get_data_type(), mkldnn::memory::data_type::f32);
+  ASSERT_EQ(grady.get_data_type(), mkldnn::memory::data_type::f32);
+
+  for (size_t i = 0; i < src.get_size() / sizeof(data_t); ++i) {
+    data_t ref_x = src_data[map_index(src_d, i)];
+    data_t ref_gy = grady_data[map_index(gradx_d, i)];
+    data_t ref_gx = ref_gy * ((ref_x > 0) ? data_t{1} : negative_slope);
+    EXPECT_NEAR(gradx_data[map_index(gradx_d, i)], ref_gx, 1.e-7);
+  }
+}
+
+template <typename data_t>
 class relu_tests:
   public ::testing::TestWithParam<relu_test_params<data_t>> {
 private:
   tensor src_;
+  tensor grady_;
   std::unique_ptr<char> raw_dst_;
+  std::unique_ptr<char> raw_gradx_;
 
 protected:
   virtual void SetUp() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor::descriptor src_desc(static_cast<tensor::dims>(p.dims),
         data_traits<data_t>::data_type, static_cast<format>(p.data_format));
+    tensor::descriptor grady_desc(static_cast<tensor::dims>(p.dims),
+        data_traits<data_t>::data_type, static_cast<format>(p.diff_format));
 
     src_.init(src_desc);
+    grady_.init(grady_desc);
 
     fill_data<data_t>(
         src_.get_size() / sizeof(data_t),
         reinterpret_cast<data_t *>(src_.get_data_handle()),
         data_t(0), data_t(1));
 
+    fill_data<data_t>(
+        grady_.get_size() / sizeof(data_t),
+        reinterpret_cast<data_t *>(grady_.get_data_handle()),
+        data_t(0), data_t(1));
+
     raw_dst_.reset(new char [src_.get_size()]);
+    raw_gradx_.reset(new char [src_.get_size()]);
 
     Forward();
+    Backward();
   }
 
   void Forward() {
@@ -71,6 +108,20 @@ protected:
       return;
 
     check_relu_fwd(p.negative_slope, src_, {dst_desc, raw_dst_.get()});
+  }
+
+  void Backward() {
+    auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
+    tensor::descriptor gradx_desc;
+    auto test = [&]() {
+      gradx_desc = eltwise_backward::compute(src_, grady_, raw_gradx_.get(),
+          algorithm::eltwise_relu, p.negative_slope, 0.0);
+    };
+
+    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+      return;
+
+    check_relu_bwd(p.negative_slope, src_, grady_, {gradx_desc, raw_gradx_.get()});
   }
 };
 

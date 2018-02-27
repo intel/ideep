@@ -960,8 +960,8 @@ public:
     // TODO: Custom allocator support
     auto grady_in = grady;
     auto weights_in = weights;
-    if (grady.get_descriptor() != comp.expected_src_descriptor()) {
-      grady_in.init(comp.expected_src_descriptor());
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
     if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
@@ -1183,16 +1183,16 @@ public:
     // TODO: Custom allocator support
     auto src_in = src;
     auto grady_in = grady;
-    if (src_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      src_in.init(comp.expected_weights_descriptor());
+    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
-    if (grady.get_descriptor() != comp.expected_src_descriptor()) {
-      grady_in.init(comp.expected_src_descriptor());
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    tensor gradw(comp.expected_gradx_descriptor(), gradw_r);
+    tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gbias(comp.expected_gradb_descriptor(), gbias_r);
     comp.execute(src_in, grady_in, gradw, gbias);
     return comp.expected_gradw_descriptor();
@@ -1217,16 +1217,16 @@ public:
     // TODO: Custom allocator support
     auto src_in = src;
     auto grady_in = grady;
-    if (src_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      src_in.init(comp.expected_weights_descriptor());
+    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
-    if (grady.get_descriptor() != comp.expected_src_descriptor()) {
-      grady_in.init(comp.expected_src_descriptor());
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    tensor gradw(comp.expected_gradx_descriptor(), gradw_r);
+    tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     comp.execute(src_in, grady_in, gradw);
     return comp.expected_gradw_descriptor();
   }

@@ -994,7 +994,8 @@ public:
   }
 };
 
-struct convolution_backward_weights : public computation {
+struct convolution_backward_weights : public computation,
+  public utils::computation_cache<convolution_backward_weights> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &grady_desc,

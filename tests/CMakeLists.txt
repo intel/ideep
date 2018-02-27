@@ -16,6 +16,7 @@ include_directories(
 file(GLOB __native_test_src
   test_tensor.cc
   test_convolution_forward.cc
+  test_convolution_backward_data.cc
   )
 
 foreach(__test_file ${__native_test_src})

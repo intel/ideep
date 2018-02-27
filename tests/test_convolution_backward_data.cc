@@ -22,15 +22,17 @@ protected:
     auto data_type_w = data_traits<data_t_w>::data_type;
 
     tensor::descriptor src_desc({cd.mb, cd.ic, cd.ih, cd.iw}, data_type_gradx,
-        p.formats.src_format);
+        static_cast<format>(p.formats.src_format));
 
     auto weights_desc = cd.ng > 1 ? tensor::descriptor (
         {cd.ng, cd.oc/cd.ng, cd.ic/cd.ng, cd.kh, cd.kw}, data_type_w,
-        p.formats.weights_format) : tensor::descriptor (
-          {cd.oc, cd.ic, cd.kh, cd.kw }, data_type_w, p.formats.weights_format);
+        static_cast<format>(p.formats.weights_format)) :
+      tensor::descriptor (
+          {cd.oc, cd.ic, cd.kh, cd.kw }, data_type_w,
+          static_cast<format>(p.formats.weights_format));
 
     tensor::descriptor grady_desc({cd.mb, cd.oc, cd.oh, cd.ow}, data_type_grady,
-        p.formats.dst_format);
+        static_cast<format>(p.formats.dst_format));
 
     weights_.init(weights_desc);
     grady_.init(grady_desc);
@@ -71,8 +73,6 @@ TEST_P(convolution_test, TestCompute) {
       padR_);
 
   tensor ref_gradx(gradx_desc);
-  test_convolution_attr_t attr = p.attr;
-  attr.mkldnn_attr_recreate();
   compute_ref_conv_bwd_data<float, float, float, float>(cd, ref_gradx,
       weights_, grady_);
   compare_tensor<float>(ref_gradx, tensor {gradx_desc, raw_gradx_.get()});

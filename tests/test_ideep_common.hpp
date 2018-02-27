@@ -10,6 +10,7 @@ namespace ideep {
 
 INIT_GLOBAL_ENGINE
 
+// Helpers for migrating MKL-DNN test
 inline size_t map_index(const mkldnn_memory_desc_t *md, size_t index) {
   using fmt = mkldnn::memory::format;
   const fmt fwd_weights_g = fmt::gOIhw8i16o2i;
@@ -151,8 +152,69 @@ void compute_ref_conv_fwd(const test_convolution_sizes_t &c,
   }
 }
 
+template <typename data_t_diff_dst, typename data_t_wei,
+          typename data_t_acc, typename data_t_diff_src>
+void compute_ref_conv_bwd_data(const test_convolution_sizes_t &c,
+        const tensor& diff_src, const tensor& weights, const tensor& diff_dst)
+{
+    data_t_diff_dst *diff_dst_data = (data_t_diff_dst *)diff_dst.get_data_handle();
+    data_t_wei *weights_data = (data_t_wei *)weights.get_data_handle();
+    data_t_diff_src *diff_src_data = (data_t_diff_src *)diff_src.get_data_handle();
+
+    const auto *diff_src_d = diff_src.get_mkldnn_memory_desc_t();
+    const auto *weights_d = weights.get_mkldnn_memory_desc_t();
+    const auto *diff_dst_d = diff_dst.get_mkldnn_memory_desc_t();
+
+# pragma omp parallel for collapse(5) schedule(static)
+  for (int mb = 0; mb < c.mb; ++mb) {
+    for (int g = 0; g < c.ng; ++g) {
+      for (int ic = 0; ic < c.ic / c.ng; ++ic) {
+        for (int ih = 0; ih < c.ih; ++ih) {
+          for (int iw = 0; iw < c.iw; ++iw) {
+            int sidx = mb * c.ic * c.ih * c.iw
+                    + g * c.ic / c.ng * c.ih * c.iw
+                    + ic * c.ih * c.iw + ih * c.iw + iw;
+            data_t_acc a = data_t_acc(0);
+            for (int oc = 0; oc < c.oc / c.ng; oc++) {
+              for (int kh = 0; kh < c.kh; kh++) {
+                for (int kw = 0; kw < c.kw; kw++) {
+                  if (iw + c.padw < kw * (1 + c.dilw) ||
+                      ih + c.padh < kh * (1 + c.dilh))
+                    continue;
+                  int ow = iw - kw * (1 + c.dilw) + c.padw;
+                  int oh = ih - kh * (1 + c.dilh) + c.padh;
+                  if (ow % c.strw != 0 || oh % c.strh != 0)
+                    continue;
+                  ow /= c.strw;
+                  oh /= c.strh;
+                  if (oh < c.oh && ow < c.ow) {
+                    int didx = mb * c.oc * c.oh * c.ow
+                      + g * c.oc / c.ng * c.oh * c.ow
+                      + oc * c.oh * c.ow + oh * c.ow
+                      + ow;
+                    int widx = g * c.oc / c.ng * c.ic
+                      / c.ng * c.kh * c.kw
+                      + oc * c.ic / c.ng * c.kh * c.kw
+                      + ic * c.kh * c.kw + kh * c.kw
+                      + kw;
+
+                    a += (data_t_acc)(
+                      diff_dst_data[map_index(diff_dst_d, didx)]
+                      * weights_data[map_index(weights_d, widx)]);
+                  }
+                }
+              }
+            }
+            diff_src_data[map_index(diff_src_d, sidx)] = (data_t_diff_src)a;
+          }
+        }
+      }
+    }
+  }
+}
+
 template <typename data_t>
-static void compare_tensor(const tensor& ref, const tensor &dst) {
+static void compare_tensor(const tensor& ref, const tensor& dst) {
   ASSERT_TRUE(data_traits<data_t>::data_type == mkldnn::memory::data_type::f32 ||
       data_traits<data_t>::data_type == mkldnn::memory::data_type::s32);
 

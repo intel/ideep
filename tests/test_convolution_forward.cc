@@ -69,9 +69,8 @@ protected:
 
     dst_dims_ = {cd.mb, cd.oc, cd.oh, cd.ow};
     auto dst_size = std::accumulate(dst_dims_.begin(), dst_dims_.end(),
-        sizeof(float), std::multiplies<int>());
+        sizeof(data_t_dst), std::multiplies<int>());
     raw_dst_.reset(new char [dst_size]);
-
   }
 
   tensor src_, weights_, bias_;

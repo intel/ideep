@@ -89,7 +89,6 @@ TEST_P(convolution_test, TestCompute) {
   compare_tensor<float>(ref_gradb, tensor {gradb_desc, raw_gradb_.get()});
 }
 
-#define FP32
-#define DIRECTION_BACKWARD_DATA
+#define DIRECTION_BACKWARD_WEIGHTS
 #include "convolution_common.h"
 #include "diluted_convolution.h"

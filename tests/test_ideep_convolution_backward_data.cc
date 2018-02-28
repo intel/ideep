@@ -17,7 +17,6 @@ protected:
     auto p = ::testing::TestWithParam<test_convolution_params_t>::GetParam();
     auto cd = p.sizes;
 
-    auto data_type_gradx = data_traits<data_t_gradx>::data_type;
     auto data_type_grady = data_traits<data_t_grady>::data_type;
     auto data_type_w = data_traits<data_t_w>::data_type;
 

@@ -1330,7 +1330,7 @@ public:
   static tensor compute(const tensor& src, void* dst_r, int local_size,
       float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels,
-      prop_kind aprop_kind = prop_kind::forward) {
+      prop_kind aprop_kind = prop_kind::forward_training) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), local_size, alpha, beta, k,
         aalgorithm, aprop_kind);

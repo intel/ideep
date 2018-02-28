@@ -296,7 +296,7 @@ void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
   }
 }
 
-enum {ACROSS = 1, WITHIN = 1};
+enum {ACROSS = 0, WITHIN = 1};
 
 struct test_lrn_desc_t {
   int mb, c, h, w;

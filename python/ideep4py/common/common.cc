@@ -26,7 +26,6 @@
 #include <cstring>
 #include <iostream>
 #include "mkldnn.hpp"
-#include "logging.h"
 #include "common.h"
 #include "cpu_info.h"
 

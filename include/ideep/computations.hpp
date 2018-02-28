@@ -1282,7 +1282,7 @@ struct lrn_forward : public computation,
   public utils::computation_cache<lrn_forward> {
   struct descriptor : public descriptor_group {
     descriptor (const tensor::descriptor &x_desc,
-        int local_size, float alpha, float beta, float k,
+        int local_size, float alpha, float beta, float k = 1.0,
         algorithm aalgorithm = algorithm::lrn_across_channels,
         prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_lrn_desc_t data;
@@ -1290,23 +1290,6 @@ struct lrn_forward : public computation,
       error::wrap_c_api(mkldnn_lrn_forward_desc_init(&data,
           mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
           src_data, local_size, alpha, beta, k),
-          "could not create a lrn forward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-              &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a lrn forward primitive descriptor");
-      reset(result);
-      // create_reorder_pds({x_desc});
-    }
-    descriptor (const tensor::descriptor &x_desc,
-        int local_size, float alpha, float beta,
-        algorithm aalgorithm = algorithm::lrn_across_channels,
-        prop_kind aprop_kind = prop_kind::forward) {
-      mkldnn_lrn_desc_t data;
-      auto src_data = x_desc.get_mkldnn_memory_desc_t();
-      error::wrap_c_api(mkldnn_lrn_forward_desc_init(&data,
-          mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
-          src_data, local_size, alpha, beta, float(1.0)),
           "could not create a lrn forward descriptor");
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(
@@ -1375,7 +1358,7 @@ struct lrn_backward : public computation {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &gx_desc,
-        int local_size, float alpha, float beta, float k,
+        int local_size, float alpha, float beta, float k = 1.0,
         algorithm aalgorithm = algorithm::lrn_across_channels)
       : hint_(x_desc, local_size, alpha, beta, k) {
       mkldnn_lrn_desc_t data;
@@ -1387,24 +1370,6 @@ struct lrn_backward : public computation {
       error::wrap_c_api(mkldnn_primitive_desc_create(
             &result, &data, engine::cpu_engine().get(),
             hint_.get()),
-          "could not create a backward lrn primitive descriptor");
-      reset(result);
-    }
-
-    descriptor(algorithm aalgorithm,
-        const tensor::descriptor &x_desc,
-        const tensor::descriptor &gx_desc,
-        int local_size, float alpha, float beta)
-      : hint_(x_desc, local_size, alpha, beta) {
-      mkldnn_lrn_desc_t data;
-      error::wrap_c_api(mkldnn_lrn_backward_desc_init(&data,
-          convert_to_c(aalgorithm), gx_desc.get_mkldnn_memory_desc_t(),
-          x_desc.get_mkldnn_memory_desc_t(),
-          local_size, alpha, beta, float(1.0)),
-          "could not create a lrn backward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
           "could not create a backward lrn primitive descriptor");
       reset(result);
     }

@@ -76,7 +76,7 @@ protected:
   tensor src_, weights_, bias_;
   tensor::dims dst_dims_;
   tensor::dims padR_;
-  std::unique_ptr<char> raw_dst_;
+  std::unique_ptr<char []> raw_dst_;
   bool with_bias_;
 };
 

@@ -63,8 +63,8 @@ protected:
   tensor::dims gradw_dims_;
   tensor::dims gradb_dims_;
   tensor::dims padR_;
-  std::unique_ptr<char> raw_gradw_;
-  std::unique_ptr<char> raw_gradb_;
+  std::unique_ptr<char []> raw_gradw_;
+  std::unique_ptr<char []> raw_gradb_;
 };
 
 using convolution_test =

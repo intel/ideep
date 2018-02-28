@@ -705,12 +705,27 @@ public:
     twin_.reset(new tensor(workspace));
   }
 
+  void init_extra(const descriptor &workspace, void *handle) {
+    twin_.reset(new tensor(workspace, handle));
+  }
+
   // for gcc4.8
   tensor() : param() {}
 
   tensor(const descriptor &major, const descriptor &workspace)
     : tensor(major) {
     init_extra(workspace);
+  }
+
+  tensor(const descriptor &major, void *h_major, const descriptor &workspace)
+    : tensor(major, h_major) {
+    init_extra(workspace);
+  }
+
+  tensor(const descriptor &major, void *h_major,
+      const descriptor &workspace, void *h_workspace)
+    : tensor(major, h_major) {
+    init_extra(workspace, h_workspace);
   }
 
   tensor (const tensor& t) : param(t) {
@@ -729,7 +744,6 @@ public:
   }
 protected:
   tensor &operator= (const tensor &) = delete;
-  // tensor(const tensor &) = delete;
   std::unique_ptr<tensor> twin_;
 };
 

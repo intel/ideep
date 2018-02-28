@@ -1278,7 +1278,8 @@ public:
   }
 };
 
-struct lrn_forward : public computation {
+struct lrn_forward : public computation,
+  public utils::computation_cache<lrn_forward> {
   struct descriptor : public descriptor_group {
     descriptor (const tensor::descriptor &x_desc,
         int local_size, float alpha, float beta, float k,
@@ -1316,7 +1317,6 @@ struct lrn_forward : public computation {
     }
   };
 public:
-  using computation::computation;
   using computation::expected_dst_descriptor;
   using computation::expected_workspace_descriptor;
 
@@ -1324,6 +1324,13 @@ public:
   void init(const tensor::descriptor &x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
+  }
+
+  lrn_forward() = default;
+
+  template <typename T, typename ...Ts>
+  lrn_forward(T arg, Ts&&... args) {
+    init(std::forward<T>(arg), std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &src, const tensor& dst, const tensor& workspace) {
@@ -1335,6 +1342,32 @@ public:
       computation::execute(src, dst, dst.get_extra());
     else
       computation::execute(src, dst);
+  }
+
+  static tensor compute(const tensor& src, void* dst_r, int local_size,
+      float alpha, float beta, float k = 1.0,
+      algorithm aalgorithm = algorithm::lrn_across_channels,
+      prop_kind aprop_kind = prop_kind::forward) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), local_size, alpha, beta, k,
+        aalgorithm, aprop_kind);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        local_size, alpha, beta, k, aalgorithm, aprop_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    bool with_workspace = aprop_kind == prop_kind::forward_training;
+
+    // TODO: scratch allocator support
+    tensor dst =  with_workspace ? tensor { comp.expected_dst_descriptor(),
+      dst_r, comp.expected_workspace_descriptor() } :
+        tensor { comp.expected_dst_descriptor(), dst_r };
+
+    comp.execute(src, dst);
+    return dst;
   }
 };
 
@@ -1848,7 +1881,7 @@ public:
   tensor::descriptor expected_mean_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 1);
   }
-  
+
   tensor::descriptor expected_variance_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 2);
   }

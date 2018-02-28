@@ -296,6 +296,90 @@ void compute_ref_conv_bwd_weights(const test_convolution_sizes_t &c,
   }
 }
 
+enum {ACROSS = 1, WITHIN = 1};
+
+struct test_lrn_desc_t {
+  int mb, c, h, w;
+  float alpha, beta, k;
+  int local_size, kind;
+};
+
+struct lrn_fwd_test_params {
+  prop_kind aprop_kind;
+  const engine::kind engine_kind;
+  algorithm aalgorithm;
+  mkldnn::memory::format src_format;
+  mkldnn::memory::format dst_format;
+  test_lrn_desc_t test_ld;
+};
+
+template <typename data_t>
+void check_lrn_fwd(const test_lrn_desc_t &ld, const tensor& src,
+    const tensor& dst) {
+  data_t *src_ptr = (data_t *)src.get_data_handle();
+  data_t *dst_ptr = (data_t *)dst.get_data_handle();
+
+  auto *src_d = src.get_mkldnn_memory_desc_t();
+  auto *dst_d = dst.get_mkldnn_memory_desc_t();
+
+  const int C = ld.c;
+  const int H = ld.h;
+  const int W = ld.w;
+  const int size = ld.local_size;
+  const int CSIZE = ld.kind == ACROSS ? size : 1;
+  const int HWSIZE = size + 1 - CSIZE;
+  const int summands = ld.kind == ACROSS ? size : size*size;
+
+  auto off = [=](int n, int c, int h, int w) {
+    return ((n * ld.c + c) * ld.h + h) * ld.w + w;
+  };
+
+  auto ker = [=](data_t *d, int n, int oc, int oh, int ow) {
+    data_t sum = 0.0;
+    for (int c = oc; c < oc + CSIZE; ++c) {
+      if (c < (CSIZE - 1) / 2)
+        continue;
+      if (c >= C + (CSIZE - 1) / 2)
+        continue;
+      for (int h = oh; h < oh + HWSIZE; ++h) {
+        if (h < (HWSIZE - 1) / 2)
+          continue;
+        if (h >= H + (HWSIZE - 1) / 2)
+          continue;
+        for (int w = ow; w < ow + HWSIZE; ++w) {
+          if (w < (HWSIZE - 1) / 2)
+            continue;
+          if (w >= W + (HWSIZE - 1) / 2)
+            continue;
+          data_t s = src_ptr[map_index(src_d,off(n, c - (CSIZE - 1) / 2,
+                h - (HWSIZE - 1) / 2, w - (HWSIZE - 1) / 2))];
+          sum += s * s;
+        }
+      }
+    }
+    data_t norm_coef = powf(static_cast<float>(ld.k + ld.alpha * sum / summands),
+        static_cast<float>(ld.beta));
+    data_t ref_out = src_ptr[map_index(src_d, off(n, oc, oh, ow))]/norm_coef;
+    data_t eps = static_cast<data_t>(1.e-7f*(2*summands+5));
+    data_t out = d[0];
+    data_t norm_max = std::max(fabs(out), fabs(ref_out));
+    if (norm_max < eps) norm_max = 1.;
+    EXPECT_NEAR(out, ref_out, eps*norm_max);
+  };
+
+  const int N = ld.mb;
+# pragma omp parallel for collapse(4) schedule(static)
+  for (int n = 0; n < N; ++n) {
+    for (int c = 0; c < C; ++c) {
+      for (int h = 0; h < H; ++h) {
+        for (int w = 0; w < W; ++w) {
+          ker(&dst_ptr[map_index(dst_d,off(n, c, h, w))], n, c, h, w);
+        }
+      }
+    }
+  }
+}
+
 template <typename data_t>
 static void compare_tensor(const tensor& ref, const tensor& dst) {
   ASSERT_TRUE(data_traits<data_t>::data_type == mkldnn::memory::data_type::f32 ||

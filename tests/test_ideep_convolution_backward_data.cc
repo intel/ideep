@@ -60,7 +60,7 @@ protected:
   tensor weights_, grady_;
   tensor::dims gradx_dims_;
   tensor::dims padR_;
-  std::unique_ptr<char> raw_gradx_;
+  std::unique_ptr<char []> raw_gradx_;
 };
 
 using convolution_test =

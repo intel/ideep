@@ -1160,9 +1160,15 @@ public:
     computation::execute(src, grady, gradw);
   }
 
-  template <typename ...Ts>
+  /*
+   * This interface require MKL-DNN fixed beyoned
+   * https://github.com/intel/mkl-dnn/commit/86f152b614c947b87633062a182c57775856a348
+   */
+  template <typename V, typename ...Ts,
+           typename = typename std::enable_if<
+             std::is_same<V, void>::value>::type>
   static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, void *gradw_r, void *gbias_r,
+      const tensor::dims& gradw_dims, void *gradw_r, V *gbias_r,
       Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
     tensor::descriptor gradb_desc(

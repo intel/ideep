@@ -1687,14 +1687,16 @@ public:
   }
 };
 
-class sum : public computation {
+class sum : public computation,
+  public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
     descriptor(const std::vector<float> &scales,
-        const std::vector<tensor::descriptor> &inputs) {
+        const std::vector<tensor::descriptor> &inputs,
+        const tensor::descriptor *output = nullptr) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
-              &result, nullptr,
+              &result, output ? output->get_mkldnn_memory_desc_t(): nullptr,
               (int)c_api_inputs.size(),
               &scales[0], &c_api_inputs[0]),
           "could not create a sum primitive descriptor");
@@ -1706,13 +1708,39 @@ public:
   using computation::expected_dst_descriptor;
 
   void init(const std::vector<float> &scales,
-      const std::vector<tensor::descriptor> &inputs) {
-    auto forward_descriptor = descriptor(scales, inputs);
+      const std::vector<tensor::descriptor> &inputs,
+      const tensor::descriptor *output = nullptr) {
+    auto forward_descriptor = descriptor(scales, inputs, output);
     computation::init(forward_descriptor, inputs);
+  }
+
+  sum() = default;
+
+  sum(const std::vector<float> &scales,
+      const std::vector<tensor::descriptor> &inputs_desc,
+      const tensor::descriptor &output_desc) {
+    init(scales, inputs_desc, &output_desc);
   }
 
   void execute(const std::vector<tensor>& inputs, const tensor& output) {
     computation::execute(inputs, output);
+  }
+
+  static void compute_impl(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs, tensor &output) {
+    std::vector<tensor::descriptor> inputs_desc;
+    for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
+        inputs_desc.push_back(in.get_descriptor());
+        });
+
+    auto comp = sum(scales, inputs_desc, output.get_descriptor());
+
+    comp.execute(inputs, output);
+  }
+
+  static void compute(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs, tensor &output) {
+    compute_impl(scales, inputs, output);
   }
 };
 

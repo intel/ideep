@@ -1977,31 +1977,6 @@ public:
     computation::execute(src, mean, variance, grady, weights_, gradx);
   }
 
-  // Move this to utils
-  static inline __m256i size_to_mask(unsigned nres) {
-    assert(nres < 8 && nres > 0);
-    constexpr int on = -1;
-    constexpr int off = 0;
-    switch(nres) {
-    case 1:
-      return _mm256_set_epi32(off, off, off, off, off, off, off, on);
-    case 2:
-      return _mm256_set_epi32(off, off, off, off, off, off, on, on);
-    case 3:
-      return _mm256_set_epi32(off, off, off, off, off, on, on, on);
-    case 4:
-      return _mm256_set_epi32(off, off, off, off, on, on, on, on);
-    case 5:
-      return _mm256_set_epi32(off, off, off, on, on, on, on, on);
-    case 6:
-      return _mm256_set_epi32(off, off, on, on, on, on, on, on);
-    case 7:
-      return _mm256_set_epi32(off, on, on, on, on, on, on, on);
-    default:
-      return _mm256_set_epi32(off, off, off, off, off, off, off, off);
-    }
-  }
-
 private:
   tensor weights_, gradw_;
 };
@@ -2192,6 +2167,48 @@ public:
     computation::execute(x, grady, gradw, gradb);
   }
 };
+
+struct eltwise_binary {
+public:
+  enum eltwise_binary_op {
+    ELTWISE_ADD,
+    ELTWISE_MUL,
+    ELTWISE_DIV,
+  };
+
+  eltwise_binary() = default;
+
+  static void compute(eltwise_binary_op op, tensor &inputA, tensor &inputB,
+      tensor &outputC) {
+    assert(inputA.ndims() >= inputB.ndims());
+    assert(inputA.get_descriptor() == outputC.get_descriptor());
+    if (inputA.get_dims() == inputB.get_dims()) {
+      auto* inputB_data = inputB.get_data_handle();
+      tensor scratch_tensor;
+      if (inputA.get_internal_format() != inputB.get_internal_format()) {
+        scratch_tensor.init(inputA.get_descriptor());
+        reorder::compute(inputB, scratch_tensor);
+        inputB_data = scratch_tensor.get_data_handle();
+      }
+      switch (op) {
+      case ELTWISE_ADD:
+        utils::fast_math<utils::cpu_isa_t::avx2>::add<float>(
+            static_cast<float*>(outputC.get_data_handle()),
+            static_cast<float*>(inputA.get_data_handle()),
+            static_cast<float*>(inputB_data),
+            static_cast<unsigned>(inputA.get_nelems()));
+        return;
+      case ELTWISE_MUL:
+      case ELTWISE_DIV:
+      default:
+        throw error(mkldnn_unimplemented, "Not implemented!");
+      }
+    } else {
+      throw error(mkldnn_runtime_error, "Not implemented!");
+    }
+  }
+};
+
 } // namespace mkldnn
 
 #endif

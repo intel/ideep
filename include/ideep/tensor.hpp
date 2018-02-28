@@ -558,6 +558,12 @@ public:
     return mkldnn_memory_primitive_desc_get_size(get_mkldnn_primitive_desc_t());
   }
 
+  inline dim_t get_nelems() const {
+    const mkldnn_memory_desc_t *mdesc = get_mkldnn_memory_desc_t();
+    return std::accumulate(
+        mdesc->dims, &mdesc->dims[mdesc->ndims], 1, std::multiplies<dim_t>());
+  }
+
   /// Returns a handle of the data contained in the param. On
   /// the CPU engine, this is a pointer to the allocated memory.
   inline void *get_data_handle() const {

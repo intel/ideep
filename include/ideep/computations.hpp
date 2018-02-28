@@ -1718,29 +1718,34 @@ public:
 
   sum(const std::vector<float> &scales,
       const std::vector<tensor::descriptor> &inputs_desc,
-      const tensor::descriptor &output_desc) {
-    init(scales, inputs_desc, &output_desc);
+      const tensor::descriptor *output_desc = nullptr) {
+    init(scales, inputs_desc, output_desc);
   }
 
   void execute(const std::vector<tensor>& inputs, const tensor& output) {
     computation::execute(inputs, output);
   }
 
-  static void compute_impl(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs, tensor &output) {
+  static tensor::descriptor compute_impl(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs, void *raw_out,
+      const tensor::descriptor *out_desc) {
     std::vector<tensor::descriptor> inputs_desc;
     for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
         inputs_desc.push_back(in.get_descriptor());
         });
 
-    auto comp = sum(scales, inputs_desc, output.get_descriptor());
+    auto comp = sum(scales, inputs_desc, out_desc);
+    auto _out_desc = out_desc ? *out_desc :
+        comp.expected_dst_descriptor();
 
-    comp.execute(inputs, output);
+    comp.execute(inputs, tensor(_out_desc, raw_out));
+    return _out_desc;
   }
 
-  static void compute(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs, tensor &output) {
-    compute_impl(scales, inputs, output);
+  static tensor::descriptor compute(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs, void *raw_out,
+      const tensor::descriptor *out_desc = nullptr) {
+    return compute_impl(scales, inputs, raw_out, out_desc);
   }
 };
 

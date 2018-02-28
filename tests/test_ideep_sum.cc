@@ -87,31 +87,46 @@ protected:
       srcs.push_back(src);
     }
 
-    tensor dst;
-    tensor::descriptor dst_desc(static_cast<tensor::dims>(p.dims),
-        data_traits<data_t>::data_type, static_cast<format>(p.dst_format));
-    dst.init(dst_desc);
-    auto test = [&](){
-      // ASSERT_EQ(sum_pd.dst_primitive_desc().desc().data.format,
-      //         dst_desc.data.format);
-      // ASSERT_EQ(sum_pd.dst_primitive_desc().desc().data.ndims,
-      //         dst_desc.data.ndims);
-
-      data_t *dst_data = (data_t *)dst.get_data_handle();
-      const size_t sz = dst.get_size() / sizeof(data_t);
+    // specify dst format
+    tensor dst1;
+    auto test1 = [&](){
+      tensor::descriptor dst_desc(static_cast<tensor::dims>(p.dims),
+          data_traits<data_t>::data_type, static_cast<format>(p.dst_format));
+      dst1.init(dst_desc);
+      data_t *dst_data = (data_t *)dst1.get_data_handle();
+      const size_t sz = dst1.get_size() / sizeof(data_t);
       // overwriting dst to prevent false positives for test cases.
 # pragma parallel for
       for (size_t i = 0; i < sz; i++) {
         dst_data[i] = -32;
       }
 
-      sum::compute(p.scale, srcs, dst);
+      sum::compute(p.scale, srcs, dst_data, &dst_desc);
     };
 
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    // query dst format
+    tensor dst2;
+    auto test2 = [&](){
+      const size_t sz = srcs[0].get_size() / sizeof(data_t);
+      data_t *dst_data = new data_t[sz];
+      // overwriting dst to prevent false positives for test cases.
+# pragma parallel for
+      for (size_t i = 0; i < sz; i++) {
+        dst_data[i] = -32;
+      }
+
+      auto dst_desc = sum::compute(p.scale, srcs, dst_data);
+      dst2.init(dst_desc, dst_data);
+    };
+
+    if (catch_expected_failures(test1, p.expect_to_fail, p.expected_status))
       return;
 
-    check_data(srcs, p.scale, dst);
+    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
+      return;
+
+    check_data(srcs, p.scale, dst1);
+    check_data(srcs, p.scale, dst2);
   }
 };
 

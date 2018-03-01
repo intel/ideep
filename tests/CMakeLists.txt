@@ -20,6 +20,7 @@ file(GLOB __native_test_src
   test_ideep_convolution_backward_weights.cc
   test_ideep_lrn_forward.cc
   test_ideep_relu.cc
+  test_ideep_lrn_backward.cc
   )
 
 foreach(__test_file ${__native_test_src})

@@ -10,11 +10,11 @@ using namespace ideep;
 
 template <typename data_t>
 class lrn_forward_test :
-  public ::testing::TestWithParam<lrn_fwd_test_params> {
+  public ::testing::TestWithParam<lrn_test_params> {
 protected:
   virtual void SetUp() {
-    lrn_fwd_test_params p
-      = ::testing::TestWithParam<lrn_fwd_test_params>::GetParam();
+    lrn_test_params p
+      = ::testing::TestWithParam<lrn_test_params>::GetParam();
 
     auto data_type = data_traits<data_t>::data_type;
     ASSERT_EQ(data_type, mkldnn::memory::data_type::f32);
@@ -43,10 +43,10 @@ protected:
 };
 
 using lrn_forward_test_float = lrn_forward_test<float>;
-using lrn_fwd_test_params_float = lrn_fwd_test_params;
+using lrn_fwd_test_params_float = lrn_test_params;
 
 TEST_P (lrn_forward_test_float, TestsLRN) {
-  auto p = ::testing::TestWithParam<lrn_fwd_test_params>::GetParam();
+  auto p = ::testing::TestWithParam<lrn_test_params>::GetParam();
   auto ld = p.test_ld;
   auto dst = lrn_forward::compute(src_, raw_dst_.get(), ld.local_size, ld.alpha,
       ld.beta, ld.k, p.aalgorithm, p.aprop_kind);

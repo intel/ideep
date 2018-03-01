@@ -304,7 +304,7 @@ struct test_lrn_desc_t {
   int local_size, kind;
 };
 
-struct lrn_fwd_test_params {
+struct lrn_test_params {
   prop_kind aprop_kind;
   const engine::kind engine_kind;
   algorithm aalgorithm;
@@ -374,6 +374,96 @@ void check_lrn_fwd(const test_lrn_desc_t &ld, const tensor& src,
       for (int h = 0; h < H; ++h) {
         for (int w = 0; w < W; ++w) {
           ker(&dst_ptr[map_index(dst_d,off(n, c, h, w))], n, c, h, w);
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void check_lrn_bwd(const lrn_test_params &p, const tensor& src,
+    const tensor& diff_dst, const tensor& diff_src) {
+  data_t *src_ptr = (data_t *)src.get_data_handle();
+  data_t *diff_dst_ptr = (data_t *)diff_dst.get_data_handle();
+  data_t *diff_src_ptr = (data_t *)diff_src.get_data_handle();
+
+  const int MB = p.test_ld.mb;
+  const int C = p.test_ld.c;
+  const int H = p.test_ld.h;
+  const int W = p.test_ld.w;
+  const int local_size = p.test_ld.local_size;
+
+  data_t *ref_diff_src_ptr = new data_t[MB*C*H*W];
+
+  const auto *src_d = src.get_mkldnn_memory_desc_t();
+  const auto *diff_dst_d = diff_dst.get_mkldnn_memory_desc_t();
+  const auto *diff_src_d = diff_src.get_mkldnn_memory_desc_t();
+
+  auto off = [=](int n, int c, int h, int w) {
+    return ((n * C + c) * H + h) * W + w;
+  };
+
+  auto get_omega = [=](data_t c_k, int kernel_size, float alpha, int C,
+      const data_t *src, int n, int c, int h, int w) {
+    data_t sum = 0.0;
+
+    int half_kernel_size = (kernel_size - 1) / 2;
+    int c_start = (c < half_kernel_size) ? 0 : c - half_kernel_size;
+    int c_end = c + kernel_size - half_kernel_size;
+    c_end = c_end < C ? c_end : C;
+    for (int i = c_start; i < c_end; ++i) {
+      data_t value = src[map_index(src_d, off(n, i, h, w))];
+      sum += value * value;
+    }
+    sum *= alpha / kernel_size;
+    return c_k + sum;
+  };
+
+  auto ker = [=](data_t *d, int mb, int oc, int oh, int ow) {
+    const float alpha = p.test_ld.alpha;
+    const float beta = p.test_ld.beta;
+    const float k = p.test_ld.k;
+    const int kernel_size = p.test_ld.local_size;
+    int ks_start = kernel_size/2 > oc ? kernel_size/2 - oc : 0;
+    int ks_stop = C - oc <= kernel_size/2 ?
+      C - oc + kernel_size/2 : kernel_size;
+
+    data_t A = 0, B = 0, omega_mid = 0;
+
+    for (int ks = ks_start; ks < ks_stop; ks++) {
+      int _t = oc + ks - (kernel_size/2);
+      data_t omega = get_omega(static_cast<data_t>(k), kernel_size, alpha, C,
+              src_ptr, mb, _t, oh, ow);
+
+      if (ks == kernel_size/2) omega_mid = omega;
+
+      data_t t = src_ptr[map_index(src_d, off(mb, _t, oh, ow))]
+        / powf((float)omega, (float)beta);
+      B +=  (1.0f / omega) * t * diff_dst_ptr[
+        map_index(diff_dst_d, off(mb, _t, oh, ow))];
+    }
+
+    A = (1.0f / powf((float)omega_mid, (float)beta))
+        * diff_dst_ptr[map_index(diff_dst_d, off(mb, oc, oh, ow))];
+    B *= src_ptr[map_index(src_d, off(mb, oc, oh, ow))];
+    B *= (2.0f * alpha * beta) / kernel_size;
+    *d = A - B;
+  };
+
+# pragma omp parallel for collapse(4) schedule(static)
+  for (int mb = 0; mb < MB; ++mb) {
+    for (int c = 0; c < C; ++c) {
+      for (int h = 0; h < H; ++h) {
+        for (int w = 0; w < W; ++w) {
+          ker(&ref_diff_src_ptr[map_index(diff_src_d, off(mb, c, h, w))],
+                  mb, c, h, w);
+          auto A = ref_diff_src_ptr[map_index(diff_src_d, off(mb, c, h, w))];
+          auto B = diff_src_ptr[map_index(diff_src_d, off(mb, c, h, w))];
+          data_t eps = static_cast<data_t>(1.e-6*((2*(2*local_size + 3) + 6)
+                *local_size + (2*local_size + 3) + 9) );
+          data_t norm_max = std::max(fabs(A), fabs(B));
+          if (norm_max < eps) norm_max = 1.;
+          EXPECT_NEAR(A, B, eps*norm_max);
         }
       }
     }

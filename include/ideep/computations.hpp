@@ -472,8 +472,7 @@ struct computation : public primitive_group {
 
   template <typename... Ts>
   void init(const descriptor_group &adesc, const Ts&... args) {
-    assert(adesc.num_of_inputs() == sizeof...(args));
-    constexpr auto n_inputs = sizeof...(args);
+    auto n_inputs = adesc.num_of_inputs();
     auto n_outputs = adesc.num_of_outputs();
     init_internal(adesc, n_inputs, n_outputs);
     connect_reorder_for(0, adesc, args...);
@@ -533,6 +532,14 @@ struct computation : public primitive_group {
     connect_handle_for(0, arg0, args...);
     stream parallel_control = stream::default_stream();
     primitive_group::execute(parallel_control);
+  }
+
+  int num_of_inputs() const {
+    return primitive_inputs_.size();
+  }
+
+  int num_of_outputs() const {
+    return inouts_.size() - primitive_inputs_.size();
   }
 
 private:
@@ -688,7 +695,6 @@ struct convolution_forward: public computation,
   };
 
  public:
-  using computation::computation;
   using computation::expected_input_descriptor;
   using computation::expected_dst_descriptor;
   using computation::expected_weights_descriptor;
@@ -722,7 +728,7 @@ struct convolution_forward: public computation,
 
   template <typename T, typename ...Ts>
   convolution_forward(T arg, Ts&&... args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& src, const tensor& weights, const tensor& dst) {
@@ -920,13 +926,6 @@ public:
   using computation::computation;
   using computation::expected_gradx_descriptor;
 
-  convolution_backward_data () = default;
-
-  template <typename T, typename ...Ts>
-  convolution_backward_data (T arg, Ts&&... args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
-  }
-
   template<typename ...Ts>
   void init(const tensor::descriptor &grady_desc,
       const tensor::descriptor &weights_desc,
@@ -934,6 +933,13 @@ public:
     descriptor backward_data_descriptor(grady_desc, weights_desc,
         gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
+  }
+
+  convolution_backward_data () = default;
+
+  template <typename T, typename ...Ts>
+  convolution_backward_data (T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& grady, const tensor& weights,
@@ -1135,13 +1141,6 @@ public:
   using computation::expected_gradw_descriptor;
   using computation::expected_gradb_descriptor;
 
-  convolution_backward_weights () = default;
-
-  template <typename T, typename ...Ts>
-  convolution_backward_weights (T arg, Ts&&... args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
-  }
-
   template <typename ...Ts>
   void init(const tensor::descriptor &x_desc,
       const tensor::descriptor &grady_desc,
@@ -1149,6 +1148,13 @@ public:
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc,
         std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
+  }
+
+  convolution_backward_weights () = default;
+
+  template <typename T, typename ...Ts>
+  convolution_backward_weights (T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& src, const tensor& grady, const tensor& gradw,
@@ -1313,7 +1319,7 @@ public:
 
   template <typename T, typename ...Ts>
   lrn_forward(T arg, Ts&&... args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &src, const tensor& dst, const tensor& workspace) {
@@ -1354,13 +1360,14 @@ public:
   }
 };
 
-struct lrn_backward : public computation {
+struct lrn_backward : public computation,
+ public utils::computation_cache<lrn_backward> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &gx_desc,
         int local_size, float alpha, float beta, float k = 1.0,
         algorithm aalgorithm = algorithm::lrn_across_channels)
-      : hint_(x_desc, local_size, alpha, beta, k) {
+      : hint_(x_desc, local_size, alpha, beta, k, aalgorithm) {
       mkldnn_lrn_desc_t data;
       error::wrap_c_api(mkldnn_lrn_backward_desc_init(&data,
             convert_to_c(aalgorithm), gx_desc.get_mkldnn_memory_desc_t(),
@@ -1378,7 +1385,6 @@ struct lrn_backward : public computation {
     lrn_forward::descriptor hint_;
   };
 public:
-  using computation::computation;
   using computation::expected_gradx_descriptor;
 
   template<typename ...Ts>
@@ -1389,9 +1395,37 @@ public:
     computation::init(backward_data_descriptor, x_desc, grady_desc);
   }
 
+  lrn_backward() = delete;
+
+  template<typename T, typename ...Ts>
+  lrn_backward(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
+  }
+
   void execute(const tensor& x, const tensor& grady, const tensor& y,
       const tensor& gradx) {
-    computation::execute(x, grady, y.get_extra(), gradx);
+    if (num_of_inputs() == 2)
+      computation::execute(x, grady, gradx);
+    else
+      computation::execute(x, grady, y.get_extra(), gradx);
+  }
+
+  static tensor compute(const tensor& x, const tensor& grady, const tensor& y,
+      void* gradx_r, int local_size, float alpha, float beta, float k = 1.0,
+      algorithm aalgorithm = algorithm::lrn_across_channels) {
+    auto key = utils::create_key(x.get_data_type(), x.get_dims(),
+        x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
+
+    auto comp = fetch_or_create(key, x.get_descriptor(),
+        grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
+    comp.execute(x, grady, y, gradx);
+    return gradx;
   }
 };
 
@@ -1622,7 +1656,7 @@ public:
         std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor &x, const tensor& grady, const tensor& gradx) {
+  void execute(const tensor& x, const tensor& grady, const tensor& gradx) {
     computation::execute(x, grady, gradx);
   }
 

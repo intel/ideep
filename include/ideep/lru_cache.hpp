@@ -130,7 +130,7 @@ public:
     return std::make_pair(vlist_.begin(), true);
   }
 
-  iterator erase(const_iterator pos) {
+  iterator erase(iterator pos) {
     auto map_pos = pos->first;
     map_.erase(map_pos);
     return vlist_.erase(pos);

@@ -1328,7 +1328,7 @@ public:
 
   void execute(const tensor &src, tensor& dst) {
     if (dst.has_extra())
-      computation::execute(src, dst, dst.get_extra());
+      computation::execute(src, dst, *dst.get_extra());
     else
       computation::execute(src, dst);
   }
@@ -1407,7 +1407,7 @@ public:
     if (num_of_inputs() == 2)
       computation::execute(x, grady, gradx);
     else
-      computation::execute(x, grady, y.get_extra(), gradx);
+      computation::execute(x, grady, *y.get_extra(), gradx);
   }
 
   static tensor compute(const tensor& x, const tensor& grady, const tensor& y,
@@ -1480,7 +1480,7 @@ public:
 
   void execute(const tensor& src, tensor& dst) {
     if (dst.has_extra())
-      computation::execute(src, dst, dst.get_extra());
+      computation::execute(src, dst, *dst.get_extra());
     else
       computation::execute(src, dst);
   }
@@ -1539,7 +1539,7 @@ public:
   }
 
   void execute(const tensor& grady, const tensor& y, const tensor& gradx) {
-    computation::execute(grady, y.get_extra(), gradx);
+    computation::execute(grady, *y.get_extra(), gradx);
   }
 };
 
@@ -1590,9 +1590,11 @@ public:
   template<typename ...Ts>
   static tensor::descriptor compute_impl(const tensor& src,
       void *result, Ts&&... args) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(), src.get_internal_format(), args...);
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), args...);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(), std::forward<Ts>(args)...);
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        std::forward<Ts>(args)...);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));

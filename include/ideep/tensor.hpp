@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
+#include <cassert>
 #include <ideep/abstract_types.hpp>
 
 namespace ideep {
@@ -177,9 +178,6 @@ public:
       public_format_ = adesc.public_format_;
       return *this;
     }
-
-    // descriptor (descriptor &&) = delete;
-    // descriptor &operator=(descriptor &&) = delete;
 
     /// Returns the number of bytes required to allocate the memory
     /// described including the padding area.
@@ -729,22 +727,38 @@ public:
   }
 
   tensor (const tensor& t) : param(t) {
+    twin_ = t.twin_;
   }
 
-  tensor &get_extra() {
-    return *twin_.get();
+  tensor (tensor&& movable) : param(std::move(movable)) {
+    twin_ = std::move(movable.twin_);
   }
 
-  const tensor &get_extra() const {
-    return *twin_.get();
+  tensor &operator = (const tensor& t) {
+    param::operator = (t);
+    twin_ = t.twin_;
+    return *this;
+  }
+
+  tensor &operator = (tensor&& movable) {
+    param::operator = (std::move(movable));
+    twin_ = std::move(movable.twin_);
+    return *this;
+  }
+
+  tensor *get_extra() {
+    return twin_.get();
+  }
+
+  const tensor *get_extra() const {
+    return twin_.get();
   }
 
   bool has_extra() const {
     return twin_ != nullptr;
   }
 protected:
-  tensor &operator= (const tensor &) = delete;
-  std::unique_ptr<tensor> twin_;
+  std::shared_ptr<tensor> twin_;
 };
 
 }

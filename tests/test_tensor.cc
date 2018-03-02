@@ -25,14 +25,36 @@ protected:
   mkldnn::memory::format aformat_;
 };
 
+// Test construct, move, copy, assignment
 RC_GTEST_FIXTURE_PROP(tensor_tests, TestBasic,
     ()) {
   RC_ASSERT(dims_.size() < 5);
-  param t( tensor::descriptor { dims_, type_ } );
+  param p( tensor::descriptor { dims_, type_ } );
   param empty;
 
-  param dup = t;
-  empty = std::move(t);
+  param dup = p;
+  empty = std::move(p);
+
+  EXPECT_EQ(empty.get(), dup.get());
+  EXPECT_TRUE(p == nullptr);
+  EXPECT_TRUE(empty != nullptr);
+
+  tensor t( tensor::descriptor { dims_, type_ },
+      tensor::descriptor {dims_, type_} );
+
+  tensor dup_t = t;
+  EXPECT_EQ(dup_t.get_extra(), t.get_extra());
+
+  tensor empty_t;
+  empty_t = std::move(t);
+
+  EXPECT_EQ(empty_t.get(), dup_t.get());
+  EXPECT_EQ(empty_t.get_extra(), dup_t.get_extra());
+
+  EXPECT_TRUE(t.get() == nullptr);
+  EXPECT_TRUE(t.get_extra() == nullptr);
+  EXPECT_TRUE(empty_t.get() != nullptr);
+  EXPECT_TRUE(empty_t.get_extra() != nullptr);
 }
 
 // int main() {

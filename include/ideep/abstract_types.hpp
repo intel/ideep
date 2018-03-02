@@ -10,6 +10,7 @@ namespace ideep {
 using error = mkldnn::error;
 
 /// Same class for resource management, except public default constructor
+/// Movable support for better performance
 template <typename T, typename traits = mkldnn::handle_traits<T>>
 class c_wrapper{
 protected:

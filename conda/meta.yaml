@@ -1,0 +1,47 @@
+{% set version = "1.0.3" %}
+
+package:
+  name: ideep4py
+  version: {{ version }}
+
+source:
+  path: ../
+
+build:
+  number: 0
+  skip: True  # [win]
+
+requirements:
+  build:
+    - cmake
+    - git
+    - curl
+    - pcre
+    - setuptools
+    - numpy
+    - gflags
+    - opencv
+    - python
+    - protobuf
+    - six
+    - openssl
+  run:
+    - cmake
+    - git
+    - curl
+    - pcre
+    - setuptools
+    - numpy
+    - gflags
+    - opencv
+    - protobuf
+    - python
+    - six
+    - openssl
+
+test:
+  imports:
+    - ideep4py
+
+about:
+  license: MIT

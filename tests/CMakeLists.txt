@@ -22,6 +22,7 @@ file(GLOB __native_test_src
   test_ideep_lrn_backward.cc
   test_ideep_relu.cc
   test_ideep_sum.cc
+  test_ideep_batch_normalization.cc
   )
 
 foreach(__test_file ${__native_test_src})

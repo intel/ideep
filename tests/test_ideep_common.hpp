@@ -470,6 +470,223 @@ void check_lrn_bwd(const lrn_test_params &p, const tensor& src,
   }
 }
 
+struct test_bnrm_sizes_t {
+  int mb, c, h, w;
+};
+
+struct test_bnrm_formats_t {
+  format data_format;
+  format diff_format;
+};
+
+struct test_bnrm_params_t {
+  mkldnn::engine::kind engine_kind;
+  test_bnrm_formats_t formats;
+  test_bnrm_sizes_t sizes;
+  float eps;
+};
+
+template <typename data_t>
+void check_bnrm_fwd(const test_bnrm_params_t &p,
+        const tensor& src, const tensor& mean, const tensor& variance,
+        const tensor& scale, const tensor& shift, const tensor& dst,
+        unsigned flags, prop_kind pk)
+{
+  const bool use_weights = flags & mkldnn::use_scale_shift;
+  const bool calculate_stats = !(flags & mkldnn::use_global_stats);
+  const bool is_training = (pk == prop_kind::forward_training);
+
+  const data_t *src_data = (const data_t *)src.get_data_handle();
+  const data_t *scale_data = use_weights ?
+    (const data_t *)scale.get_data_handle() : nullptr;
+  const auto *shift_data = use_weights ?
+    reinterpret_cast<const data_t *>(shift.get_data_handle()) : nullptr;
+  const data_t *mean_data = (!calculate_stats || is_training) ?
+         (const data_t *)mean.get_data_handle() : nullptr;
+  const data_t *variance_data = (!calculate_stats || is_training) ?
+         (const data_t *)variance.get_data_handle() : nullptr;
+  const data_t *dst_data = (data_t *)dst.get_data_handle();
+
+  const auto *src_d = src.get_mkldnn_memory_desc_t();
+  const auto* dst_d = dst.get_mkldnn_memory_desc_t();
+
+  test_bnrm_sizes_t bp = p.sizes;
+  data_t eps = static_cast<data_t>(1.e-4 * bp.mb * bp.h * bp.w);
+
+#pragma omp parallel for
+  for (int c = 0; c < bp.c; c++) {
+    data_t ref_mean = calculate_stats ? data_t(0) : mean_data[c];
+    data_t ref_variance = calculate_stats ? data_t(0) : variance_data[c];
+    if (calculate_stats) {
+      for (int n = 0; n < bp.mb; n++)
+      for (int h = 0; h < bp.h; h++)
+          for (int w = 0; w < bp.w; w++) {
+              int sidx = n * bp.c * bp.h * bp.w + c * bp.h * bp.w
+                      + h * bp.w + w;
+          ref_mean += src_data[map_index(src_d, sidx)];
+      }
+      ref_mean /= bp.mb * bp.h * bp.w;
+      if (is_training) {
+          data_t mean_norm_max = std::max(fabs(mean_data[c]), fabs(ref_mean));
+          if (mean_norm_max < eps) mean_norm_max = data_t(1);
+          EXPECT_NEAR((mean_data[c] - ref_mean) / mean_norm_max, 0., eps);
+      }
+
+      for (int n = 0; n < bp.mb; n++)
+      for (int h = 0; h < bp.h; h++)
+          for (int w = 0; w < bp.w; w++) {
+              int sidx = n * bp.c * bp.h * bp.w + c * bp.h * bp.w
+                      + h * bp.w + w;
+              data_t tmp = src_data[map_index(src_d, sidx)] - ref_mean;
+              ref_variance += tmp * tmp;
+          }
+      ref_variance /= bp.mb * bp.h * bp.w;
+      if (is_training) {
+          data_t variance_norm_max = std::max(fabs(variance_data[c]),
+              fabs(ref_variance));
+          if (variance_norm_max < eps) variance_norm_max = data_t(1);
+          EXPECT_NEAR((variance_data[c] - ref_variance) /
+              variance_norm_max, 0., eps);
+      }
+    }
+    data_t ref_sqrt_variance = static_cast<data_t>(sqrt(ref_variance + p.eps));
+    data_t ref_rsqrt_variance = data_t(1) / (ref_sqrt_variance);
+
+    if (use_weights) {
+      auto *scale_d = scale.get_mkldnn_memory_desc_t();
+      auto *shift_d = shift.get_mkldnn_memory_desc_t();
+      for (int n = 0; n < bp.mb; n++)
+      for (int h = 0; h < bp.h; h++)
+      for (int w = 0; w < bp.w; w++) {
+        int sdidx = n * bp.c * bp.h * bp.w + c * bp.h * bp.w
+                + h * bp.w + w;
+        data_t ref_dst = scale_data[map_index(scale_d, c)]
+                * (src_data[map_index(src_d, sdidx)]
+                - ref_mean) * ref_rsqrt_variance
+                + shift_data[map_index(shift_d, bp.c)];
+        data_t out = dst_data[map_index(dst_d, sdidx)];
+        data_t norm_max = std::max(fabs(out), fabs(ref_dst));
+        if (norm_max < 10e-3) norm_max = data_t(1);
+        EXPECT_NEAR((out - ref_dst) / norm_max, 0., eps);
+      }
+    } else {
+      for (int n = 0; n < bp.mb; n++)
+      for (int h = 0; h < bp.h; h++)
+      for (int w = 0; w < bp.w; w++) {
+        int sdidx = n * bp.c * bp.h * bp.w + c * bp.h * bp.w
+                + h * bp.w + w;
+        data_t ref_dst = (src_data[map_index(src_d, sdidx)]
+                - ref_mean) * ref_rsqrt_variance;
+        data_t out = dst_data[map_index(dst_d, sdidx)];
+        data_t norm_max = std::max(fabs(out), fabs(ref_dst));
+        if (norm_max < 10e-3) norm_max = data_t(1);
+        EXPECT_NEAR((out - ref_dst) / norm_max, 0., eps);
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void check_bnrm_bwd(const test_bnrm_params_t &p,
+        const tensor& src, const tensor& diff_dst, const tensor& mean,
+        const tensor& variance, const tensor& scale, const tensor& diff_src,
+        const tensor& diff_scale, const tensor& diff_shift,
+        unsigned flags, prop_kind pk)
+{
+  const bool use_weights = flags & mkldnn::use_scale_shift;
+  const bool calculate_diff_stats = !(flags & mkldnn::omit_stats);
+
+  const data_t *src_data = (const data_t *)src.get_data_handle();
+  const data_t *scale_data = use_weights ?
+    (const data_t *)scale.get_data_handle() : nullptr;
+  const data_t *diff_dst_data = (const data_t *)diff_dst.get_data_handle();
+  const data_t *mean_data = (const data_t *)mean.get_data_handle();
+  const data_t *variance_data = (const data_t *)variance.get_data_handle();
+  const data_t *diff_src_data = (data_t *)diff_src.get_data_handle();
+  const data_t *diff_scale_data = (pk == prop_kind::backward) ?
+          (data_t *)diff_scale.get_data_handle() : nullptr;
+  const auto *diff_shift_data = (pk == prop_kind::backward) ?
+    reinterpret_cast<data_t *>(diff_shift.get_data_handle()) : nullptr;
+
+  const auto* src_d = src.get_mkldnn_memory_desc_t();
+  const auto* diff_dst_d = diff_dst.get_mkldnn_memory_desc_t();
+  const auto* scale_d = scale.get_mkldnn_memory_desc_t();
+  const auto* diff_src_d = diff_src.get_mkldnn_memory_desc_t();
+  const auto* diff_scale_d = diff_scale.get_mkldnn_memory_desc_t();
+  const auto* diff_shift_d = diff_shift.get_mkldnn_memory_desc_t();
+
+  test_bnrm_sizes_t bp = p.sizes;
+
+  const data_t eps = static_cast<data_t>(1.e-4 * bp.mb * bp.h * bp.w);
+
+#pragma omp parallel for
+  for (int c = 0; c < bp.c; c++) {
+    data_t ref_diff_gamma = data_t(0);
+    data_t ref_diff_beta = data_t(0);
+
+    auto v_mean = mean_data[c];
+    auto v_variance = variance_data[c];
+    const data_t sqrt_variance = data_t(1.0 / sqrt(v_variance + p.eps));
+
+    auto gamma = use_weights ? scale_data[map_index(scale_d, c)] : 1;
+
+    for (int n = 0; n < bp.mb; n++)
+    for (int h = 0; h < bp.h; h++)
+    for (int w = 0; w < bp.w; w++) {
+      int sidx = n * bp.c * bp.h * bp.w + c * bp.h * bp.w
+              + h * bp.w + w;
+      ref_diff_gamma += (src_data[map_index(src_d, sidx)] - v_mean)
+          * diff_dst_data[map_index(diff_dst_d, sidx)];
+      ref_diff_beta += diff_dst_data[map_index(diff_dst_d, sidx)];
+    }
+    ref_diff_gamma *= sqrt_variance;
+
+    if (pk == prop_kind::backward) {
+      auto diff_gamma = diff_scale_data[map_index(diff_scale_d, c)];
+      data_t norm_max = std::max(fabs(diff_gamma), fabs(ref_diff_gamma));
+      if (norm_max < 10e-3) norm_max = data_t(1);
+      EXPECT_NEAR((diff_gamma - ref_diff_gamma) / norm_max, 0., eps);
+
+      auto diff_beta = diff_shift_data[map_index(diff_shift_d, bp.c)];
+      norm_max = std::max(fabs(diff_beta), fabs(ref_diff_beta));
+      if (norm_max < 10e-3) norm_max = data_t(1);
+      EXPECT_NEAR((diff_beta - ref_diff_beta) / norm_max, 0., eps);
+    }
+
+    for (int n = 0; n < bp.mb; n++)
+    for (int h = 0; h < bp.h; h++)
+    for (int w = 0; w < bp.w; w++) {
+      int sidx = n * bp.c * bp.h * bp.w + c * bp.h * bp.w + h * bp.w + w;
+      data_t ref_diff_src = diff_dst_data[map_index(diff_dst_d, sidx)];
+      if (calculate_diff_stats) {
+        ref_diff_src -= ref_diff_beta/(bp.mb*bp.h*bp.w)
+        + (src_data[map_index(src_d, sidx)] - v_mean)
+        *ref_diff_gamma*sqrt_variance/(bp.mb*bp.h*bp.w);
+      }
+      ref_diff_src *= gamma*sqrt_variance;
+      data_t out_diff_src = diff_src_data[map_index(diff_src_d, sidx)];
+      data_t norm_max = std::max(fabs(out_diff_src), fabs(ref_diff_src));
+      if (norm_max < eps) norm_max = data_t(1);
+      EXPECT_NEAR((out_diff_src - ref_diff_src) / norm_max, 0., eps);
+    }
+  }
+}
+
+void fill_tensor(tensor& t) {
+  switch (t.get_data_type()) {
+    case tensor::data_type::f32:
+      fill_data<float>(t.get_size() / sizeof(float),
+          reinterpret_cast<float *>(t.get_data_handle()));
+      break;
+    case tensor::data_type::s32:
+      fill_data<int>(t.get_size() / sizeof(float),
+          reinterpret_cast<int *>(t.get_data_handle()));
+      break;
+    default:
+      break;
+  }
+}
+
 template <typename data_t>
 static void compare_tensor(const tensor& ref, const tensor& dst) {
   ASSERT_TRUE(data_traits<data_t>::data_type == mkldnn::memory::data_type::f32 ||

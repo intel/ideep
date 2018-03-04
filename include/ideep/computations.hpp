@@ -1811,7 +1811,6 @@ public:
   }
 };
 
-// TODO: check Inner Product version
 struct batch_norm_forward_base : public computation {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &src_desc, float epsilon,
@@ -1853,7 +1852,8 @@ public:
   }
 };
 
-struct batch_normalization_forward_inference : public batch_norm_forward_base {
+struct batch_normalization_forward_inference : public batch_norm_forward_base,
+  public utils::computation_cache<batch_normalization_forward_inference> {
 public:
   using batch_norm_forward_base::execute;
 
@@ -1869,58 +1869,101 @@ public:
 
 public:
   void init(const tensor::descriptor& src_desc, const tensor::descriptor& scale,
-      const tensor::descriptor& bias, float epsilon,
-      unsigned flags = batch_normalization_flag::use_scale_shift,
-      prop_kind aprop_kind = prop_kind::forward_scoring) {
-    assert(scale.ndims() == 1 && bias.ndims() == 1);
-    descriptor batch_norm_forward(src_desc, epsilon, flags, aprop_kind);
+      const tensor::descriptor& shift, float epsilon) {
+    assert(scale.ndims() == 1 && shift.ndims() == 1);
+    descriptor batch_norm_forward(
+        src_desc, epsilon, batch_normalization_flag::use_scale_shift,
+        prop_kind::forward_scoring);
     weights_.init(batch_norm_forward.expected_weights_descriptor());
     computation::init(batch_norm_forward, src_desc, weights_.get_descriptor());
   }
 
   void init(const tensor::descriptor& src_desc, const tensor::descriptor& mean,
       const tensor::descriptor& variance, const tensor::descriptor& scale,
-      const tensor::descriptor& bias, float epsilon,
-      unsigned flags = batch_normalization_flag::use_global_stats
+      const tensor::descriptor& shift, float epsilon) {
+    assert(scale.ndims() == 1 && shift.ndims() == 1);
+    descriptor batch_norm_forward(src_desc, epsilon,
+        batch_normalization_flag::use_global_stats
         | batch_normalization_flag::use_scale_shift,
-      prop_kind aprop_kind = prop_kind::forward_scoring) {
-    assert(scale.ndims() == 1 && bias.ndims() == 1);
-    descriptor batch_norm_forward(src_desc, epsilon, flags, aprop_kind);
+        prop_kind::forward_scoring);
     weights_.init(batch_norm_forward.expected_weights_descriptor());
     computation::init(
       batch_norm_forward, src_desc, mean, variance, weights_.get_descriptor());
   }
 
+  batch_normalization_forward_inference () = default;
+
+  template <typename T, typename ...Ts>
+  batch_normalization_forward_inference (T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
+  }
+
   /// More functionality in this interface
-  void execute(const tensor& src, const tensor& scale, const tensor& bias,
+  void execute(const tensor& src, const tensor& scale, const tensor& shift,
       const tensor& dst) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(),
         scale.get_data_handle(), scale.get_size());
     std::memcpy((char *)weights_.get_data_handle() + scale.get_size(),
-        bias.get_data_handle(), bias.get_size());
+        shift.get_data_handle(), shift.get_size());
     computation::execute(src, weights_, dst);
   }
 
   /// More functionality in this interface
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
-      const tensor& scale, const tensor& bias,
-      const tensor& dst) {
+      const tensor& scale, const tensor& shift, const tensor& dst) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(),
         scale.get_data_handle(), scale.get_size());
     std::memcpy((char *)weights_.get_data_handle() + scale.get_size(),
-        bias.get_data_handle(), bias.get_size());
+        shift.get_data_handle(), shift.get_size());
     computation::execute(src, mean, variance, weights_, dst);
   }
 
   using computation::expected_dst_descriptor;
 
+  static tensor compute(const tensor& src, const tensor& scale,
+      const tensor& shift, void *dst_r, float epsilon) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), 3, epsilon);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        scale.get_descriptor(), shift.get_descriptor(), epsilon);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    comp.execute(src, scale, shift, dst);
+    return dst;
+  }
+
+  static tensor compute(const tensor& src, const tensor& mean,
+      const tensor& variance, const tensor& scale,
+      const tensor& shift, void *dst_r, float epsilon) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), 5, epsilon);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        mean.get_descriptor(), variance.get_descriptor(),
+        scale.get_descriptor(), shift.get_descriptor(), epsilon);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    comp.execute(src, mean, variance, scale, shift, dst);
+    return dst;
+  }
+
 private:
   param weights_;
 };
 
-struct batch_normalization_forward_training : public batch_norm_forward_base {
+struct batch_normalization_forward_training : public batch_norm_forward_base,
+  public utils::computation_cache<batch_normalization_forward_training> {
   float get_epsilon() const {
     const mkldnn_batch_normalization_desc_t *p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
@@ -1933,16 +1976,23 @@ public:
   using batch_norm_forward_base::execute;
 
   void init(const tensor::descriptor& src_desc, const tensor::descriptor& scale,
-      const tensor::descriptor& bias, float momentum, float epsilon,
-      unsigned flags = batch_normalization_flag::use_scale_shift,
-      prop_kind aprop_kind = prop_kind::forward_training) {
-    assert(scale.ndims() == 1 && bias.ndims() == 1);
-    descriptor batch_norm_forward(src_desc, epsilon, flags, aprop_kind);
+      const tensor::descriptor& shift, float momentum, float epsilon,
+      unsigned flags = batch_normalization_flag::use_scale_shift) {
+    assert(scale.ndims() == 1 && shift.ndims() == 1);
+    descriptor batch_norm_forward(src_desc, epsilon, flags,
+        prop_kind::forward_training);
     weights_.init(batch_norm_forward.expected_weights_descriptor());
     computation::init(batch_norm_forward, src_desc, weights_.get_descriptor());
 
     // We borrown scale and bias for the shape of mean and variance
-    sum_.init({momentum, 1.f - momentum}, {scale, bias});
+    sum_.init({momentum, 1.f - momentum}, {scale, shift});
+  }
+
+  batch_normalization_forward_training () = delete;
+
+  template <typename T, typename... Ts>
+  batch_normalization_forward_training (T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   /// Execute interface for (0, 0)
@@ -1952,18 +2002,18 @@ public:
   }
 
   /// Execute interface for (0, 1)
-  void execute(const tensor& src, const tensor& weights, const tensor&dst,
+  void execute(const tensor& src, const tensor& weights, const tensor& dst,
       const tensor& mean, const tensor& variance) {
     computation::execute(src, weights, dst, mean, variance);
   }
 
-  void execute(const tensor& src, const tensor& scale, const tensor& bias,
+  void execute(const tensor& src, const tensor& scale, const tensor& shift,
       const tensor& dst, const tensor& mean, const tensor& variance) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(),
         scale.get_data_handle(), scale.get_size());
     std::memcpy((char *)weights_.get_data_handle() + scale.get_size(),
-        bias.get_data_handle(), bias.get_size());
+        shift.get_data_handle(), shift.get_size());
     computation::execute(src, weights_, dst, mean, variance);
   }
 
@@ -1990,12 +2040,60 @@ public:
 
   using computation::expected_dst_descriptor;
 
+  tensor compute(const tensor& src, const tensor& scale, const tensor& shift,
+      void *dst_r, void *mean_r, void *variance_r,
+      float momentum, float epsilon) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), epsilon);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    tensor mean(comp.expected_statistic_descriptor(), mean_r);
+    tensor variance(comp.expected_statistic_descriptor(), variance_r);
+
+    comp.execute(src, scale, shift, dst, mean, variance);
+    return dst;
+  }
+
+  static tensor compute(const tensor& src, const tensor& scale,
+      const tensor& shift, void *dst_r, void *mean_r,
+      void *variance_r, void *running_mean_r,
+      void *running_var_r, float momentum, float epsilon) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), epsilon);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    // TODO: Substitue running statistics calculation with lighter version
+    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    tensor mean(comp.expected_statistic_descriptor(), mean_r);
+    tensor variance(comp.expected_statistic_descriptor(), variance_r);
+    tensor running_mean(comp.expected_statistic_descriptor(), running_mean_r);
+    tensor running_var(comp.expected_statistic_descriptor(), running_var_r);
+
+    comp.execute(src, scale, shift, dst, mean, variance);
+    comp.running_statistic(mean, variance, running_mean, running_var);
+    return dst;
+  }
+
 private:
   param weights_;
   sum sum_;
 };
 
-struct batch_normalization_backward : public computation {
+struct batch_normalization_backward : public computation,
+  public utils::computation_cache<batch_normalization_backward> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &gradx_desc,
         const tensor::descriptor &x_desc,
@@ -2074,6 +2172,25 @@ public:
         grady_desc, weights_desc);
   }
 
+  void init(const tensor::descriptor& gradx_desc,
+      const tensor::descriptor& src_desc, float epsilon,
+      unsigned flags = batch_normalization_flag::use_scale_shift,
+      prop_kind aprop_kind=prop_kind::backward) {
+    descriptor batch_norm_backward(gradx_desc, src_desc, epsilon,
+        flags, aprop_kind);
+    auto weights_desc = batch_norm_backward.expected_weights_descriptor();
+    weights_.init(weights_desc);
+    gradw_.init(batch_norm_backward.expected_gradw_descriptor());
+    computation::init(batch_norm_backward, gradx_desc, src_desc);
+  }
+
+  batch_normalization_backward () = delete;
+
+  template <typename T, typename ...Ts>
+  batch_normalization_backward(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
+  }
+
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& grady, const tensor& scale, const tensor& gradx,
       const tensor& gradw) {
@@ -2085,7 +2202,7 @@ public:
 
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& grady, const tensor& scale, const tensor& gradx,
-      const tensor& grad_scale, const tensor& gradb) {
+      const tensor& grad_scale, const tensor& grad_shift) {
     // protect API integraty, should we use solid check instead of assert?
     assert(get_prop_kind() == prop_kind::backward);
     // We can sure that only scale is matter at this place
@@ -2095,9 +2212,9 @@ public:
     computation::execute(src, mean, variance, grady, weights_, gradx, gradw_);
     std::memcpy(grad_scale.get_data_handle(),
         gradw_.get_data_handle(), grad_scale.get_size());
-    std::memcpy(gradb.get_data_handle(),
+    std::memcpy(grad_shift.get_data_handle(),
         (char *)gradw_.get_data_handle() + grad_scale.get_size(),
-        gradb.get_size());
+        grad_shift.get_size());
   }
 
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
@@ -2106,6 +2223,24 @@ public:
     std::memcpy(
         weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
     computation::execute(src, mean, variance, grady, weights_, gradx);
+  }
+
+  static tensor compute(const tensor& src, const tensor& mean,
+      const tensor& variance, const tensor& grady, const tensor& scale,
+      void *gradx_r, void *grad_scale_r, void *grad_shift_r, float epsilon) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), epsilon);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        src.get_descriptor(), epsilon);
+
+    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
+    tensor grad_scale(mean.get_descriptor(), grad_scale_r);
+    tensor grad_shift(mean.get_descriptor(), grad_shift_r);
+    comp.execute(
+        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
+
+    return gradx;
   }
 
 private:

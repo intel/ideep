@@ -490,17 +490,18 @@ template <typename data_t>
 void check_bnrm_fwd(const test_bnrm_params_t &p,
         const tensor& src, const tensor& mean, const tensor& variance,
         const tensor& scale, const tensor& shift, const tensor& dst,
-        unsigned flags, prop_kind pk)
-{
+        unsigned flags, prop_kind pk) {
   const bool use_weights = flags & mkldnn::use_scale_shift;
   const bool calculate_stats = !(flags & mkldnn::use_global_stats);
   const bool is_training = (pk == prop_kind::forward_training);
 
   const data_t *src_data = (const data_t *)src.get_data_handle();
-  const data_t *scale_data = use_weights ?
-    (const data_t *)scale.get_data_handle() : nullptr;
+
+  const auto *scale_data = use_weights ?
+    reinterpret_cast<const data_t *>(scale.get_data_handle()) : nullptr;
   const auto *shift_data = use_weights ?
     reinterpret_cast<const data_t *>(shift.get_data_handle()) : nullptr;
+
   const data_t *mean_data = (!calculate_stats || is_training) ?
          (const data_t *)mean.get_data_handle() : nullptr;
   const data_t *variance_data = (!calculate_stats || is_training) ?
@@ -563,7 +564,7 @@ void check_bnrm_fwd(const test_bnrm_params_t &p,
         data_t ref_dst = scale_data[map_index(scale_d, c)]
                 * (src_data[map_index(src_d, sdidx)]
                 - ref_mean) * ref_rsqrt_variance
-                + shift_data[map_index(shift_d, bp.c)];
+                + shift_data[map_index(shift_d, c)];
         data_t out = dst_data[map_index(dst_d, sdidx)];
         data_t norm_max = std::max(fabs(out), fabs(ref_dst));
         if (norm_max < 10e-3) norm_max = data_t(1);
@@ -603,8 +604,9 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
   const data_t *mean_data = (const data_t *)mean.get_data_handle();
   const data_t *variance_data = (const data_t *)variance.get_data_handle();
   const data_t *diff_src_data = (data_t *)diff_src.get_data_handle();
+
   const data_t *diff_scale_data = (pk == prop_kind::backward) ?
-          (data_t *)diff_scale.get_data_handle() : nullptr;
+    reinterpret_cast<data_t *>(diff_scale.get_data_handle()) : nullptr;
   const auto *diff_shift_data = (pk == prop_kind::backward) ?
     reinterpret_cast<data_t *>(diff_shift.get_data_handle()) : nullptr;
 
@@ -647,7 +649,7 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
       if (norm_max < 10e-3) norm_max = data_t(1);
       EXPECT_NEAR((diff_gamma - ref_diff_gamma) / norm_max, 0., eps);
 
-      auto diff_beta = diff_shift_data[map_index(diff_shift_d, bp.c)];
+      auto diff_beta = diff_shift_data[map_index(diff_shift_d, c)];
       norm_max = std::max(fabs(diff_beta), fabs(ref_diff_beta));
       if (norm_max < 10e-3) norm_max = data_t(1);
       EXPECT_NEAR((diff_beta - ref_diff_beta) / norm_max, 0., eps);

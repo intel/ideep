@@ -422,14 +422,10 @@ struct computation : public primitive_group {
   void connect_reorder_for(int index, const descriptor_group &adesc,
       const tensor::descriptor &desc) {
     if (adesc.need_reorder_input(index)) {
-      inouts_.at((unsigned)index) = { desc, invalid_buffer };
-      // Delay malloc to first execution
-      // primitive_inputs_[(unsigned)index].materialize();
+      inouts_[index] = param { desc, invalid_buffer };
       create_reorder_for(
           (unsigned)index, adesc, inouts_[(unsigned)index],
           primitive_inputs_[(unsigned)index]);
-    } else {
-      inouts_.at((unsigned)index) = { primitive_inputs_[(unsigned)index] };
     }
   }
 
@@ -441,16 +437,18 @@ struct computation : public primitive_group {
 
     mkldnn_primitive_at_t inputs[n_inputs];
     for (int i =0; i < n_inputs; i ++) {
-      primitive_inputs_.at((unsigned)i) = {
-          adesc.expected_input_descriptor(i), invalid_buffer};
-      inputs[i] = { primitive_inputs_.at((unsigned)i).get(), 0 };
+      primitive_inputs_[i] = {
+        adesc.expected_input_descriptor(i), invalid_buffer };
+      // connect real inputs and primitive inputs
+      inouts_[i] = primitive_inputs_[i];
+      inputs[i] = { primitive_inputs_[i].get(), 0 };
     }
 
     const_mkldnn_primitive_t outputs[n_outputs];
     for (int i = 0; i < n_outputs; i ++) {
-      inouts_.at((unsigned)(i + n_inputs)) = {
-        adesc.expected_output_descriptor(i), invalid_buffer};
-      outputs[i] = inouts_.at((unsigned)(i + n_inputs)).get();
+      inouts_[i + n_inputs] = {
+        adesc.expected_output_descriptor(i), invalid_buffer };
+      outputs[i] = inouts_[i + n_inputs].get();
     }
 
     mkldnn_primitive_t result;
@@ -571,7 +569,7 @@ struct convolution_forward: public computation,
       mkldnn_memory_desc_t dst_data = dst_desc.format_any();
 
       error::wrap_c_api(mkldnn_convolution_forward_desc_init(&data,
-                  mkldnn::convert_to_c(aprop_kind), 
+                  mkldnn::convert_to_c(aprop_kind),
                   convert_to_c(aalgorithm),
                   &src_data, &weights_data, &bias_data,
                   &dst_data, &strides[0], &padding_l[0],
@@ -1891,6 +1889,15 @@ public:
       batch_norm_forward, src_desc, mean, variance, weights_.get_descriptor());
   }
 
+  void init(const tensor::descriptor& src_desc, float epsilon,
+      unsigned flag = batch_normalization_flag::use_global_stats |
+      batch_normalization_flag::use_scale_shift) {
+    descriptor batch_norm_forward(
+        src_desc, epsilon, flag, prop_kind::forward_scoring);
+    weights_.init(batch_norm_forward.expected_weights_descriptor());
+    computation::init(batch_norm_forward, src_desc);
+  }
+
   batch_normalization_forward_inference () = default;
 
   template <typename T, typename ...Ts>
@@ -1928,7 +1935,7 @@ public:
         src.get_internal_format(), 3, epsilon);
 
     auto comp = fetch_or_create(key, src.get_descriptor(),
-        scale.get_descriptor(), shift.get_descriptor(), epsilon);
+        batch_normalization_flag::use_scale_shift, epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
@@ -1945,9 +1952,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 5, epsilon);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
-        mean.get_descriptor(), variance.get_descriptor(),
-        scale.get_descriptor(), shift.get_descriptor(), epsilon);
+    auto comp = fetch_or_create(key, src.get_descriptor(), epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
@@ -2026,6 +2031,7 @@ public:
     sum_.execute(inputs_for_var, running_var);
   }
 
+  // TODO: deprecates these two
   tensor::descriptor expected_mean_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 1);
   }
@@ -2034,6 +2040,7 @@ public:
     return expected_descriptor_of(query::dst_pd, 2);
   }
 
+  // TODO: this is good one
   tensor::descriptor expected_statistic_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 1);
   }
@@ -2134,7 +2141,10 @@ public:
   tensor::descriptor expected_grad_scale_descriptor() const {
     return expected_descriptor_of(query::src_pd, 2);
   }
-  tensor::descriptor expected_grad_bias_descriptor() const {
+  tensor::descriptor expected_grad_shift_descriptor() const {
+    return expected_descriptor_of(query::src_pd, 1);
+  }
+  tensor::descriptor expected_statistic_descriptor() const {
     return expected_descriptor_of(query::src_pd, 1);
   }
 

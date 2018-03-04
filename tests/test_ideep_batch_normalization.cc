@@ -44,7 +44,7 @@ protected:
         src_, mean_, variance_, scale_, shift_, raw_dst_.get(), p.eps);
 
     check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
-        batch_normalization_flag::use_scale_shift &
+        batch_normalization_flag::use_scale_shift |
         batch_normalization_flag::use_global_stats,
         prop_kind::forward_inference);
   }
@@ -68,7 +68,7 @@ protected:
     variance_.init(statistic_desc_, raw_var_.get());
 
     check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
-        batch_normalization_flag::use_global_stats,
+        batch_normalization_flag::use_scale_shift,
         prop_kind::forward_training);
   }
 
@@ -91,7 +91,7 @@ protected:
     tensor gshift(statistic_desc_, raw_gshift_.get());
 
     check_bnrm_bwd<data_t>(p, src_, grady_, mean_, variance_, scale_,
-        gradx, gscale, gshift, batch_normalization_flag::use_global_stats,
+        gradx, gscale, gshift, batch_normalization_flag::use_scale_shift,
         prop_kind::backward);
   }
 
@@ -104,10 +104,16 @@ protected:
 
 using bnrm_test_float = batch_normalization_test<float>;
 
-TEST_P(bnrm_test_float, TestsBnrm) {
-  test_forward_training();
-  test_backward();
+TEST_P(bnrm_test_float, TestsInference) {
   test_forward_inference();
+}
+
+TEST_P(bnrm_test_float, TestsForward) {
+  test_forward_training();
+}
+
+TEST_P(bnrm_test_float, TestsBackward) {
+  test_backward();
 }
 
 #define EXPAND_ARGS(args) args

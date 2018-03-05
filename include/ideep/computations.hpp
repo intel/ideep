@@ -1427,7 +1427,8 @@ public:
   }
 };
 
-struct pooling_forward : public computation {
+struct pooling_forward : public computation,
+  public utils::computation_cache<pooling_forward> {
   struct descriptor : descriptor_group {
     descriptor(
         const tensor::descriptor &x_desc,
@@ -1467,8 +1468,15 @@ public:
 
   template <typename ...Ts>
   void init(const tensor::descriptor &x_desc, Ts&&... args) {
-    descriptor backward_weights_descriptor(x_desc, std::forward<Ts>(args)...);
-    computation::init(backward_weights_descriptor, x_desc);
+    descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
+    computation::init(forward_descriptor, x_desc);
+  }
+
+  pooling_forward() = default;
+
+  template <typename T, typename ...Ts>
+  pooling_forward(T arg, Ts&&... args) {
+    init(std::forward<T>(arg), std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& src, const tensor& dst, const tensor &workspace) {
@@ -1480,6 +1488,38 @@ public:
       computation::execute(src, dst, *dst.get_extra());
     else
       computation::execute(src, dst);
+  }
+
+  static tensor compute(const tensor &src,
+      const tensor::dims dst_dims, void *dst_r,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), dst_dims, strides, kernel, padding_l,
+        padding_r, aalgorithm, aprop_kind, apadding_kind);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
+        aprop_kind, apadding_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    bool with_workspace = true
+        && aprop_kind == prop_kind::forward_training
+        && aalgorithm == mkldnn::pooling_max;
+
+    // TODO: scratch allocator support
+    tensor dst = with_workspace ? tensor(comp.expected_dst_descriptor(),
+      dst_r, comp.expected_workspace_descriptor()) :
+      tensor(comp.expected_dst_descriptor(), dst_r);
+
+    comp.execute(src, dst);
+    return dst;
   }
 };
 

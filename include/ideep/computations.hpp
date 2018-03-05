@@ -1393,7 +1393,7 @@ public:
     computation::init(backward_data_descriptor, x_desc, grady_desc);
   }
 
-  lrn_backward() = delete;
+  lrn_backward() = default;
 
   template<typename T, typename ...Ts>
   lrn_backward(T arg, Ts&&... args) {
@@ -1462,7 +1462,6 @@ struct pooling_forward : public computation {
     }
   };
 public:
-  using computation::computation;
   using computation::expected_dst_descriptor;
   using computation::expected_workspace_descriptor;
 
@@ -1993,7 +1992,7 @@ public:
     sum_.init({momentum, 1.f - momentum}, {scale, shift});
   }
 
-  batch_normalization_forward_training () = delete;
+  batch_normalization_forward_training () = default;
 
   template <typename T, typename... Ts>
   batch_normalization_forward_training (T arg, Ts&&... args) {
@@ -2194,7 +2193,7 @@ public:
     computation::init(batch_norm_backward, gradx_desc, src_desc);
   }
 
-  batch_normalization_backward () = delete;
+  batch_normalization_backward () = default;
 
   template <typename T, typename ...Ts>
   batch_normalization_backward(T arg, Ts&&... args) {

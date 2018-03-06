@@ -98,30 +98,30 @@ protected:
 
   void Forward() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
-    tensor::descriptor dst_desc;
+    tensor dst;
     auto test = [&]() {
-      dst_desc = eltwise_forward::compute(src_, raw_dst_.get(),
+      dst = eltwise_forward::compute(src_, raw_dst_.get(),
           algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
       return;
 
-    check_relu_fwd(p.negative_slope, src_, {dst_desc, raw_dst_.get()});
+    check_relu_fwd(p.negative_slope, src_, dst);
   }
 
   void Backward() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
-    tensor::descriptor gradx_desc;
+    tensor gradx;
     auto test = [&]() {
-      gradx_desc = eltwise_backward::compute(src_, grady_, raw_gradx_.get(),
+      gradx = eltwise_backward::compute(src_, grady_, raw_gradx_.get(),
           algorithm::eltwise_relu, p.negative_slope, 0.0);
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
       return;
 
-    check_relu_bwd(p.negative_slope, src_, grady_, {gradx_desc, raw_gradx_.get()});
+    check_relu_bwd(p.negative_slope, src_, grady_, gradx);
   }
 };
 

@@ -1625,7 +1625,7 @@ public:
   }
 
   template<typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src,
+  static tensor compute_impl(const tensor& src,
       void *result, Ts&&... args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), args...);
@@ -1639,10 +1639,10 @@ public:
 
     tensor dst(src.get_descriptor(), result);
     comp.execute(src, dst);
-    return dst.get_descriptor();
+    return dst;
   }
 
-  static tensor::descriptor compute(const tensor &src, void *result,
+  static tensor compute(const tensor &src, void *result,
       algorithm aalogorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
@@ -1700,7 +1700,7 @@ public:
   }
 
   template<typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
+  static tensor compute_impl(const tensor& src, const tensor& grady,
       void *result, Ts&&... args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), grady.get_internal_format(), args...);
@@ -1714,10 +1714,10 @@ public:
 
     tensor gradx(comp.expected_gradx_descriptor(), result);
     comp.execute(src, grady, gradx);
-    return gradx.get_descriptor();
+    return gradx;
   }
 
-  static tensor::descriptor compute(const tensor &src, const tensor &grady,
+  static tensor compute(const tensor &src, const tensor &grady,
       void *result, algorithm aalogorithm = algorithm::eltwise_relu,
       float alpha = 0.0, float beta = 0.0) {
     return compute_impl(src, grady, result, alpha, beta, aalogorithm);

@@ -1763,7 +1763,7 @@ public:
     computation::execute(inputs, output);
   }
 
-  static tensor::descriptor compute_impl(const std::vector<float> &scales,
+  static tensor compute_impl(const std::vector<float> &scales,
       const std::vector<tensor> &inputs, void *raw_out,
       const tensor::descriptor *out_desc) {
     std::vector<tensor::descriptor> inputs_desc;
@@ -1774,12 +1774,13 @@ public:
     auto comp = sum(scales, inputs_desc, out_desc);
     auto _out_desc = out_desc ? *out_desc :
         comp.expected_dst_descriptor();
+    auto output = tensor(_out_desc, raw_out);
 
-    comp.execute(inputs, tensor(_out_desc, raw_out));
-    return _out_desc;
+    comp.execute(inputs, output);
+    return output;
   }
 
-  static tensor::descriptor compute(const std::vector<float> &scales,
+  static tensor compute(const std::vector<float> &scales,
       const std::vector<tensor> &inputs, void *raw_out,
       const tensor::descriptor *out_desc = nullptr) {
     return compute_impl(scales, inputs, raw_out, out_desc);

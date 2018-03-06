@@ -115,8 +115,7 @@ protected:
         dst_data[i] = -32;
       }
 
-      auto dst_desc = sum::compute(p.scale, srcs, dst_data);
-      dst2.init(dst_desc, dst_data);
+      dst2 = sum::compute(p.scale, srcs, dst_data);
     };
 
     if (catch_expected_failures(test1, p.expect_to_fail, p.expected_status))

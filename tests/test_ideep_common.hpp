@@ -674,6 +674,197 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
   }
 }
 
+struct test_inner_product_descr_t {
+  int mb, ic, oc, kh, kw;
+};
+
+struct inprod_test_forward_params {
+  prop_kind aprop_kind;
+  const engine::kind engine_kind;
+  mkldnn::memory::format src_format;
+  mkldnn::memory::format weights_format;
+  mkldnn::memory::format bias_format;
+  mkldnn::memory::format dst_format;
+  test_inner_product_descr_t test_ipd;
+  bool expect_to_fail;
+  mkldnn_status_t expected_status;
+};
+
+struct inprod_test_bwd_data_params {
+  const engine::kind engine_kind;
+  mkldnn::memory::format diff_src_format;
+  mkldnn::memory::format weights_format;
+  mkldnn::memory::format diff_dst_format;
+  test_inner_product_descr_t test_ipd;
+  bool expect_to_fail;
+  mkldnn_status_t expected_status;
+};
+
+struct inprod_test_bwd_weights_params {
+  const engine::kind engine_kind;
+  mkldnn::memory::format src_format;
+  mkldnn::memory::format diff_weights_format;
+  mkldnn::memory::format diff_bias_format;
+  mkldnn::memory::format diff_dst_format;
+  test_inner_product_descr_t test_ipd;
+  bool expect_to_fail;
+  mkldnn_status_t expected_status;
+};
+
+template <typename data_t>
+void compute_ref_inner_product_fwd(test_inner_product_descr_t ipd,
+    const tensor& src, const tensor& weights,
+    const tensor& bias, const tensor& dst)
+{
+  const bool w_bias = (bias.get_internal_format() != format::format_undef);
+  data_t *src_data = (data_t *)src.get_data_handle();
+  data_t *weights_data = (data_t *)weights.get_data_handle();
+  data_t *bias_data = w_bias ? (data_t *)bias.get_data_handle() : nullptr;
+  data_t *dst_data = (data_t *)dst.get_data_handle();
+
+  const auto* src_d = src.get_mkldnn_memory_desc_t();
+  const auto* weights_d = weights.get_mkldnn_memory_desc_t();
+  const auto* bias_d = bias.get_mkldnn_memory_desc_t();
+  const auto* dst_d = dst.get_mkldnn_memory_desc_t();
+
+#pragma omp parallel for collapse(2) schedule(static)
+  for (int n = 0; n < ipd.mb; n++) {
+    for (int oc = 0; oc < ipd.oc; oc++) {
+      int oidx = n * ipd.oc + oc;
+      dst_data[map_index(dst_d, oidx)] = bias_data ?
+        bias_data[map_index(bias_d, oc)] : data_t{0};
+      for (int ic = 0; ic < ipd.ic; ic++) {
+        for (int kh = 0; kh < ipd.kh; kh++) {
+          for (int kw = 0; kw < ipd.kw; kw++) {
+            int iidx = n * ipd.ic * ipd.kh * ipd.kw
+                    + ic * ipd.kh * ipd.kw + kh * ipd.kw + kw;
+            int widx = oc * ipd.ic * ipd.kh * ipd.kw
+                    + ic * ipd.kh * ipd.kw + kh * ipd.kw + kw;
+            dst_data[map_index(dst_d, oidx)]
+                    += src_data[map_index(src_d, iidx)]
+                    * weights_data[map_index(weights_d, widx)];
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void compute_ref_inner_product_bwd_data(const test_inner_product_descr_t &ipd,
+        const tensor& diff_dst, const tensor& weights, const tensor& diff_src)
+{
+  data_t *diff_dst_data = (data_t *)diff_dst.get_data_handle();
+  data_t *weights_data = (data_t *)weights.get_data_handle();
+  data_t *diff_src_data = (data_t *)diff_src.get_data_handle();
+
+  const auto* diff_dst_d = diff_dst.get_mkldnn_memory_desc_t();
+  const auto* weights_d = weights.get_mkldnn_memory_desc_t();
+  const auto* diff_src_d = diff_src.get_mkldnn_memory_desc_t();
+
+  bool has_spatial = ipd.kh > 1 && ipd.kw > 1;
+
+#pragma omp parallel for collapse(2) schedule(static)
+  for (int n = 0; n < ipd.mb; n++) {
+    for (int ic = 0; ic < ipd.ic; ic++) {
+      if (has_spatial) {
+        for (int kh = 0; kh < ipd.kh; ++kh) {
+          for (int kw = 0; kw < ipd.kw; ++kw) {
+            int dsidx = n * ipd.ic * ipd.kh * ipd.kw
+                    + ic * ipd.kh * ipd.kw + kh * ipd.kw + kw;
+            data_t *ds = &diff_src_data[map_index(diff_src_d, dsidx)];
+            *ds = data_t(0);
+            for (int oc = 0; oc < ipd.oc; ++oc) {
+              int ddidx = n * ipd.oc + oc;
+              int widx = oc * ipd.ic * ipd.kh * ipd.kw +
+                ic * ipd.kh * ipd.kw + kh * ipd.kw + kw;
+              *ds += diff_dst_data[map_index(diff_dst_d, ddidx)]
+                * weights_data[map_index(weights_d, widx)];
+            }
+          }
+        }
+      } else {
+        int dsidx = n * ipd.ic + ic;
+        data_t *ds = &diff_src_data[map_index(diff_src_d, dsidx)];
+        *ds = data_t(0);
+        for (int oc = 0; oc < ipd.oc; ++oc) {
+          int ddidx = n * ipd.oc + oc;
+          int widx = oc * ipd.ic + ic;
+          *ds += diff_dst_data[map_index(diff_dst_d, ddidx)]
+            * weights_data[map_index(weights_d, widx)];
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void compute_ref_inner_product_bwd_bias(const test_inner_product_descr_t &ipd,
+        const tensor& diff_dst, const tensor& diff_bias) {
+  data_t *diff_bias_data = (data_t *)diff_bias.get_data_handle();
+  data_t *diff_dst_data = (data_t *)diff_dst.get_data_handle();
+
+  const auto* diff_bias_d = diff_bias.get_mkldnn_memory_desc_t();
+  const auto* diff_dst_d = diff_dst.get_mkldnn_memory_desc_t();
+
+# pragma omp parallel for schedule(static)
+  for (int oc = 0; oc < ipd.oc; ++oc) {
+    data_t *db = &diff_bias_data[map_index(diff_bias_d, oc)];
+    *db = data_t(0);
+    for (int n = 0; n < ipd.mb; ++n) {
+      *db += diff_dst_data[map_index(diff_dst_d, n*ipd.oc + oc)];
+    }
+  }
+}
+
+template <typename data_t>
+void compute_ref_inner_product_bwd_weights(const test_inner_product_descr_t &ipd,
+        const tensor& src, const tensor& diff_dst, const tensor& diff_weights)
+{
+  data_t *src_data = (data_t *)src.get_data_handle();
+  data_t *diff_weights_data = (data_t *)diff_weights.get_data_handle();
+  data_t *diff_dst_data = (data_t *)diff_dst.get_data_handle();
+
+  const auto* src_d = src.get_mkldnn_memory_desc_t();
+  const auto* diff_weights_d = diff_weights.get_mkldnn_memory_desc_t();
+  const auto* diff_dst_d = diff_dst.get_mkldnn_memory_desc_t();
+
+  bool has_spatial = ipd.kh > 1 && ipd.kw > 1;
+
+# pragma omp parallel for collapse(2) schedule(static)
+  for (int oc = 0; oc < ipd.oc; ++oc) {
+    for (int ic = 0; ic < ipd.ic; ++ic) {
+      if (has_spatial) {
+        for (int kh = 0; kh < ipd.kh; ++kh) {
+          for (int kw = 0; kw < ipd.kw; ++kw) {
+            int dwidx = oc * ipd.ic * ipd.kh * ipd.kw
+                    + ic * ipd.kh * ipd.kw + kh * ipd.kw + kw;
+            data_t *dw = &diff_weights_data[map_index(diff_weights_d, dwidx)];
+            *dw = data_t(0);
+            for (int n = 0; n < ipd.mb; ++n) {
+              int ddidx = n * ipd.oc + oc;
+              int sidx = n * ipd.ic * ipd.kh * ipd.kw
+                      + ic * ipd.kh * ipd.kw + kh * ipd.kw + kw;
+              *dw += diff_dst_data[map_index(diff_dst_d, ddidx)] *
+                  src_data[map_index(src_d, sidx)];
+            }
+          }
+        }
+      } else {
+        int dwidx = oc * ipd.ic + ic;
+        data_t *dw = &diff_weights_data[map_index(diff_weights_d, dwidx)];
+        *dw = data_t(0);
+        for (int n = 0; n < ipd.mb; ++n) {
+          int ddidx = n * ipd.oc + oc;
+          int sidx = n * ipd.ic + ic;
+          *dw += diff_dst_data[map_index(diff_dst_d, ddidx)] *
+              src_data[map_index(src_d, sidx)];
+        }
+      }
+    }
+  }
+}
+
 void fill_tensor(tensor& t) {
   switch (t.get_data_type()) {
     case tensor::data_type::f32:

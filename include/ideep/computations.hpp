@@ -2297,7 +2297,8 @@ private:
   tensor weights_, gradw_;
 };
 
-struct inner_product_forward: public computation {
+struct inner_product_forward: public computation,
+  public utils::computation_cache<inner_product_forward> {
   struct descriptor: public descriptor_group {
     descriptor(const tensor::descriptor &src_desc,
             const tensor::descriptor &weights_desc,
@@ -2350,16 +2351,16 @@ struct inner_product_forward: public computation {
     }
   };
  public:
-  using computation::computation;
-  using computation::init;
   using computation::execute;
   using computation::expected_dst_descriptor;
+  using computation::expected_weights_descriptor;
+  using computation::expected_src_descriptor;
 
   void init(const tensor::descriptor &src_desc,
       const tensor::descriptor &weights_desc,
       const tensor::descriptor &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, dst_desc);
-    init(forward_descriptor, src_desc, weights_desc);
+    computation::init(forward_descriptor, src_desc, weights_desc);
   }
 
   void init(const tensor::descriptor &src_desc,
@@ -2368,11 +2369,81 @@ struct inner_product_forward: public computation {
       const tensor::descriptor &dst_desc) {
     descriptor forward_descriptor(
         src_desc, weights_desc, bias_desc, dst_desc);
-    init(forward_descriptor, src_desc, weights_desc, bias_desc);
+    computation::init(forward_descriptor, src_desc, weights_desc, bias_desc);
+  }
+
+  inner_product_forward () = default;
+
+  template <typename T, typename ...Ts>
+  inner_product_forward(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
+  }
+
+  static tensor compute(const tensor& src, const tensor& weights,
+      const tensor& bias, void *dst_r) {
+    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        weights.get_dims(), bias.get_dims(), dst_dims);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        weights.get_descriptor(), bias.get_descriptor(), dst_desc);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init(comp.expected_src_descriptor());
+      reorder::compute(src, src_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init(comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    comp.execute(src_in, weights_in, bias, dst);
+    return dst;
+  }
+
+  static tensor compute(const tensor& src, const tensor& weights, void *dst_r) {
+    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        weights.get_dims(), dst_dims);
+
+    auto comp = fetch_or_create(key, src.get_descriptor(),
+        weights.get_descriptor(), dst_desc);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init(comp.expected_src_descriptor());
+      reorder::compute(src, src_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init(comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    comp.execute(src_in, weights_in, dst);
+    return dst;
   }
 };
 
-struct inner_product_backward_data: public computation {
+// TODO: parameter sequence adjust?
+struct inner_product_backward_data: public computation,
+  utils::computation_cache<inner_product_backward_data> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &gradx_desc,
         const tensor::descriptor &weights_desc,
@@ -2390,31 +2461,69 @@ struct inner_product_backward_data: public computation {
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(&result,
               &data, engine::cpu_engine().get(), hint_.get()),
-    "cld not create a inner product backward data primitive descriptor");
+    "could not create a inner product backward data primitive descriptor");
       reset(result);
     }
   private:
     inner_product_forward::descriptor hint_;
   };
 public:
-  using computation::computation;
   using computation::expected_gradx_descriptor;
+  using computation::expected_grady_descriptor;
+  using computation::expected_weights_descriptor;
 
   template <typename ...Ts>
-  void init(const tensor::descriptor &x_desc,
-      const tensor::descriptor &grady_desc,
-      const tensor::descriptor &gradw_desc, Ts&&... args) {
-    descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc,
-        std::forward<Ts>(args)...);
-    computation::init(backward_weights_descriptor, x_desc, grady_desc);
+  void init(const tensor::descriptor &gradx_desc,
+      const tensor::descriptor &weights_desc,
+      const tensor::descriptor &grady_desc) {
+    descriptor backward_data_descriptor(gradx_desc, weights_desc, grady_desc);
+    computation::init(backward_data_descriptor, grady_desc, weights_desc);
+  }
+
+  inner_product_backward_data () = default;
+
+  template <typename T, typename ...Ts>
+  inner_product_backward_data(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& grady, const tensor& weights, const tensor& gradx) {
     computation::execute(grady, weights, gradx);
   }
+
+  static tensor compute( const tensor& grady, const tensor& weights,
+      tensor::dims gradx_dims, void* gradx_r) {
+    tensor::descriptor gradx_desc(gradx_dims, grady.get_data_type());
+
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        weights.get_dims(), gradx_dims);
+
+    auto comp = fetch_or_create(key, gradx_desc,
+        weights.get_descriptor(), grady.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto grady_in = grady;
+    auto weights_in = weights;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init(comp.expected_grady_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init(comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
+    comp.execute(grady_in, weights_in, gradx);
+    return gradx;
+  }
 };
 
-struct inner_product_backward_weights : public computation {
+struct inner_product_backward_weights : public computation,
+  public utils::computation_cache<inner_product_backward_weights> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &gradw_desc,
@@ -2461,7 +2570,6 @@ struct inner_product_backward_weights : public computation {
     inner_product_forward::descriptor hint_;
   };
 public:
-  using computation::computation;
   using computation::expected_gradw_descriptor;
   using computation::expected_gradb_descriptor;
 
@@ -2474,6 +2582,13 @@ public:
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
 
+  inner_product_backward_weights () = default;
+
+  template <typename T, typename ...Ts>
+  inner_product_backward_weights(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
+  }
+
   void execute(const tensor& x, const tensor& grady, const tensor& gradw) {
     computation::execute(x, grady, gradw);
   }
@@ -2481,6 +2596,73 @@ public:
   void execute(const tensor& x, const tensor& grady, const tensor& gradw
       , const tensor& gradb) {
     computation::execute(x, grady, gradw, gradb);
+  }
+
+  static tensor compute(const tensor& x, const tensor& grady, void *gradw_r) {
+    auto gradw_dims = x.get_dims();
+    gradw_dims[0] = grady.get_dim(1);
+    tensor::descriptor gradw_desc(gradw_dims, grady.get_data_type());
+
+    auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
+        grady.get_dims());
+
+    auto comp = fetch_or_create(key, x.get_descriptor(), gradw_desc,
+        grady.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto x_in = x;
+    auto grady_in = grady;
+    if (x.get_descriptor() != comp.expected_src_descriptor()) {
+      x_in.init(comp.expected_src_descriptor());
+      reorder::compute(x, x_in);
+    }
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init(comp.expected_grady_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
+    comp.execute(x_in, grady_in, gradw);
+    return gradw;
+  }
+
+  static tensor compute(const tensor& x, const tensor& grady, void *gradw_r,
+      void *gradb_r) {
+    auto gradw_dims = x.get_dims();
+    gradw_dims[0] = grady.get_dim(1);
+
+    tensor::dims gradb_dims = {grady.get_dim(1)};
+    tensor::descriptor gradw_desc(gradw_dims, x.get_data_type());
+    tensor::descriptor gradb_desc(gradb_dims, x.get_data_type());
+
+    auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
+        gradb_dims, grady.get_dims());
+
+    auto comp = fetch_or_create(key, x.get_descriptor(), gradw_desc, gradb_desc,
+        grady.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto x_in = x;
+    auto grady_in = grady;
+    if (x.get_descriptor() != comp.expected_src_descriptor()) {
+      x_in.init(comp.expected_src_descriptor());
+      reorder::compute(x, x_in);
+    }
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init(comp.expected_grady_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
+    tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
+    comp.execute(x_in, grady_in, gradw, gradb);
+    return gradw;
   }
 };
 

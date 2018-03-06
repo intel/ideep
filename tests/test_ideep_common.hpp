@@ -865,6 +865,33 @@ void compute_ref_inner_product_bwd_weights(const test_inner_product_descr_t &ipd
   }
 }
 
+template <typename data_i_t, typename data_o_t>
+inline void check_reorder(const tensor::descriptor &md_i,
+    const tensor::descriptor &md_o, const data_i_t *src, const data_o_t *dst) {
+  const auto dims = md_i.get_dims();
+  const size_t nelems = std::accumulate(
+          dims.begin(), dims.end(), size_t(1), std::multiplies<size_t>());
+  auto mkldnn_md_i = md_i.get_mkldnn_memory_desc_t();
+  auto mkldnn_md_o = md_o.get_mkldnn_memory_desc_t();
+
+  for (size_t i = 0; i < nelems; ++i) {
+    data_i_t s_raw = src[map_index(mkldnn_md_i, i)];
+    data_o_t s = static_cast<data_o_t>(s_raw);
+    data_o_t d = dst[map_index(mkldnn_md_o, i)];
+    ASSERT_EQ(s, d) << "mismatch at position " << i;
+  }
+}
+
+template <typename reorder_types>
+struct test_simple_params {
+    engine::kind engine_kind;
+    mkldnn::memory::format fmt_i;
+    mkldnn::memory::format fmt_o;
+    mkldnn::memory::dims dims;
+    bool expect_to_fail;
+    mkldnn_status_t expected_status;
+};
+
 void fill_tensor(tensor& t) {
   switch (t.get_data_type()) {
     case tensor::data_type::f32:

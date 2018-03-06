@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 
@@ -16,11 +17,17 @@ except Exception as ex:
     print('*** testing directory is missing: %s' % ex)
     sys.exit(-1)
 
+if bool(int(os.environ.get('ENALE_TRAVIS_TEST', '0'))):
+    bs_list = [0, 1, 2, 4, 5, 6, 8, 10, 16, 24, 32, 64, ]
+else:
+    bs_list = [0, 1, 2, 4, 5, 6, 8, 10, 16, 24, 32, 64, 96, 128, 196, 256, ]
+print('bs_list: ', bs_list)
+
 
 @testing.parameterize(*testing.product({
     'dtype': [numpy.float32],
     'channel': [1, 2, 4, 8, 10, 16, 24, 32, 64, ],
-    'bs': [0, 1, 2, 4, 5, 6, 8, 10, 16, 24, 32, 64, 96, 128, 196, 256, ],
+    'bs': bs_list,
     'stride': [2, ],
 }))
 class TestPooling2DPyF32(unittest.TestCase):

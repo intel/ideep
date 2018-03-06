@@ -42,7 +42,7 @@ script:
   - cd python
   - python setup.py install
   - cd ideep4py/tests
-  - CHAINER_TEST_GPU_LIMIT=0 pytest -m "not slow and not cudnn" ideep4py_tests
+  - ENALE_TRAVIS_TEST=1 pytest -s -v .
 
 
 addons:

@@ -1,3 +1,4 @@
+import os
 import sys
 import unittest
 import numpy
@@ -24,11 +25,18 @@ def _set_cover_all(self, x, W):
                                  self.pw, d=self.dx))
 
 
+if bool(int(os.environ.get('ENALE_TRAVIS_TEST', '0'))):
+    bs_list = [1, 2, 4, 5, 8, 10, 16, 32, 64, ]
+else:
+    bs_list = [1, 2, 4, 5, 8, 10, 16, 32, 64, 96, 128, 192, 256, 512, ]
+print('bs_list: ', bs_list)
+
+
 @testing.parameterize(*testing.product({
     'dtype': [numpy.float32, ],
     'cover_all': [False, True],
     'channel': [1, 2, 4, 8, 10, ],
-    'bs': [1, 2, 4, 5, 8, 10, 16, 32, 64, 96, 128, 192, 256, 512, ],
+    'bs': bs_list,
     'with_bias': [True, ],
 }))
 @testing.fix_random()

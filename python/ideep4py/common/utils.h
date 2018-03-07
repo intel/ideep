@@ -28,6 +28,7 @@
 #include <mkldnn.hpp>
 #include <iostream>
 #include <sstream>
+#include <cassert>
 #include "logging.h"
 #include "op_param.h"
 #include "omp.h"

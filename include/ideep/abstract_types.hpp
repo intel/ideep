@@ -151,8 +151,7 @@ private:
 struct stream: public mkldnn::stream {
   using mkldnn::stream::stream;
   static stream default_stream() {
-    stream def(mkldnn::stream::kind::eager);
-    return def;
+    return stream(mkldnn::stream::kind::eager);
   }
 };
 

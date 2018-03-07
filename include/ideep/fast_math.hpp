@@ -36,6 +36,9 @@ public:
     switch (isa) {
     case avx2:
       return 256/8/sizeof(T);
+    case avx512_common:
+    case avx512_core:
+      return 512/8/sizeof(T);
     default:
       throw error(mkldnn_unimplemented, "Not implemented!");
       return 0;
@@ -302,7 +305,6 @@ public:
       throw error(mkldnn_unimplemented, "Not implemented!");
     }
   }
-
 };
 }
 }

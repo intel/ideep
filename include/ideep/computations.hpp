@@ -519,7 +519,7 @@ struct computation : public primitive_group {
     connect_handle_for(index + 1, rest...);
   }
 
-  void execute (const std::vector<tensor>& inputs, const tensor& outputs) {
+  void execute(const std::vector<tensor>& inputs, const tensor& outputs) {
     connect_handle_for(inputs, outputs);
     stream parallel_control = stream::default_stream();
     primitive_group::execute(parallel_control);
@@ -1467,23 +1467,23 @@ public:
   using computation::expected_workspace_descriptor;
 
   template <typename ...Ts>
-  void init(const tensor::descriptor &x_desc, Ts&&... args) {
+  void init(const tensor::descriptor &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
 
   pooling_forward() = default;
 
-  template <typename T, typename ...Ts>
-  pooling_forward(T arg, Ts&&... args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+  template <typename ...Ts>
+  pooling_forward(Ts &&...args) {
+    init(std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor& src, const tensor& dst, const tensor &workspace) {
+  void execute(const tensor &src, const tensor &dst, const tensor &workspace) {
     computation::execute(src, dst, workspace);
   }
 
-  void execute(const tensor& src, tensor& dst) {
+  void execute(const tensor &src, tensor &dst) {
     if (dst.has_extra())
       computation::execute(src, dst, *dst.get_extra());
     else
@@ -1523,7 +1523,8 @@ public:
   }
 };
 
-struct pooling_backward : public computation {
+struct pooling_backward : public computation,
+  public utils::computation_cache<pooling_backward> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &gradx_desc,
             const tensor::descriptor &grady_desc,
@@ -1533,17 +1534,16 @@ struct pooling_backward : public computation {
             const tensor::dims &padding_r,
             algorithm aalgorithm,
             const padding_kind apadding_kind = padding_kind::zero)
-      : hint_(gradx_desc, grady_desc, strides, kernel,
-          padding_l, padding_r, aalgorithm) {
+      : hint_(gradx_desc, grady_desc, strides, kernel, padding_l,
+          padding_r, aalgorithm, prop_kind::forward, apadding_kind) {
       mkldnn::memory::validate_dims(strides);
       mkldnn::memory::validate_dims(kernel);
       mkldnn::memory::validate_dims(padding_l);
       mkldnn::memory::validate_dims(padding_r);
-      mkldnn_memory_desc_t diff_src_data = gradx_desc.format_any();
       mkldnn_pooling_desc_t data;
       error::wrap_c_api(mkldnn_pooling_backward_desc_init(&data,
             convert_to_c(aalgorithm),
-            &diff_src_data,
+            gradx_desc.get_mkldnn_memory_desc_t(),
             grady_desc.get_mkldnn_memory_desc_t(),
             &strides[0], &kernel[0],
             &padding_l[0], &padding_r[0],
@@ -1565,18 +1565,72 @@ public:
 
   template <typename ...Ts>
   void init(const tensor::descriptor &gradx_desc,
-      const tensor::descriptor &grady_desc, Ts&&... args) {
-    descriptor backward_weights_descriptor(gradx_desc, grady_desc,
+      const tensor::descriptor &grady_desc, Ts &&...args) {
+    descriptor backward_descriptor(gradx_desc, grady_desc,
         std::forward<Ts>(args)...);
-    computation::init(backward_weights_descriptor, gradx_desc, grady_desc);
+    computation::init(backward_descriptor, grady_desc, gradx_desc);
   }
 
-  void execute(const tensor& grady, const tensor& gradx) {
-    computation::execute(grady, gradx);
+  pooling_backward() = default;
+
+  template <typename ...Ts>
+  pooling_backward(Ts &&...args) {
+    init(std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor& grady, const tensor& y, const tensor& gradx) {
-    computation::execute(grady, *y.get_extra(), gradx);
+  void execute(const tensor &grady, const tensor &y, const tensor &gradx) {
+    if (num_of_inputs() == 1)
+      computation::execute(grady, gradx);
+    else
+      computation::execute(grady, *y.get_extra(), gradx);
+  }
+
+  static tensor compute_impl(const tensor &grady, const tensor &y,
+      const tensor::dims gradx_dims, void *gradx_r,
+      const tensor::descriptor *gradx_desc,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
+    bool gradx_format_inquiring = false;
+    const tensor::descriptor *_gradx_desc;
+    if (gradx_desc) {
+      assert(gradx_dims == gradx_desc->get_dims());
+      _gradx_desc = gradx_desc;
+    } else {
+      auto d = tensor::descriptor(gradx_dims,
+          grady.get_data_type(), format::any);
+      _gradx_desc = &d;
+      gradx_format_inquiring = true;
+    }
+
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        grady.get_internal_format(), gradx_dims,
+        static_cast<format>(_gradx_desc->get_mkldnn_memory_desc_t()->format),
+        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+
+    auto comp = fetch_or_create(key, *_gradx_desc, grady.get_descriptor(),
+        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto gradx = tensor(gradx_format_inquiring ?
+        comp.expected_gradx_descriptor() : *_gradx_desc, gradx_r);
+
+    comp.execute(grady, y, gradx);
+
+    return gradx;
+  }
+
+  static tensor compute(const tensor &grady, const tensor &y,
+      const tensor::dims gradx_dims,
+      void *gradx_r, const tensor::descriptor *gradx_desc,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl(grady, y, gradx_dims, gradx_r, gradx_desc,
+        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };
 
@@ -1608,7 +1662,7 @@ public:
   using computation::expected_dst_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, Ts&&... args) {
+  void init(const tensor::descriptor &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
@@ -1616,17 +1670,17 @@ public:
   eltwise_forward() = default;
 
   template <typename T, typename ...Ts>
-  eltwise_forward(T arg, Ts&&... args) {
+  eltwise_forward(T arg, Ts &&...args) {
     init(std::forward<T>(arg), std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor& x, const tensor& y) {
+  void execute(const tensor &x, const tensor &y) {
     computation::execute(x, y);
   }
 
   template<typename ...Ts>
-  static tensor compute_impl(const tensor& src,
-      void *result, Ts&&... args) {
+  static tensor compute_impl(const tensor &src,
+      void *result, Ts &&...args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), args...);
 
@@ -1681,7 +1735,7 @@ public:
 
   template <typename ...Ts>
   void init(const tensor::descriptor &grady_desc,
-      const tensor::descriptor &x_desc, Ts&&... args) {
+      const tensor::descriptor &x_desc, Ts &&...args) {
     descriptor backward_descriptor(
         grady_desc, x_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc, x_desc);
@@ -1690,18 +1744,18 @@ public:
   eltwise_backward() = default;
 
   template <typename T, typename ...Ts>
-  eltwise_backward(T grady_desc, T src_desc, Ts&&... args) {
+  eltwise_backward(T grady_desc, T src_desc, Ts &&...args) {
     init(std::forward<T>(grady_desc), std::forward<T>(src_desc),
         std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor& x, const tensor& grady, const tensor& gradx) {
+  void execute(const tensor &x, const tensor &grady, const tensor &gradx) {
     computation::execute(x, grady, gradx);
   }
 
   template<typename ...Ts>
-  static tensor compute_impl(const tensor& src, const tensor& grady,
-      void *result, Ts&&... args) {
+  static tensor compute_impl(const tensor &src, const tensor &grady,
+      void *result, Ts &&...args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), grady.get_internal_format(), args...);
 
@@ -1759,7 +1813,7 @@ public:
     init(scales, inputs_desc, output_desc);
   }
 
-  void execute(const std::vector<tensor>& inputs, const tensor& output) {
+  void execute(const std::vector<tensor> &inputs, const tensor &output) {
     computation::execute(inputs, output);
   }
 
@@ -1811,7 +1865,7 @@ public:
     computation::init(forward_descriptor, inputs);
   }
 
-  void execute(const std::vector<tensor>& inputs, const tensor& output) {
+  void execute(const std::vector<tensor> &inputs, const tensor &output) {
     computation::execute(inputs, output);
   }
 };

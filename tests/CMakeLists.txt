@@ -23,7 +23,8 @@ file(GLOB __native_test_src
   test_ideep_relu.cc
   test_ideep_sum.cc
   test_ideep_batch_normalization.cc
-  test_ideep_pooling.cc
+  test_ideep_pooling_forward.cc
+  test_ideep_pooling_backward.cc
   test_ideep_inner_product_forward.cc
   test_ideep_inner_product_backward_data.cc
   test_ideep_inner_product_backward_weights.cc

@@ -93,10 +93,16 @@ TEST_P(convolution_test, TestManipulation) {
   auto key = utils::create_key(src_.get_data_type(), src_.get_dims(),
       weights_.get_dims(), bias_.get_dims(), dst_dims_);
 
-  auto comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
-      weights_.get_descriptor(),
-      dst_desc, tensor::dims {cd.strh, cd.strw},
-      tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
+  convolution_forward comp;
+  auto test = [&]() {
+    comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
+        weights_.get_descriptor(),
+        dst_desc, tensor::dims {cd.strh, cd.strw},
+        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
 
   auto dup = comp;
 
@@ -124,15 +130,22 @@ TEST_P(convolution_test, TestCompute) {
     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
   test_convolution_sizes_t cd = p.sizes;
 
-  auto dst_desc = with_bias_ ?
-    convolution_forward::compute(src_, weights_, bias_, dst_dims_,
-        raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
-        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
-        padR_) :
-    convolution_forward::compute(src_, weights_, dst_dims_,
-        raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
-        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
-        padR_);
+  tensor::descriptor dst_desc;
+
+  auto test = [&]() {
+    dst_desc = with_bias_ ?
+      convolution_forward::compute(src_, weights_, bias_, dst_dims_,
+          raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
+          tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
+          padR_) :
+      convolution_forward::compute(src_, weights_, dst_dims_,
+          raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
+          tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
+          padR_);
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
 
   tensor ref_dst(dst_desc);
   test_convolution_attr_t attr = p.attr;

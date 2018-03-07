@@ -5,10 +5,9 @@
 #include <cmath>
 
 #include <ideep.hpp>
+#include <ideep_pin_singletons.hpp>
 
 namespace ideep {
-
-INIT_GLOBAL_ENGINE
 
 // Helpers for migrating MKL-DNN test
 inline size_t map_index(const mkldnn_memory_desc_t *md, size_t index) {

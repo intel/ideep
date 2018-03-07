@@ -71,10 +71,16 @@ TEST_P(convolution_test, TestCompute) {
     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
   test_convolution_sizes_t cd = p.sizes;
 
-  auto gradx_desc = convolution_backward_data::compute(grady_, weights_,
-      gradx_dims_, raw_gradx_.get(), tensor::dims {cd.strh, cd.strw},
-      tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw},
-      padR_);
+  tensor::descriptor gradx_desc;
+  auto test = [&] () {
+    gradx_desc = convolution_backward_data::compute(grady_, weights_,
+        gradx_dims_, raw_gradx_.get(), tensor::dims {cd.strh, cd.strw},
+        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw},
+        padR_);
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
 
   tensor ref_gradx(gradx_desc);
   compute_ref_conv_bwd_data<float, float, float, float>(cd, ref_gradx,

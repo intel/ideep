@@ -3,10 +3,13 @@
 
 #include <ideep.hpp>
 
+namespace ideep {
 /// Put these in only one library
-ideep::engine &ideep::engine::cpu_engine() {
+engine &engine::cpu_engine() {
   static engine cpu_engine;
   return cpu_engine;
+}
+
 }
 
 #endif

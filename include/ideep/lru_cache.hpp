@@ -154,6 +154,34 @@ private:
 template <class value_t, class key_t = std::string, size_t capacity = 1024>
 class computation_cache {
 public:
+  using iterator = typename lru_cache<key_t, value_t>::iterator;
+
+protected:
+  template <typename ...Ts>
+  static inline value_t create(Ts&&... args) {
+    return value_t(std::forward<Ts>(args)...);
+  }
+
+  static inline value_t fetch(iterator it) {
+    auto comp = std::move(it->second);
+    g_store().erase(it);
+    return comp;
+  }
+
+  static inline iterator find(const key_t& key) {
+    return g_store().find(key);
+  }
+
+  static inline iterator end() {
+    return g_store().end();
+  }
+
+public:
+
+// Possible better performance, but use inside class scope only (private)
+#define fetch_or_create_m(key, ...) \
+  find(key) == end() ? create(__VA_ARGS__) : fetch(find(key));
+
   template <typename ...Ts>
   static inline value_t fetch_or_create(const key_t& key, Ts&&... args) {
     const auto it = g_store().find(key);

@@ -136,23 +136,19 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
         "could not execute reorder", &c_api_error_primitive);
   }
 
-  static const tensor::descriptor compute(
+  static const void compute(
       const tensor& input, const tensor& output) {
-    const auto input_desc = input.get_descriptor();
-    const auto output_desc = output.get_descriptor();
-
     auto key = utils::create_key(input.get_dims(), input.get_data_type(),
         input.get_internal_format(), output.get_dims(), output.get_data_type(),
         output.get_internal_format());
 
-    auto op = fetch_or_create(key, input_desc, output_desc);
+    auto op = fetch_or_create_m(key, input.get_descriptor(),
+        output.get_descriptor());
     auto sg = utils::make_guard([&key, &op]() {
         release(key, std::move(op));
         });
 
     op(input, output);
-
-    return output_desc;
   }
 
   // static void split(const tensor& input, const tensor::view& subregion,
@@ -742,13 +738,13 @@ struct convolution_forward: public computation,
   static tensor::descriptor compute_impl(const tensor& src,
       const tensor& weights, const tensor& bias,
       const tensor::dims& result_dims, void *result, Ts&&... args) {
-    tensor::descriptor result_desc(result_dims, src.get_data_type());
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), result_dims, args...);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(),
-        result_desc, std::forward<Ts>(args)...);
+        tensor::descriptor {result_dims, src.get_data_type()},
+        std::forward<Ts>(args)...);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));

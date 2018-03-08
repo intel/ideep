@@ -47,7 +47,7 @@
           PyErr_SetString(PyExc_ValueError, "Wrong self object in nb_binary wrapper");  \
           return nullptr;                                             \
         }                                                         \
-        return (*reinterpret_cast<T *>(that))->m_ ## m(right, left);  \
+        return (*reinterpret_cast<T *>(that))->m_ ## m(left, right);  \
       }                                                           \
     }
 

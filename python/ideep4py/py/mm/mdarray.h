@@ -88,16 +88,22 @@ namespace implementation {
   } \
 
 #define nb_binary_map_impl(method) \
-  PyObject * m_ ## method ## _map_impl(PyObject *self, PyObject *o) {    \
-    NPY_ARRAY_SURROGATE_ENTRY(self); \
-                                \
-    if (surrogate == nullptr)   \
-      return nullptr;           \
-                                \
-    PyObject *res = PyNumber_ ## method(surrogate, o); \
-    Py_DECREF(surrogate);   \
-    NPY_ARRAY_SURROGATE_EXIT(); \
-    return res;   \
+  PyObject * m_ ## method ## _map_impl(PyObject *self, PyObject *o) {   \
+    PyObject *left = self, *right = o;                                  \
+    if (is_mdarray(left)) {                                             \
+      left = PyArray_FromAny(left, nullptr, 0, 0                        \
+        , NPY_ARRAY_ELEMENTSTRIDES, nullptr);                           \
+    }                                                                   \
+    if (is_mdarray(right)) {                                            \
+      right = PyArray_FromAny(right, nullptr, 0, 0                      \
+        , NPY_ARRAY_ELEMENTSTRIDES, nullptr);                           \
+    }                                                                   \
+    PyObject *res = PyNumber_ ## method(left, right);                   \
+    if (left != self)                                                   \
+      Py_DECREF(left);                                                  \
+    if (right != o)                                                     \
+      Py_DECREF(right);                                                 \
+    return res;                                                         \
   }
 
 #define nb_binary_map_impl_with_target_func(method, tfunc) \
@@ -388,6 +394,9 @@ public:
   }
   inline mkldnn::memory mkldnn_memory() const {
       return tensor_->mkldnn_memory();
+  }
+  inline void reset_tensor(Tensor *dst) {
+    tensor_.reset(dst);
   }
 private:
   struct WeDontManageIt {

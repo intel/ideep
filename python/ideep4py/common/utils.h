@@ -25,9 +25,11 @@
 #ifndef _UTILS_H_
 #define _UTILS_H_
 
-#include <glog/logging.h>
 #include <mkldnn.hpp>
 #include <iostream>
+#include <sstream>
+#include <cassert>
+#include "logging.h"
 #include "op_param.h"
 #include "omp.h"
 using namespace mkldnn;

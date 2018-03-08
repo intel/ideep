@@ -1,13 +1,32 @@
 import os
 import sys
 
-MKLDNN_ROOT = os.environ['HOME'] + '/.chainer'
+MODULE_DESC = 'Intel mkl-dnn'
+
 MKLDNN_WORK_PATH = os.path.split(os.path.realpath(__file__))[0]
+MKLDNN_ROOT = MKLDNN_WORK_PATH + '/..'
 MKLDNN_LIB_PATH = MKLDNN_ROOT + '/lib'
 MKLDNN_INCLUDE_PATH = MKLDNN_ROOT + '/include'
 MKLDNN_SOURCE_PATH = MKLDNN_WORK_PATH + '/source'
 MKLDNN_BUILD_PATH = MKLDNN_WORK_PATH + '/source/build'
 MKLML_PKG_PATH = MKLDNN_SOURCE_PATH + '/external'
+
+lib_targets = ['libmkldnn.so',
+               'libmkldnn.so.0',
+               'libmklml_gnu.so',
+               'libmklml_intel.so',
+               'libiomp5.so']
+
+
+def get_mklml_path():
+    mklml_pkg_path_leafs = os.listdir(MKLML_PKG_PATH)
+    mklml_origin_path = None
+    for leaf in mklml_pkg_path_leafs:
+        if os.path.isdir('%s/%s' % (MKLML_PKG_PATH, leaf)) and \
+           'mklml' in leaf:
+            mklml_origin_path = '%s/%s' % (MKLML_PKG_PATH, leaf)
+            break
+    return mklml_origin_path
 
 
 def download(mkldnn_version):
@@ -45,18 +64,13 @@ def install(refresh_build):
         os.system('cd build && make install')
 
     # install mklml
-    mklml_pkg_path_leafs = os.listdir(MKLML_PKG_PATH)
-    mklml_origin_path = None
-    for leaf in mklml_pkg_path_leafs:
-        if os.path.isdir('%s/%s' % (MKLML_PKG_PATH, leaf)) and \
-           'mklml' in leaf:
-            mklml_origin_path = '%s/%s' % (MKLML_PKG_PATH, leaf)
-            break
-
+    mklml_origin_path = get_mklml_path()
     if mklml_origin_path:
         os.system('cp %s/lib/* %s' % (mklml_origin_path, MKLDNN_LIB_PATH))
         os.system('cp %s/include/* %s' %
                   (mklml_origin_path, MKLDNN_INCLUDE_PATH))
+    else:
+        sys.exit('%s build error... No Intel mklml pkg.' % MODULE_DESC)
 
 
 def build_install():
@@ -81,23 +95,23 @@ def prepare(mkldnn_version):
         commit_head = res.read()
         if mkldnn_version not in commit_head:
             os.chdir(MKLDNN_WORK_PATH)
-            os.system('rm -rf %s' % MKLDNN_SOURCE_PATH)
-            os.system('rm -rf %s' % MKLDNN_LIB_PATH)
-            os.system('rm -rf %s' % MKLDNN_INCLUDE_PATH)
             mkldnn_prepared = False
         else:
+            mklml_origin_path = get_mklml_path()
+            if not mklml_origin_path:
+                sys.exit('%s build error... No Intel mklml pkg.' % MODULE_DESC)
+            include_targets = []
+            include_targets += os.listdir(mklml_origin_path + '/include')
+            include_targets += os.listdir(MKLDNN_SOURCE_PATH + '/include')
+
             if not os.path.exists(MKLDNN_BUILD_PATH):
-                os.system('rm -rf %s' % MKLDNN_LIB_PATH)
-                os.system('rm -rf %s' % MKLDNN_INCLUDE_PATH)
                 mkldnn_built = False
-            elif (not os.path.exists(MKLDNN_LIB_PATH)) or \
-                 (not os.path.exists(MKLDNN_INCLUDE_PATH)):
-                os.system('rm -rf %s' % MKLDNN_LIB_PATH)
-                os.system('rm -rf %s' % MKLDNN_INCLUDE_PATH)
+            elif not all(os.path.exists(MKLDNN_ROOT + '/lib/' + lib)
+                         for lib in lib_targets) or \
+                not all(os.path.exists(MKLDNN_ROOT + '/include/' + include)
+                        for include in include_targets):
                 mkldnn_installed = False
     else:
-        os.system('rm -rf %s' % MKLDNN_LIB_PATH)
-        os.system('rm -rf %s' % MKLDNN_INCLUDE_PATH)
         mkldnn_prepared = False
 
     if not mkldnn_prepared:
@@ -109,19 +123,3 @@ def prepare(mkldnn_version):
 
     os.chdir(sys.path[0])
     print('Intel mkl-dnn prepared !')
-
-
-def root():
-    return MKLDNN_ROOT
-
-
-def lib_path():
-    return MKLDNN_LIB_PATH
-
-
-def include_path():
-    return MKLDNN_INCLUDE_PATH
-
-
-def source_path():
-    return MKLDNN_SOURCE_PATH

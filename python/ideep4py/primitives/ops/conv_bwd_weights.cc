@@ -22,7 +22,6 @@
  */
 
 
-#include <glog/logging.h>
 #include <iostream>
 #include "mkldnn.hpp"
 #include "conv_bwd_weights.h"

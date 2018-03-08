@@ -21,6 +21,8 @@ from ideep4py._ideep4py import relu  # NOQA
 from ideep4py._ideep4py import basic_acc_sum  # NOQA
 from ideep4py._ideep4py import basic_copyto  # NOQA
 
+# from ideep4py._ideep4py import dlCompression  # NOQA
+
 from ideep4py import cosim  # NOQA
 
 
@@ -74,7 +76,7 @@ def check_ndim(inputs, supported_ndim=(2, 4)):
 
 
 def check_type(inputs):
-    if isinstance(inputs[0], numpy.ndarray):
+    if isinstance(inputs[0], (numpy.ndarray, mdarray)):
         _should_use_ideep = True
 
         for x in inputs:
@@ -111,12 +113,73 @@ def all_ready(inputs, supported_ndim=(2, 4)):
         return check_type(inputs)
 
 
+def split(x, indices_or_sections, axis=0):
+    if all_ready((x,)):
+        offsets = intVector()
+        if numpy.isscalar(indices_or_sections):
+            if indices_or_sections == 0:
+                raise ValueError(
+                    'integer division or modulo by zero')
+            elif x.shape[axis] % indices_or_sections:
+                raise ValueError(
+                    'array split does not result in an equal division')
+            for i in range(x.shape[axis] / indices_or_sections,
+                           x.shape[axis],
+                           x.shape[axis] / indices_or_sections):
+                offsets.push_back(int(i))
+        else:
+            # FIXME
+            # bypass python3 issue
+            for i in indices_or_sections:
+                offsets.push_back(int(i))
+
+        ys = concat.Backward(x, offsets, axis)
+
+        if ys:
+            # indices_or_sections = [0, ...]
+            # axis = 0
+            if not numpy.isscalar(indices_or_sections) and \
+                    axis == 0 and indices_or_sections[0] == 0:
+                shape = x.shape
+                shape = (0, ) + shape[1:]
+                y1 = numpy.ndarray(shape, dtype=x.dtype)
+                ys = list((y1,) + ys)
+        else:
+            # For performance improvement
+
+            # indices_or_sections = 1
+            if numpy.isscalar(indices_or_sections) and \
+                    indices_or_sections == 1:
+                ys = [x]
+            # indices_or_sections = [0]
+            # axis = 0
+            elif axis == 0 and indices_or_sections[0] == 0 \
+                    and len(indices_or_sections) == 1:
+                shape = x.shape
+                shape = (0, ) + shape[1:]
+                y1 = numpy.ndarray(shape, dtype=x.dtype)
+                ys = list((y1,) + (x,))
+            # other not support scenarios
+            else:
+                ys = numpy.split(x, indices_or_sections, axis)
+    else:
+        ys = numpy.split(x, indices_or_sections, axis)
+
+    return ys
+
+
 def tanh(x):
     if all_ready((x,)):
         y = _ideep4py.tanh.Forward(array(x))  # NOQA
     else:
         y = numpy.tanh(x)
 
+    return y
+
+
+def multi_add(xs):
+    xs = tuple([array(x) for x in xs])
+    y = basic_acc_sum(xs)
     return y
 
 

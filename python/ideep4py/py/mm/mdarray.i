@@ -276,7 +276,7 @@
     }
   }
 
-  PyObject *sum(vector<int> axis={0}, int dtype=0,
+  PyObject *sum(vector<int> axis=vector<int>(), int dtype=0,
                 PyObject *out=nullptr, bool keepdims=false) {
     return (*self)->sum(axis, keepdims);
   }

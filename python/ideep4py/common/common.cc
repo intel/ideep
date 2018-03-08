@@ -24,7 +24,6 @@
 
 #include <cstddef>
 #include <cstring>
-#include <glog/logging.h>
 #include <iostream>
 #include "mkldnn.hpp"
 #include "common.h"

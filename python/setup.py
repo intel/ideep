@@ -1,43 +1,76 @@
-from setuptools.extension import Extension
-from numpy import get_include
+from setuptools import Command, distutils, Extension, setup
 from platform import system
-import sys
+
 import external
+import sys
 
-from setuptools.command.build_py import build_py
-from setuptools.command.install import install
-from setuptools import setup
-
-subdir = 'mkldnn'
-
-# Sepcify prefix under which you put ipl_mkldnn
-# prefix = '/usr/local'
-mkldnn_root = external.mkldnn.root()
-mkldnn_version = 'ae00102be506ed0fe2099c6557df2aa88ad57ec1'
+import setuptools.command.install
+import setuptools.command.build_ext
+import distutils.command.build
+import distutils.command.clean
 
 
-def prepare_mkldnn():
-    external.mkldnn.prepare(mkldnn_version)
+###############################################################################
+# Custom build commands
+###############################################################################
 
+class build_deps(Command):
+    user_options = []
 
-class _build_py(build_py):
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
+
     def run(self):
-        prepare_mkldnn()
-        self.run_command('build_ext')
-        build_py.run(self)
+        external.prepare()
 
 
-class _install(install):
+class build(distutils.command.build.build):
+    sub_commands = [
+        ('build_deps', lambda self: True),
+    ] + distutils.command.build.build.sub_commands
+
+
+class build_ext(setuptools.command.build_ext.build_ext):
     def run(self):
-        prepare_mkldnn()
-        self.run_command('build_ext')
-        install.run(self)
+        import numpy
+        self.include_dirs.append(numpy.get_include())
+        setuptools.command.build_ext.build_ext.run(self)
 
+
+class install(setuptools.command.install.install):
+    def run(self):
+        if not self.skip_build:
+            self.run_command('build_deps')
+        setuptools.command.install.install.run(self)
+
+
+class clean(distutils.command.clean.clean):
+    def run(self):
+        external.clean()
+        distutils.command.clean.clean.run(self)
+
+
+cmdclass = {
+    'build': build,
+    'build_ext': build_ext,
+    'build_deps': build_deps,
+    'install': install,
+    'clean': clean,
+}
+
+
+###############################################################################
+# Configure compile flags
+###############################################################################
 
 swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep4py/py/mm',
              '-Iideep4py/py/primitives',
              '-Iideep4py/py/swig_utils',
+             # '-Iideep4py/py/dlcp',
              '-Iideep4py/include/primitives/',
              '-Iideep4py/include/mm/']
 
@@ -46,27 +79,28 @@ if sys.version_info.major < 3:
 
 ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas']
 link_opts = ['-Wl,-z,now', '-Wl,-z,noexecstack',
-             '-Wl,-rpath,' + mkldnn_root + '/lib', '-L' + mkldnn_root + '/lib']
+             '-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './external/lib']
 
-includes = [get_include(),
-            'ideep4py/include',
+includes = ['ideep4py/include',
             'ideep4py/include/mkl',
             'ideep4py/common',
             'ideep4py/include/mm',
             'ideep4py/py/mm',
             'ideep4py/py/primitives',
+            # 'ideep4py/py/dlcp',
             'ideep4py/include/primitives',
             'ideep4py/include/blas',
             'ideep4py/include/primitives/ops',
             'ideep4py/include/primitives/prim_mgr',
-            mkldnn_root + '/include']
+            'external/include']
 
-libraries = ['mkldnn', 'mklml_intel']
+libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
 
 if system() == 'Linux':
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
-    libraries += ['boost_system', 'glog', 'm']
+    libraries += ['m']
     src = ['ideep4py/py/ideep4py.i',
+           # 'ideep4py/py/dlcp/dlcp_py.cc',
            'ideep4py/mm/mem.cc',
            'ideep4py/mm/tensor.cc',
            'ideep4py/py/mm/mdarray.cc',
@@ -105,6 +139,20 @@ else:
     # TODO
     src = ['mkldnn/mdarray.i', 'mkldnn/mdarray.cc']
 
+
+###############################################################################
+# Declare extensions and package
+###############################################################################
+
+install_requires = [
+    'numpy==1.13',
+]
+
+tests_require = [
+    'mock',
+    'pytest',
+]
+
 ext_modules = []
 
 ext = Extension(
@@ -119,18 +167,18 @@ packages = ['ideep4py', 'ideep4py.cosim']
 
 setup(
     name='ideep4py',
-    version='0.0',
-    description='',
+    version='1.0.3',
+    description='ideep4py is a wrapper for iDeep library.',
     author='Intel',
     author_email='',
-    url='',
+    url='https://github.com/intel/ideep',
     license='MIT License',
     packages=packages,
+    package_dir={'ideep4py': 'ideep4py/'},
+    package_data={'ideep4py': ['lib/*', ]},
     ext_modules=ext_modules,
-    cmdclass={'install': _install, 'build_py': _build_py},
+    cmdclass=cmdclass,
     zip_safe=False,
-    # setup_requires=setup_requires,
-    # install_requires=install_requires,
-    # tests_require=['mock',
-    #                'pytest'],
+    install_requires=install_requires,
+    tests_require=tests_require,
 )

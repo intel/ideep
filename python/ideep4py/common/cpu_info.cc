@@ -22,13 +22,13 @@
  */
 
 
-#include <glog/logging.h>
 
 #include <fstream>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "logging.h"
 #include "cpu_info.h"
 
 Processor::Processor() {
@@ -271,7 +271,7 @@ static const unsigned numberOfOpenMpEnvVars =
   sizeof(openMpEnvVars) / sizeof(openMpEnvVars[0]);
 
 OpenMpManager::OpenMpManager(Collection *collection) :
-                             mainThreadId(boost::this_thread::get_id()),
+                             mainThreadId(std::this_thread::get_id()),
                              collection(*collection) {
   getOpenMpEnvVars();
   getCurrentCpuSet();
@@ -295,9 +295,9 @@ void OpenMpManager::setGpuDisabled() {
   openMpManager.isGpuEnabled = false;
 }
 
-bool OpenMpManager::isMajorThread(boost::thread::id currentThread) {
+bool OpenMpManager::isMajorThread(void) {
   OpenMpManager &openMpManager = get_instance();
-  return (boost::this_thread::get_id() == openMpManager.mainThreadId);
+  return (std::this_thread::get_id() == openMpManager.mainThreadId);
 }
 
 // Ideally bind given thread to secondary logical core, if

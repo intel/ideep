@@ -22,7 +22,6 @@
  */
 
 
-#include <glog/logging.h>
 #include <iostream>
 #include "common.h"
 #include "mkldnn.hpp"
@@ -139,6 +138,7 @@ std::vector<Tensor*> Concat<T>::Backward(
 
     std::vector<Tensor*> gxs;
     std::vector<void*> gxs_data;
+    std::vector<int> valid_offsets;
 
     mkldnn::memory::format expected_dst_fmt; // expected format
     void *diff_dst_data = NULL;
@@ -152,15 +152,51 @@ std::vector<Tensor*> Concat<T>::Backward(
     // offsets: [2, 5, 6]
     std::vector<mkldnn::memory::dims> diff_src_d;
     mkldnn::memory::dims diff_dst_d = diff_dst->cxx_dims();
-    
+
+    // offset stands for an integer or 1-D array, if it's a 1-D array,
+    // positive, zero or negative indexes are all possible.
+    // We just support all effective scenarios to align with numpy,
+    // when index array are ordered and its value is less than corresponding
+    // dimension size while leave other scenarios as meanningless.
+    int min_value = -1;
+    for (int j = 0; j < offsets.size(); j++) {
+        if (offsets[j] < 0) {
+            offsets[j] += (diff_dst->dims())[axis];
+        }
+
+        if (j == 0 && offsets[j] == 0) {
+            min_value = offsets[j];
+            // mkldnn can handle zero slice while axis is not zero
+            if (axis != 0)
+                valid_offsets.push_back(offsets[j]);
+            else
+                continue;
+        } else if (offsets[j] > min_value) {
+            min_value = offsets[j];
+            // larger than max value in corresponding dims
+            // return empty to python
+            if (offsets[j] >= (diff_dst->dims())[axis])
+                return gxs;
+            else
+                valid_offsets.push_back(offsets[j]);
+        } else {
+            // out of order, return empty to python
+            return gxs;
+        }
+    }
+
+    if (valid_offsets.empty()) {
+        return gxs;
+    }
+
     // get elements
     mkldnn::memory::dims tmp;
-    for (int i = 0; i < offsets.size(); i++) {
+    for (int i = 0; i < valid_offsets.size(); i++) {
         int axis_value = -1;
         if (i == 0)
-            axis_value = offsets[0];
+            axis_value = valid_offsets[0];
         else
-            axis_value = offsets[i] - offsets[i-1];
+            axis_value = valid_offsets[i] - valid_offsets[i-1];
 
         for (int j = 0; j < diff_dst_d.size(); j++) {
             if (j == axis)
@@ -176,7 +212,7 @@ std::vector<Tensor*> Concat<T>::Backward(
     // get last element
     for (int i = 0; i < diff_dst_d.size(); i++){
         if (i == axis)
-            tmp.push_back(diff_dst_d[axis]-offsets.back());
+            tmp.push_back(diff_dst_d[axis]-valid_offsets.back());
         else
             tmp.push_back(diff_dst_d[i]);
     }

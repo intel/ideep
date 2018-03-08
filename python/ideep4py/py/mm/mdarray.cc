@@ -24,13 +24,13 @@
 
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include <glog/logging.h>
 #if defined(OPENMP_AFFINITY)
 #include "cpu_info.h"
 #endif
 #include "mdarray.h"
 #include <mkl_vml_functions.h>
 #include "mkldnn_ex.h"
+// #include "dlcp_py.h"
 
 namespace implementation {
 
@@ -45,7 +45,7 @@ static inline mdarray *get_mdarray_from_PyObject(PyObject *self) {
     void *oprd_self;
     int res = SWIG_ConvertPtr(self, &oprd_self, nullptr, 0);
     if (!SWIG_IsOK(res)) {
-        PyErr_SetString(PyExc_ValueError, "Error self PyObject");
+        // PyErr_SetString(PyExc_ValueError, "Error self PyObject");
         return NULL;
     }
     return (reinterpret_cast<py_handle *>(oprd_self))->get();
@@ -128,11 +128,13 @@ void g_init() {
   import_array();
 
 #if defined(OPENMP_AFFINITY)
-  google::SetStderrLogging(1);
-  google::InitGoogleLogging("mkldnn");
+  // google::SetStderrLogging(1);
+  // google::InitGoogleLogging("mkldnn");
   OpenMpManager::bindOpenMpThreads();
   OpenMpManager::printVerboseInformation();
 #endif
+
+  // dlCompression::init();
 
 #if PY_VERSION_HEX >= 0x03000000
   return 0;
@@ -572,9 +574,7 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
 }
 
 PyObject *mdarray::m_Multiply(PyObject *self, PyObject *o) {
-  if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type &&
-      (PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o)) !=
-      static_cast<int>(this->size()) || !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o)))) {
+  if (!is_mdarray_supported(self, o)) {
     return m_Multiply_map_impl(self, o);
   } else if (PyArray_Check(o) &&
       !PyArray_IS_C_CONTIGUOUS(reinterpret_cast<PyArrayObject *>(o))) {
@@ -594,9 +594,7 @@ PyObject *mdarray::m_Multiply(PyObject *self, PyObject *o) {
 }
 
 PyObject *mdarray::m_InPlaceMultiply(PyObject *self, PyObject *o) {
-  if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type &&
-      (PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o)) !=
-      static_cast<int>(this->size()) || !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o)))) {
+  if (!is_mdarray_supported(self, o)) {
     return m_InPlaceMultiply_map_impl(self, o);
   } else if (PyArray_Check(o) &&
       !PyArray_IS_C_CONTIGUOUS(reinterpret_cast<PyArrayObject *>(o))) {
@@ -616,9 +614,7 @@ PyObject *mdarray::m_InPlaceMultiply(PyObject *self, PyObject *o) {
 }
 
 PyObject *mdarray::m_Divide(PyObject *self, PyObject *o) {
-  if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type &&
-      (PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o)) !=
-      static_cast<int>(this->size()) || !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o)))) {
+  if (!is_mdarray_supported(self, o)) {
     return m_Divide_map_impl(self, o);
   } else if (PyArray_Check(o) &&
       !PyArray_IS_C_CONTIGUOUS(reinterpret_cast<PyArrayObject *>(o))) {
@@ -638,9 +634,7 @@ PyObject *mdarray::m_Divide(PyObject *self, PyObject *o) {
 }
 
 PyObject *mdarray::m_InPlaceDivide(PyObject *self, PyObject *o) {
-  if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type &&
-      (PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o)) !=
-      static_cast<int>(this->size()) || !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o)))) {
+  if (!is_mdarray_supported(self, o)) {
     return m_InPlaceDivide_map_impl(self, o);
   } else if (PyArray_Check(o) &&
       !PyArray_IS_C_CONTIGUOUS(reinterpret_cast<PyArrayObject *>(o))) {
@@ -710,6 +704,22 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   view->obj = rbobj;
   sync_reorder_ = rb;
 
+  // reset self mdarray's tensor, keep buffer consistency.
+  if (rb->non_trivial()) {
+    mdarray *src_mdarray = get_mdarray_from_PyObject(self);
+    if (!src_mdarray) {
+      PyErr_SetString(PyExc_RuntimeError, "Can't get src mdarray from python object!");
+      return -1;
+    }
+
+    Tensor *src_tensor = src_mdarray->tensor();
+    mkldnn::memory::dims src_dims = (mkldnn::memory::dims)src_tensor->dims();
+    mkldnn_memory_format_t dst_fmt = public_format(src_tensor->format());
+
+    Tensor *dst_tensor = new Tensor(src_dims.size(), src_dims, rb->data_,
+                                    dst_fmt, src_tensor->type());
+    src_mdarray->reset_tensor(dst_tensor);
+  }
   return 0;
 }
 

@@ -22,7 +22,6 @@
  */
 
 
-#include <glog/logging.h>
 #include <iostream>
 #include "common.h"
 #include "mkldnn.hpp"

@@ -128,7 +128,7 @@ public:
             "could not initialize a memory descriptor");
 
         return result;
-      }()), public_format_(aformat) {}
+      }()), public_format_(public_format(aformat)) {}
 
     /// Initiate a param descriptor, specifying no format.
     ///

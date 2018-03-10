@@ -28,6 +28,7 @@
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 #include <assert.h>
 #include <stdlib.h>
+#include <omp.h>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -2754,6 +2755,461 @@ public:
     } else {
       throw error(mkldnn_runtime_error, "Not implemented!");
     }
+  }
+};
+
+struct sum_array {
+public:
+  typedef enum {
+    NOERR = 0,
+    UNSUPPORT_AXIS_COMMON_SUM,
+    UNSUPPORT_AXIS_FAST_SUM,
+    UNSUPPORT_DATA_TYPE,
+  } err_num_t;
+
+  sum_array() = default;
+
+  template<typename data_t>
+  static inline void sum_nChwXC_along_channel(data_t *src,
+      tensor::descriptor src_desc, std::vector<int> axis, data_t *dst) {
+    int mb = src_desc.get_dims()[0],
+        ic = src_desc.get_dims()[1],
+        ih = src_desc.get_dims()[2],
+        iw = src_desc.get_dims()[3];
+    const int cg = (int)src_desc.get_mkldnn_memory_desc_t()->format ==
+        mkldnn_nChw16c ? 16 : 8;
+    int cn = ic / cg;
+
+    int blk_nthr = omp_get_max_threads(),
+        blk_num = blk_nthr,
+        blk_len = mb / blk_num,
+        blk_len_ex = mb % blk_num;
+
+    if (!blk_len)
+      blk_nthr = mb;
+
+    data_t *buf = reinterpret_cast<data_t *>(
+        new char[ic * blk_nthr * sizeof(data_t)]);
+
+    # pragma omp parallel num_threads(blk_nthr)
+    {
+      int ithr = omp_get_thread_num();
+      int blen = ithr < blk_len_ex ? blk_len + 1 : blk_len;
+      int bstart = ithr <= blk_len_ex ? (blk_len + 1) * ithr :
+                   blk_len_ex * (blk_len + 1) + (ithr - blk_len_ex) * blk_len;
+      int bend = bstart + blen;
+
+      data_t *loc_src = src + bstart * ic * ih * iw;
+      if ((cg == 16) && (((unsigned long)buf & 0xf) == 0) &&
+        (((unsigned long)loc_src & 0xf) == 0)) {
+        for (int b = bstart; b < bend; b++) {
+          data_t *loc_buf = buf + ithr * ic;
+          for (int c = 0; c < cn; c++) {
+            if (b == bstart)
+              for (int o = 0; o < cg; o++)
+                loc_buf[o] = 0;
+            for (int hw = 0; hw < ih * iw; hw++) {
+              __asm__(
+                      "mov %0, %%rax\n"
+                      "mov %1, %%rbx\n"
+                      ".byte 0x62, 0xf1, 0x7c, 0x48, 0x10, 0x00\n" //vmovups (%%rax), %%zmm0
+                      ".byte 0x62, 0xf1, 0x7c, 0x48, 0x58, 0x03\n" //vaddps (%%rbx), %%zmm0, %%zmm0
+                      ".byte 0x62, 0xf1, 0x7c, 0x48, 0x11, 0x00\n" //vmovups %%zmm0, (%%rax)
+                      :"+r"(loc_buf)
+                      :"r"(loc_src)
+                      :"rax", "rbx"
+                      );
+              loc_src += cg;
+            }
+
+            loc_buf += cg;
+          }
+        }
+      } else if ((cg == 8) && (((unsigned long)buf & 0x7) == 0) &&
+          (((unsigned long)loc_src & 0x7) == 0)) {
+        for (int b = bstart; b < bend; b++) {
+          data_t *loc_buf = buf + ithr * ic;
+          for (int c = 0; c < cn; c++) {
+            if (b == bstart)
+              for (int o = 0; o < cg; o++)
+                loc_buf[o] = 0;
+            for (int hw = 0; hw < ih * iw; hw++) {
+              __asm__(
+                      "mov %0, %%rax\n"
+                      "mov %1, %%rbx\n"
+                      ".byte 0xc5, 0xfc, 0x10, 0x00\n" //vmovups (%%rax), %%ymm0
+                      ".byte 0xc5, 0xfc, 0x58, 0x03\n" //vaddps (%%rbx), %%ymm0, %%ymm0
+                      ".byte 0xc5, 0xfc, 0x11, 0x00\n" //vmovups %%ymm0, (%rax)
+                      :"+r"(loc_buf)
+                      :"r"(loc_src)
+                      :"rax", "rbx"
+                      );
+              loc_src += cg;
+            }
+
+            loc_buf += cg;
+          }
+        }
+      } else {
+        for (int b = bstart; b < bend; b++) {
+          data_t *loc_buf = buf + ithr * ic;
+          for (int c = 0; c < cn; c++) {
+            if (b == bstart)
+              for (int o = 0; o < cg; o++)
+                loc_buf[o] = 0;
+
+            for (int hw = 0; hw < ih * iw; hw++) {
+              for (int o = 0; o < cg; o++)
+                loc_buf[o] += loc_src[o];
+              loc_src += cg;
+            }
+
+            loc_buf += cg;
+          }
+        }
+      }
+    }
+
+    // Allreduce
+    int c_nthr = omp_get_max_threads(),
+        c_num = c_nthr,
+        c_len = ic / c_num,
+        c_len_ex = ic % c_num;
+
+    if (!c_len)
+      c_nthr = ic;
+
+    # pragma omp parallel num_threads(c_nthr)
+    {
+      int ithr = omp_get_thread_num();
+      int clen = ithr < c_len_ex ? c_len + 1 : c_len;
+      int cstart = ithr <= c_len_ex ? (c_len + 1) * ithr :
+                   c_len_ex * (c_len + 1) + (ithr - c_len_ex) * c_len;
+      int cend = cstart + clen;
+
+      for (int c = cstart; c < cend; c++)
+        dst[c] = 0;
+
+      for (int i = 0; i < blk_nthr; i++) {
+        data_t *loc_buf = buf + i * ic;
+        for (int c = cstart; c < cend; c++)
+          dst[c] += loc_buf[c];
+      }
+    }
+
+    delete(reinterpret_cast<char *>(buf));
+  }
+
+  template<typename data_t>
+  static inline tensor sum_fast_along_axis(tensor &src,
+      void *dst_r, std::vector<int> axis, err_num_t &err) {
+    int axises = axis.size();
+    std::vector<int> valid_axis_4dim = {0, 2, 3};
+
+    err = NOERR;
+    if (src.ndims() != 4 || axises != 3) {
+      err = (err_num_t)-UNSUPPORT_AXIS_FAST_SUM;
+      return tensor();
+    }
+
+    auto valid_axis = [](int axises,
+                         std::vector<int> axis,
+                         std::vector<int> valid_axis) -> bool {
+      for (int i = 0; i < axises; i++)
+        if (valid_axis[i] != axis[i])
+          return false;
+      return true;
+    };
+
+    switch ((int)src.get_internal_format()) {
+    case mkldnn_nChw8c:
+      if (!valid_axis(axises, axis, valid_axis_4dim))
+        err = (err_num_t)-UNSUPPORT_AXIS_FAST_SUM;
+      break;
+    case mkldnn_nChw16c:
+      if (!valid_axis(axises, axis, valid_axis_4dim))
+        err = (err_num_t)-UNSUPPORT_AXIS_FAST_SUM;
+      break;
+    default:
+      err = (err_num_t)-UNSUPPORT_AXIS_FAST_SUM;
+      break;
+    }
+
+    if (err == (err_num_t)-UNSUPPORT_AXIS_FAST_SUM)
+      return tensor();
+
+    sum_nChwXC_along_channel((data_t *)src.get_data_handle(),
+        src.get_descriptor(), axis, (data_t *)dst_r);
+
+    tensor::descriptor dst_desc(
+        get_dst_dims(src.get_dims(), axis), src.get_data_type());
+
+    return tensor(dst_desc, dst_r);
+  }
+
+  template<typename data_t>
+  static inline void sum_along_axis(data_t *src,
+      tensor::descriptor src_desc, std::vector<int> axis, data_t *dst) {
+    auto src_dims = src_desc.get_dims();
+    auto src_ndims = src_desc.ndims();
+
+    int tail = 1;
+    for (int d = 1; d < src_ndims; d++)
+      tail *= src_dims[d];
+
+    bool along_mb = false;
+    for (int a = 0; a < axis.size(); a++) {
+      if (axis[a] == 0) {
+        along_mb = true;
+        break;
+      }
+    }
+
+    int gbl_ws_size = 1;
+    for (int d = 1; d < src_ndims; d++) {
+      int a = 0;
+      for (; a < axis.size(); a++)
+        if (d == axis[a])
+          break;
+
+      if (a >= axis.size())
+        gbl_ws_size *= src_dims[d];
+    }
+
+    int mb = src_dims[0];
+    int blk_nthr = omp_get_max_threads(),
+        blk_num = blk_nthr,
+        blk_len = mb / blk_num,
+        blk_len_ex = mb % blk_num;
+
+    if (!blk_len)
+      blk_nthr = mb;
+
+    data_t *gbl_ws[blk_nthr];
+    # pragma omp parallel num_threads(blk_nthr)
+    {
+      int ithr = omp_get_thread_num();
+      int blen = ithr < blk_len_ex ? blk_len + 1 : blk_len;
+      int bstart = ithr <= blk_len_ex ? (blk_len + 1) * ithr :
+                   blk_len_ex * (blk_len + 1) + (ithr - blk_len_ex) * blk_len;
+      int bend = bstart + blen;
+
+      data_t *loc_ws[blen];
+      for (int b = bstart; b < bend; b++) {
+        data_t *loc_src = src + b * tail;
+        data_t *cur_src = loc_src;
+
+        // Intialize for new blk
+        std::vector<int> cur_dims;
+        for (int d = 0; d < src_ndims; d++)
+          cur_dims.push_back(src_dims[d]);
+
+        std::vector<int> cur_axis;
+        for (int a = 0; a < axis.size(); a++)
+          if (axis[a] != 0)
+            cur_axis.insert(cur_axis.begin(), axis[a]);
+
+        // Sum along axis[a]
+        for (int a = 0; a < cur_axis.size(); a++) {
+
+          int cur_fore = 1;
+          for (int d = 1; d < cur_axis[a]; d++)
+            cur_fore *= cur_dims[d];
+
+          int cur_tail = 1;
+          for (int d = cur_axis[a] + 1; d < cur_dims.size(); d++)
+            cur_tail *= cur_dims[d];
+
+          int cur_ws_size = cur_fore * cur_tail;
+          data_t *ws = reinterpret_cast<data_t *>(
+              new char[cur_ws_size * sizeof(data_t)]);
+          for (int o = 0; o < cur_ws_size; o++) ws[o] = 0;
+
+          // kernel
+          for (int base = 0, off = 0, w = 0; w < cur_ws_size;) {
+            for (int t = 0; t < cur_dims[cur_axis[a]]; t++) {
+              ws[w] += cur_src[off + t * cur_tail];
+            }
+            w++; if (0 == w % cur_tail) {
+              off = base + cur_tail * cur_dims[cur_axis[a]];
+              base = off;
+            } else {
+              off += 1;
+            }
+          }
+
+          // adjust dims and cur_axis for sum in next axis
+          cur_dims.erase(cur_dims.begin() + cur_axis[a]);
+          for (int _a = a + 1; _a < cur_axis.size(); _a++) {
+            if (cur_axis[_a] > cur_axis[a])
+              cur_axis[_a] -= 1;
+          }
+
+          // refresh buffer
+          if (cur_src != loc_src) delete(reinterpret_cast<char *>(cur_src));
+          if (a == cur_axis.size() - 1) loc_ws[b - bstart] = ws;
+
+          cur_src = ws;
+        }
+      }
+
+      if (along_mb) {
+        // local allreduce
+        if (src_ndims == 2 && axis.size() == 1 && axis[0] == 0) {
+          loc_ws[0] = reinterpret_cast<data_t *>(
+              new char[tail * sizeof(data_t)]);
+          for (int o = 0; o < tail; o++)
+            loc_ws[0][o] = 0;
+          for (int b = bstart; b < bend; b++) {
+            data_t *loc_src = src + b * tail;
+            for (int o = 0; o < tail; o++)
+              loc_ws[0][o] += loc_src[o];
+          }
+        } else {
+          for (int b = 1; b < blen; b++) {
+            for (int o = 0; o < gbl_ws_size; o++)
+              loc_ws[0][o] += loc_ws[b][o];
+            delete(reinterpret_cast<char *>(loc_ws[b]));
+          }
+        }
+
+        gbl_ws[ithr] = loc_ws[0];
+      } else {
+        // cpy to dst
+        for (int b = bstart; b < bend; b++) {
+          for (int o = 0; o < gbl_ws_size; o++)
+            dst[b * gbl_ws_size + o] = loc_ws[b - bstart][o];
+          delete(reinterpret_cast<char *>(loc_ws[b - bstart]));
+        }
+      }
+    }
+
+    if (along_mb) {
+      // global allreduce
+      int c_nthr = omp_get_max_threads(),
+          c_num = c_nthr,
+          c_len = gbl_ws_size / c_num,
+          c_len_ex = gbl_ws_size % c_num;
+
+      if (!c_len)
+        c_nthr = gbl_ws_size;
+
+      # pragma omp parallel num_threads(c_nthr)
+      {
+        int ithr = omp_get_thread_num();
+        int clen = ithr < c_len_ex ? c_len + 1 : c_len;
+        int cstart = ithr <= c_len_ex ? (c_len + 1) * ithr :
+                     c_len_ex * (c_len + 1) + (ithr - c_len_ex) * c_len;
+        int cend = cstart + clen;
+
+        for (int c = cstart; c < cend; c++)
+          dst[c] = 0;
+
+        for (int i = 0; i < blk_nthr; i++) {
+          data_t *loc_buf = gbl_ws[i];
+          for (int c = cstart; c < cend; c++)
+            dst[c] += loc_buf[c];
+        }
+      }
+
+      for (int i = 0; i < blk_nthr; i++)
+        delete(reinterpret_cast<char *>(gbl_ws[i]));
+    }
+  }
+
+  template<typename data_t>
+  static inline tensor sum_common_along_axis(tensor &src,
+      void *dst_r, std::vector<int> axis, err_num_t &err) {
+    auto src_dims = src.get_dims();
+    int dst_ndims = src.ndims() - axis.size();
+
+    // TODO: Support sum all
+    if ((dst_ndims != 1 && dst_ndims != 2 && dst_ndims != 4) ||
+        axis.size() == 0) {
+      err = (err_num_t)-UNSUPPORT_AXIS_COMMON_SUM;
+      return tensor();
+    }
+
+    sum_along_axis((data_t *)src.get_data_handle(),
+        src.get_descriptor(), axis, (data_t *)dst_r);
+
+    tensor::descriptor dst_desc(
+        get_dst_dims(src.get_dims(), axis), src.get_data_type());
+
+    return tensor(dst_desc, dst_r);
+  }
+
+  static tensor compute(tensor &src,
+      void *dst_r, std::vector<int> &axis, err_num_t &err) {
+    if (optimized_format(src)) {
+      switch(src.get_data_type()) {
+      case tensor::data_type::f32:
+        return sum_fast_along_axis<float>(src, dst_r, axis, err);
+      case tensor::data_type::s32:
+        return sum_fast_along_axis<int32_t>(src, dst_r, axis, err);
+      case tensor::data_type::s16:
+        return sum_fast_along_axis<int16_t>(src, dst_r, axis, err);
+      case tensor::data_type::s8:
+        return sum_fast_along_axis<int8_t>(src, dst_r, axis, err);
+      case tensor::data_type::u8:
+        return sum_fast_along_axis<uint8_t>(src, dst_r, axis, err);
+      default:
+        break;
+      }
+    } else {
+      switch(src.get_data_type()) {
+      case tensor::data_type::f32:
+        return sum_common_along_axis<float>(src, dst_r, axis, err);
+      case tensor::data_type::s32:
+        return sum_common_along_axis<int32_t>(src, dst_r, axis, err);
+      case tensor::data_type::s16:
+        return sum_common_along_axis<int16_t>(src, dst_r, axis, err);
+      case tensor::data_type::s8:
+        return sum_common_along_axis<int8_t>(src, dst_r, axis, err);
+      case tensor::data_type::u8:
+        return sum_common_along_axis<uint8_t>(src, dst_r, axis, err);
+      default:
+        break;
+      }
+    }
+
+    err = (err_num_t)-UNSUPPORT_DATA_TYPE;
+    return tensor();
+  }
+
+private:
+  static inline bool optimized_format(const tensor &t) {
+    switch((int)t.get_internal_format()) {
+    case mkldnn_nChw16c:
+    case mkldnn_nChw8c:
+    case mkldnn_OIhw8i8o:
+    case mkldnn_OIhw16i16o:
+    case mkldnn_OIhw8i16o2i:
+    case mkldnn_OIhw8o16i2o:
+    case mkldnn_OIhw8o8i:
+    case mkldnn_OIhw16o16i:
+    case mkldnn_Oihw8o:
+    case mkldnn_Oihw16o:
+        return true;
+    default:
+        return false;
+    }
+  }
+
+  static inline tensor::dims get_dst_dims(tensor::dims src_dims,
+      std::vector<int> axis) {
+    tensor::dims dst_dims;
+    for (int d = 0; d < src_dims.size(); d++) {
+      unsigned a = 0; for (; a < axis.size(); a++) {
+        if (d == axis[a])
+          break;
+      }
+
+      if (a >= axis.size())
+        dst_dims.push_back(src_dims[d]);
+    }
+
+    return dst_dims;
   }
 };
 

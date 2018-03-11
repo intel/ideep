@@ -25,7 +25,7 @@ protected:
   mkldnn::memory::format aformat_;
 };
 
-// Test construct, move, copy, assignment
+// Test construct, move, copy, assignment, reset
 RC_GTEST_FIXTURE_PROP(tensor_tests, TestBasic,
     ()) {
   RC_ASSERT(dims_.size() < 5);
@@ -55,6 +55,28 @@ RC_GTEST_FIXTURE_PROP(tensor_tests, TestBasic,
   EXPECT_TRUE(t.get_extra() == nullptr);
   EXPECT_TRUE(empty_t.get() != nullptr);
   EXPECT_TRUE(empty_t.get_extra() != nullptr);
+
+  // TODO: Generator
+  tensor::dims odims_ = {2, 2};
+  tensor::dims rdims_ = {2, 2, 2, 2};
+  tensor::descriptor odesc_(odims_, type_);
+  tensor::descriptor rdesc_(rdims_, type_);
+  std::shared_ptr<float> oraw_(new float[4]);
+  std::shared_ptr<float> rraw_(new float[16]);
+  for (int i = 0; i < 4; i++) oraw_.get()[i] = 2.2f;
+  for (int i = 0; i < 16; i++) rraw_.get()[i] = 3.3f;
+
+  tensor o;
+  o.init(odesc_, (void *)oraw_.get());
+  auto oraw = o.get_data_handle();
+  auto odims = o.get_dims();
+  o.init(rdesc_, (void *)rraw_.get());
+  auto rraw = o.get_data_handle();
+  auto rdims = o.get_dims();
+  EXPECT_TRUE(memcmp(oraw, oraw_.get(), 16) == 0);
+  EXPECT_TRUE(memcmp(rraw, rraw_.get(), 64) == 0);
+  EXPECT_TRUE(odims == odims_);
+  EXPECT_TRUE(rdims == rdims_);
 }
 
 // int main() {

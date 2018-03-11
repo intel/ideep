@@ -74,6 +74,8 @@ using reorder_simple_expected_fail_f32_f32 = reorder_simple_test<f32_f32>;
 using reorder_simple_test_data_f32_f32 = reorder_simple_test<f32_f32>;
 using reorder_simple_test_weights_f32_f32 = reorder_simple_test<f32_f32>;
 using reorder_simple_test_weights_f32_f32_IOhw16o16i = reorder_simple_test<f32_f32>;
+using reorder_simple_test_weights_f32_f32_IOhw16i16o = reorder_simple_test<f32_f32>;
+using reorder_simple_test_weights_f32_f32_IOhw16i16o_1 = reorder_simple_test<f32_f32>;
 using reorder_simple_test_s32_s32 = reorder_simple_test<s32_s32>;
 using reorder_simple_test_s16_s16 = reorder_simple_test<s16_s16>;
 using reorder_simple_test_s8_s8 = reorder_simple_test<s8_s8>;
@@ -194,6 +196,78 @@ INSTANTIATE_TEST_CASE_P(TestReorder, reorder_simple_test_weights_f32_f32,
     cfg_f32{eng::cpu, fmt::gOihw16o, fmt::gOhwi16o, {2, 64, 64, 3, 3}},
     cfg_f32{eng::cpu, fmt::goihw, fmt::Goihw8g, {16, 16, 16, 3, 3}},
     cfg_f32{eng::cpu, fmt::Goihw8g, fmt::goihw, {16, 16, 16, 3, 3}})
+);
+
+TEST_P(reorder_simple_test_weights_f32_f32_IOhw16i16o, TestsGoogleNetReorder) {
+  test_reorder();
+}
+
+TEST_P(reorder_simple_test_weights_f32_f32_IOhw16i16o_1, TestsGoogleNetReorder) {
+  test_reorder();
+}
+
+INSTANTIATE_TEST_CASE_P(TestReorder, reorder_simple_test_weights_f32_f32_IOhw16i16o,
+  ::testing::Values(
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {16, 192, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {16, 480, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 16, 5, 5}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 32, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 192, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 256, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 512, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 528, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {32, 832, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {48, 16, 5, 5}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {48, 32, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {48, 832, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 32, 5, 5}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 64, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 192, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 256, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 480, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 512, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {64, 576, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {96, 32, 5, 5}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {96, 64, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {96, 96, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {96, 192, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {96, 480, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {96, 576, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {112, 512, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {114, 512, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 32, 5, 5}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 48, 5, 5}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 96, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 128, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 256, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 512, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 528, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 576, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {128, 832, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {192, 64, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {192, 128, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {192, 480, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {192, 832, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {384, 192, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {384, 256, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {384, 832, 3, 3}})
+);
+
+INSTANTIATE_TEST_CASE_P(TestReorder, reorder_simple_test_weights_f32_f32_IOhw16i16o_1,
+  ::testing::Values(
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {160, 128, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {160, 512, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {160, 528, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {160, 832, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {208, 96, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {224, 112, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {224, 576, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {228, 144, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {256, 128, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {256, 528, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {256, 832, 1, 1}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {288, 144, 3, 3}},
+    cfg_f32{eng::cpu, fmt::oihw, fmt::OIhw16i16o, {320, 160, 3, 3}})
 );
 
 TEST_P(reorder_simple_test_weights_f32_f32_IOhw16o16i, TestsReorder) {

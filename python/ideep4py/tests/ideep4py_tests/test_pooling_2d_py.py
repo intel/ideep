@@ -18,9 +18,9 @@ except Exception as ex:
     sys.exit(-1)
 
 if bool(int(os.environ.get('ENALE_TRAVIS_TEST', '0'))):
-    bs_list = [0, 1, 2, 4, 5, 6, 8, 10, 16, 24, 32, 64, ]
+    bs_list = [1, 2, 3, 4, 5, 6, 8, 10, 16, 24, 32, 64, ]
 else:
-    bs_list = [0, 1, 2, 4, 5, 6, 8, 10, 16, 24, 32, 64, 96, 128, 196, 256, ]
+    bs_list = [1, 2, 3, 4, 5, 6, 8, 10, 16, 24, 32, 64, 96, 128, 196, 256, ]
 print('bs_list: ', bs_list)
 
 

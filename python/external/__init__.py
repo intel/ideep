@@ -18,7 +18,7 @@ target_libs = [
     'libmkldnn.so*',
 ]
 
-mkldnn_version = 'ae00102be506ed0fe2099c6557df2aa88ad57ec1'
+mkldnn_version = '464c268e544bae26f9b85a2acb9122c766a4c396'
 
 
 def prepare():

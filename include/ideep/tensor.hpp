@@ -312,6 +312,41 @@ public:
     // format that perceived by user
     format public_format_;
 
+    static inline format public_compatible_format(format origin)
+    {
+      // Support all internal format (nhwc ...)
+      format ret;
+      switch(origin) {
+      case mkldnn_nchw:
+      case mkldnn_nhwc:
+      case mkldnn_chwn:
+      case mkldnn_nChw8c:
+      case mkldnn_nChw16c:
+        ret = format::nchw;
+        break;
+      case mkldnn_oihw:
+      case mkldnn_ihwo:
+      case mkldnn_hwio:
+      case mkldnn_OIhw8i8o:
+      case mkldnn_OIhw16i16o:
+      case mkldnn_OIhw8o8i:
+      case mkldnn_OIhw16o16i:
+      case mkldnn_OIhw8i16o2i:
+      case mkldnn_OIhw8o16i2o:
+      case mkldnn_Oihw8o:
+      case mkldnn_Oihw16o:
+      case mkldnn_Ohwi8o:
+      case mkldnn_Ohwi16o:
+      case mkldnn_OhIw16o4i:
+        ret = format::oihw;
+        break;
+      default:
+        ret = format::format_undef;
+        break;
+      }
+      return ret;
+    }
+
     /// Helper function: if aformat is public format, then returns it, else
     /// returns format_undef.
     static inline format public_format(format aformat) {

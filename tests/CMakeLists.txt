@@ -15,6 +15,7 @@ include_directories(
 
 file(GLOB __native_test_src
   test_tensor.cc
+  test_lru_cache.cc
   test_ideep_convolution_forward.cc
   test_ideep_convolution_backward_data.cc
   test_ideep_convolution_backward_weights.cc

@@ -229,6 +229,41 @@ inline std::string to_string(T&& arg, Ts&&... args) {
     '*' + to_string(std::forward<Ts>(args)...);
 }
 
+// Fast alternative to heavy string method
+using bytestring = std::string;
+
+template <typename T>
+inline bytestring to_bytes(const T arg) {
+  return bytestring();
+}
+
+inline bytestring to_bytes(const int arg) {
+  auto as_cstring = reinterpret_cast<const char *>(&arg);
+  auto len = sizeof(arg);
+  len -= (__builtin_clz(arg) / 8);
+
+  return bytestring(as_cstring, len);
+}
+
+inline bytestring to_bytes(const float arg) {
+  auto as_cstring = reinterpret_cast<const char *>(&arg);
+  return bytestring(as_cstring, sizeof(float));
+}
+
+inline bytestring to_bytes(const tensor::dims arg) {
+  return std::accumulate(std::next(arg.begin()), arg.end(),
+      to_bytes(arg[0]), [](bytestring a, int b) {
+        return a + 'x' + to_bytes(b);
+      });
+}
+
+template <typename T, typename ...Ts>
+inline bytestring to_bytes(T&& arg, Ts&&... args) {
+  return to_bytes(std::forward<T>(arg)) +
+    '*' + to_bytes(std::forward<Ts>(args)...);
+}
+
+
 using key_t = std::string;
 
 template <typename ...Ts>

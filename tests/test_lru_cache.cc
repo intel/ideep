@@ -48,10 +48,24 @@ void test_to_string() {
   std::cout<<to_string(A, a, B, b, C, c, d)<<std::endl;
 }
 
+void test_to_bytestring() {
+  tensor::dims A {2, 22, 228, 228};
+  tensor::dims B {2, 8, 22, 23};
+
+  auto key = to_bytes(A, B);
+
+  for (int i = 0; i < key.size(); i ++) {
+    std::cout<<static_cast<int>(key[i]);
+  }
+
+  std::cout<<std::endl;
+}
+
 void test_cache() {
 }
 
 int main() {
   test_lru();
   test_to_string();
+  test_to_bytestring();
 }

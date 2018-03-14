@@ -316,7 +316,7 @@ public:
     {
       // Support all internal format (nhwc ...)
       format ret;
-      switch((mkldnn::memory::format)origin) {
+      switch(origin) {
       case mkldnn_nchw:
       case mkldnn_nhwc:
       case mkldnn_chwn:

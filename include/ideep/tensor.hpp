@@ -312,7 +312,7 @@ public:
     // format that perceived by user
     format public_format_;
 
-    static inline format public_compatible_format(format origin)
+    static inline format public_compatible_format(mkldnn_memory_format_t origin)
     {
       // Support all internal format (nhwc ...)
       format ret;

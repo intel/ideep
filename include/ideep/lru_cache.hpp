@@ -239,8 +239,7 @@ inline bytestring to_bytes(const T arg) {
 
 inline bytestring to_bytes(const int arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
-  auto len = sizeof(arg);
-  len -= (__builtin_clz(arg) / 8);
+  auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
 
   return bytestring(as_cstring, len);
 }

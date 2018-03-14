@@ -6,8 +6,11 @@
 #include <functional>
 #include <cassert>
 #include <ideep/abstract_types.hpp>
+#include <ideep/allocators.hpp>
 
 namespace ideep {
+struct computation;
+
 /// @addtogroup api_tensor Tensor
 //
 /// Param class describes parameters internal to operators
@@ -470,7 +473,7 @@ public:
     }
   };
 
-
+  template<class computation_t>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
     error::wrap_c_api(
@@ -479,7 +482,8 @@ public:
 
     reset(result);
     // TODO: lazy buffer allocation
-    buffer_.reset(malloc(adesc.get_size(), 4096), free);
+    buffer_.reset(utils::allocator<computation_t>::malloc(
+        adesc.get_size(), 4096), utils::allocator<computation_t>::free);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
   }
@@ -494,6 +498,10 @@ public:
     set_data_handle(ahandle);
     buffer_.reset();
     public_format_ = adesc.public_format_;
+  }
+
+  void init(const descriptor &adesc) {
+    init<computation>(adesc);
   }
 
   /// Empty construction
@@ -618,7 +626,8 @@ public:
     if (!materialized()) {
       auto adesc = get_descriptor();
 
-      buffer_.reset(malloc(adesc.get_size(), 4096), free);
+      buffer_.reset(utils::allocator<computation>::malloc(
+          adesc.get_size(), 4096), utils::allocator<computation>::free);
       // set_data_handle will generate exception if malloc fail
       set_data_handle(buffer_.get());
     }
@@ -708,25 +717,6 @@ private:
   // mirror descriptor's same information
   format public_format_;
   std::shared_ptr<char> buffer_;
-
-  static char *malloc(size_t size, size_t alignment) {
-    void *ptr;
-#ifdef _WIN32
-    ptr = _aligned_malloc(size, alignment);
-    int rc = ((ptr)? 0 : errno);
-#else
-    int rc = ::posix_memalign(&ptr, alignment, size);
-#endif /* _WIN32 */
-    return (rc == 0) ? (char*)ptr : nullptr;
-  }
-
-  static void free(void *p) {
-#ifdef _WIN32
-    _aligned_free((void*)p);
-#else
-    ::free((void*)p);
-#endif /* _WIN32 */
-  }
 };
 
 /// Tensor that describes the data and its explanation.

@@ -1170,7 +1170,7 @@ public:
   template <typename V, typename ...Ts,
            typename = typename std::enable_if<
              std::is_same<V, void>::value>::type>
-  static tensor compute_impl(const tensor& src, const tensor& grady,
+  static std::vector<tensor> compute_impl(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, V *gbias_r,
       Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
@@ -1203,10 +1203,13 @@ public:
       reorder::compute(grady, grady_in);
     }
 
+    std::vector<tensor> gradwb;
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gbias(comp.expected_gradb_descriptor(), gbias_r);
     comp.execute(src_in, grady_in, gradw, gbias);
-    return gradw;
+    gradwb.push_back(gradw);
+    gradwb.push_back(gbias);
+    return gradwb;
   }
 
   template <typename ...Ts>
@@ -1254,7 +1257,7 @@ public:
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  static tensor compute(const tensor& src, const tensor& grady,
+  static std::vector<tensor> compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1274,7 +1277,7 @@ public:
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  static tensor compute(const tensor& src, const tensor& grady,
+  static std::vector<tensor> compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -2699,7 +2702,7 @@ public:
     return gradw;
   }
 
-  static tensor compute(const tensor& x, const tensor& grady, void *gradw_r,
+  static std::vector<tensor> compute(const tensor& x, const tensor& grady, void *gradw_r,
       void *gradb_r) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
@@ -2730,10 +2733,13 @@ public:
       reorder::compute(grady, grady_in);
     }
 
+    std::vector<tensor> gradwb;
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
     comp.execute(x_in, grady_in, gradw, gradb);
-    return gradw;
+    gradwb.push_back(gradw);
+    gradwb.push_back(gradb);
+    return gradwb;
   }
 };
 

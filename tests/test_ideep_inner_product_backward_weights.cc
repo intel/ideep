@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include <ideep.hpp>
+#include <vector>
 #include "test_ideep_common.hpp"
 
 using namespace ideep;
@@ -66,11 +67,13 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
     p.diff_bias_format != mkldnn::memory::format::format_undef;
 
   tensor gradw;
+  std::vector<tensor> gradwb;
   auto test = [&] () {
-    if (with_bias)
-      gradw = inner_product_backward_weights::compute(
+    if (with_bias) {
+      gradwb = inner_product_backward_weights::compute(
           src_, grady_, raw_gradw_.get(), raw_gradb_.get());
-    else
+      gradw = gradwb[0];
+    } else
       gradw = inner_product_backward_weights::compute(
           src_, grady_, raw_gradw_.get());
   };
@@ -83,8 +86,7 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
 
   if (with_bias) {
     compute_ref_inner_product_bwd_bias<float>(ipd, grady_, gradb_ref_);
-    compare_tensor<float>(gradb_ref_,
-        tensor {gradb_ref_.get_descriptor(), raw_gradb_.get()});
+    compare_tensor<float>(gradb_ref_, gradwb[1]);
   }
 }
 

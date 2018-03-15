@@ -1,4 +1,5 @@
 #include <numeric>
+#include <vector>
 #include <mkldnn_test_common.hpp>
 #include <gtest/gtest.h>
 #include <ideep.hpp>
@@ -75,9 +76,9 @@ TEST_P(convolution_test, TestCompute) {
     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
   test_convolution_sizes_t cd = p.sizes;
 
-  tensor gradw;
+  std::vector<tensor> gradwb;
   auto test = [&]() {
-    gradw = convolution_backward_weights::compute(src_, grady_,
+    gradwb = convolution_backward_weights::compute(src_, grady_,
         gradw_dims_, raw_gradw_.get(), raw_gradb_.get(),
         tensor::dims {cd.strh, cd.strw}, tensor::dims {cd.dilh, cd.dilw},
         tensor::dims {cd.padh, cd.padw}, padR_);
@@ -86,13 +87,13 @@ TEST_P(convolution_test, TestCompute) {
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
-  tensor ref_gradw(gradw.get_descriptor());
-  tensor::descriptor gradb_desc ({grady_.get_dim(1)}, grady_.get_data_type());
-  tensor ref_gradb(gradb_desc);
+  tensor ref_gradw(gradwb[0].get_descriptor());
+  //tensor::descriptor gradb_desc ({grady_.get_dim(1)}, grady_.get_data_type());
+  tensor ref_gradb(gradwb[1].get_descriptor());
   compute_ref_conv_bwd_weights<float>(cd, src_, grady_, ref_gradw);
-  compare_tensor<float>(ref_gradw, gradw);
+  compare_tensor<float>(ref_gradw, gradwb[0]);
   compute_ref_conv_bwd_bias<float>(cd, grady_, ref_gradb);
-  compare_tensor<float>(ref_gradb, tensor {gradb_desc, raw_gradb_.get()});
+  compare_tensor<float>(ref_gradb, gradwb[1]);
 }
 
 #define FP32

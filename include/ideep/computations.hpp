@@ -736,7 +736,7 @@ struct convolution_forward: public computation,
   }
 
   template <typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src,
+  static tensor compute_impl(const tensor& src,
       const tensor& weights, const tensor& bias,
       const tensor::dims& result_dims, void *result, Ts&&... args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
@@ -766,11 +766,11 @@ struct convolution_forward: public computation,
 
     tensor dst(comp.expected_dst_descriptor(), result);
     comp.execute(src_in, weights_in, bias, dst);
-    return comp.expected_dst_descriptor();
+    return dst;
   }
 
   template <typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src,
+  static tensor compute_impl(const tensor& src,
       const tensor& weights, const tensor::dims& result_dims,
       void *result, Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
@@ -797,10 +797,10 @@ struct convolution_forward: public computation,
 
     tensor dst(comp.expected_dst_descriptor(), result);
     comp.execute(src_in, weights_in, dst);
-    return comp.expected_dst_descriptor();
+    return dst;
   }
 
-  static tensor::descriptor compute(const tensor &src, const tensor& weights,
+  static tensor compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, void *result, const tensor::dims strides,
       const tensor::dims dilateds, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -811,7 +811,7 @@ struct convolution_forward: public computation,
         padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
   }
 
-  static tensor::descriptor compute(const tensor &src, const tensor& weights,
+  static tensor compute(const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims,
       void *result, const tensor::dims strides,
       const tensor::dims dilateds, const tensor::dims padding_l,
@@ -823,7 +823,7 @@ struct convolution_forward: public computation,
         dilateds, padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
   }
 
-  static tensor::descriptor compute(const tensor &src, const tensor& weights,
+  static tensor compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, void *result, const tensor::dims strides,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalogorithm = algorithm::convolution_direct,
@@ -833,7 +833,7 @@ struct convolution_forward: public computation,
         padding_r, aalogorithm, aprop_kind, appading_kind);
   }
 
-  static tensor::descriptor compute(const tensor &src, const tensor& weights,
+  static tensor compute(const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims, void *result,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -943,7 +943,7 @@ public:
   }
 
   template <typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& grady,
+  static tensor compute_impl(const tensor& grady,
       const tensor& weights, const tensor::dims& gradx_dims, void *gradx_r,
       Ts&&... args) {
     tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
@@ -972,10 +972,10 @@ public:
 
     tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
     comp.execute(grady_in, weights_in, gradx);
-    return comp.expected_gradx_descriptor();
+    return gradx;
   }
 
-  static tensor::descriptor compute(const tensor& grady, const tensor& weights,
+  static tensor compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, void *result, const tensor::dims strides,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm = algorithm::convolution_direct,
@@ -984,7 +984,7 @@ public:
         padding_r, aalgorithm, apadding_kind);
   }
 
-  static tensor::descriptor compute(const tensor& grady, const tensor& weights,
+  static tensor compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, void *result, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -1168,7 +1168,7 @@ public:
   template <typename V, typename ...Ts,
            typename = typename std::enable_if<
              std::is_same<V, void>::value>::type>
-  static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
+  static tensor compute_impl(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, V *gbias_r,
       Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
@@ -1202,11 +1202,11 @@ public:
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gbias(comp.expected_gradb_descriptor(), gbias_r);
     comp.execute(src_in, grady_in, gradw, gbias);
-    return comp.expected_gradw_descriptor();
+    return gradw;
   }
 
   template <typename ...Ts>
-  static tensor::descriptor compute_impl(const tensor& src, const tensor& grady,
+  static tensor compute_impl(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
 
@@ -1235,10 +1235,10 @@ public:
 
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     comp.execute(src_in, grady_in, gradw);
-    return comp.expected_gradw_descriptor();
+    return gradw;
   }
 
-  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+  static tensor compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1248,7 +1248,7 @@ public:
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+  static tensor compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1258,7 +1258,7 @@ public:
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+  static tensor compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -1268,7 +1268,7 @@ public:
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  static tensor::descriptor compute(const tensor& src, const tensor& grady,
+  static tensor compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,

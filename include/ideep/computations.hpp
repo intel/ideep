@@ -1802,7 +1802,7 @@ public:
   }
 };
 
-class sum : public computation,
+struct sum : public computation,
   public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
     descriptor(const std::vector<float> &scales,
@@ -1867,7 +1867,7 @@ public:
   }
 };
 
-class concat : public computation {
+struct concat : public computation {
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension,
         const std::vector<tensor::descriptor> &inputs) {

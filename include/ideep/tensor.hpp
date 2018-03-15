@@ -473,7 +473,7 @@ public:
     }
   };
 
-  template<class computation_t>
+  template<class alloc = utils::allocator, class computation_t = computation>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
     error::wrap_c_api(
@@ -482,8 +482,8 @@ public:
 
     reset(result);
     // TODO: lazy buffer allocation
-    buffer_.reset(utils::allocator<computation_t>::malloc(
-        adesc.get_size(), 4096), utils::allocator<computation_t>::free);
+    buffer_.reset(alloc::template malloc<computation_t>(
+        adesc.get_size(), 4096), alloc::template free<computation_t>);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
   }
@@ -501,7 +501,7 @@ public:
   }
 
   void init(const descriptor &adesc) {
-    init<computation>(adesc);
+    init<utils::allocator, computation>(adesc);
   }
 
   /// Empty construction
@@ -626,8 +626,9 @@ public:
     if (!materialized()) {
       auto adesc = get_descriptor();
 
-      buffer_.reset(utils::allocator<computation>::malloc(
-          adesc.get_size(), 4096), utils::allocator<computation>::free);
+      buffer_.reset(utils::allocator::template malloc<computation>(
+          adesc.get_size(), 4096),
+          utils::allocator::template free<computation>);
       // set_data_handle will generate exception if malloc fail
       set_data_handle(buffer_.get());
     }

@@ -28,12 +28,11 @@
 namespace ideep {
 namespace utils {
 
-template <class computation>
 class allocator {
 public:
   allocator() = default;
 
-  // template<class computation>
+  template<class computation>
   static char *malloc(size_t size, size_t alignment) {
     void *ptr;
 #ifdef _WIN32
@@ -45,7 +44,7 @@ public:
     return (rc == 0) ? (char*)ptr : nullptr;
   }
 
-  // template<class computation>
+  template<class computation>
   static void free(void *p) {
 #ifdef _WIN32
     _aligned_free((void*)p);

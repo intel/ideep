@@ -250,6 +250,9 @@ inline bytestring to_bytes(const float arg) {
 }
 
 inline bytestring to_bytes(const tensor::dims arg) {
+  if (arg.empty())
+    return bytestring();
+
   return std::accumulate(std::next(arg.begin()), arg.end(),
       to_bytes(arg[0]), [](bytestring a, int b) {
         return a + 'x' + to_bytes(b);

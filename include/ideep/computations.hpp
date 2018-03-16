@@ -1180,7 +1180,7 @@ public:
   template <class alloc, typename V, typename ...Ts,
            typename = typename std::enable_if<
              std::is_same<V, void>::value>::type>
-  static std::vector<tensor> compute_impl(const tensor& src, const tensor& grady,
+  static std::pair<tensor, tensor> compute_impl(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, V *gbias_r,
       Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
@@ -1213,13 +1213,10 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    std::vector<tensor> gradwb;
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gbias(comp.expected_gradb_descriptor(), gbias_r);
     comp.execute(src_in, grady_in, gradw, gbias);
-    gradwb.push_back(gradw);
-    gradwb.push_back(gbias);
-    return gradwb;
+    return std::make_pair(gradw, gbias);
   }
 
   template <class alloc, typename ...Ts>
@@ -1269,7 +1266,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::vector<tensor> compute(const tensor& src, const tensor& grady,
+  static std::pair<tensor, tensor> compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1291,7 +1288,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::vector<tensor> compute(const tensor& src, const tensor& grady,
+  static std::pair<tensor, tensor> compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,
@@ -2726,7 +2723,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::vector<tensor> compute(const tensor& x, const tensor& grady, void *gradw_r,
+  static std::pair<tensor, tensor> compute(const tensor& x, const tensor& grady, void *gradw_r,
       void *gradb_r) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
@@ -2758,13 +2755,10 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    std::vector<tensor> gradwb;
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
     comp.execute(x_in, grady_in, gradw, gradb);
-    gradwb.push_back(gradw);
-    gradwb.push_back(gradb);
-    return gradwb;
+    return std::make_pair(gradw, gradb);
   }
 };
 

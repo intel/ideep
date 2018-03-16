@@ -67,12 +67,12 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
     p.diff_bias_format != mkldnn::memory::format::format_undef;
 
   tensor gradw;
-  std::vector<tensor> gradwb;
+  std::pair<tensor, tensor> gradwb;
   auto test = [&] () {
     if (with_bias) {
       gradwb = inner_product_backward_weights::compute(
           src_, grady_, raw_gradw_.get(), raw_gradb_.get());
-      gradw = gradwb[0];
+      gradw = gradwb.first;
     } else
       gradw = inner_product_backward_weights::compute(
           src_, grady_, raw_gradw_.get());
@@ -86,7 +86,7 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
 
   if (with_bias) {
     compute_ref_inner_product_bwd_bias<float>(ipd, grady_, gradb_ref_);
-    compare_tensor<float>(gradb_ref_, gradwb[1]);
+    compare_tensor<float>(gradb_ref_, gradwb.second);
   }
 }
 

@@ -116,9 +116,9 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     reset(result);
   }
 
-  template<typename... Ts>
-  reorder(Ts&&... args) {
-    init(std::forward<Ts>(args)...);
+  template<typename T, typename... Ts>
+  reorder(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void operator() (const tensor &input, const tensor &output) {
@@ -779,7 +779,7 @@ struct convolution_forward: public computation,
     std::string key = utils::to_string(src.get_data_type(), src.get_dims(),
         weights.get_dims(), result_dims, args...);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
@@ -958,7 +958,7 @@ public:
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
         weights.get_dims(), gradx_dims, args...);
 
-    auto comp = fetch_or_create(key, grady.get_descriptor(),
+    auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -1190,7 +1190,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         grady.get_dims(), gradw_dims, grady.get_dim(1), args...);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, gradb_desc,
         std::forward<Ts>(args)...);
 
@@ -1227,7 +1227,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         grady.get_dims(), gradw_dims, args...);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -1356,7 +1356,7 @@ public:
         src.get_internal_format(), local_size, alpha, beta, k,
         aalgorithm, aprop_kind);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -1431,7 +1431,7 @@ public:
     auto key = utils::create_key(x.get_data_type(), x.get_dims(),
         x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
 
-    auto comp = fetch_or_create(key, x.get_descriptor(),
+    auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -1491,9 +1491,9 @@ public:
 
   pooling_forward() = default;
 
-  template <typename ...Ts>
-  pooling_forward(Ts &&...args) {
-    init(std::forward<Ts>(args)...);
+  template <typename T, typename ...Ts>
+  pooling_forward(T arg, Ts &&...args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &src, const tensor &dst, const tensor &workspace) {
@@ -1518,7 +1518,7 @@ public:
         src.get_internal_format(), dst_dims, strides, kernel, padding_l,
         padding_r, aalgorithm, aprop_kind, apadding_kind);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
         aprop_kind, apadding_kind);
 
@@ -1590,9 +1590,9 @@ public:
 
   pooling_backward() = default;
 
-  template <typename ...Ts>
-  pooling_backward(Ts &&...args) {
-    init(std::forward<Ts>(args)...);
+  template <typename T, typename ...Ts>
+  pooling_backward(T arg, Ts &&...args) {
+    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &grady, const tensor &y, const tensor &gradx) {
@@ -1626,7 +1626,7 @@ public:
         static_cast<format>(_gradx_desc->get_mkldnn_memory_desc_t()->format),
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
 
-    auto comp = fetch_or_create(key, *_gradx_desc, grady.get_descriptor(),
+    auto comp = fetch_or_create_m(key, *_gradx_desc, grady.get_descriptor(),
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -1703,7 +1703,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), args...);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         std::forward<Ts>(args)...);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -1779,7 +1779,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), grady.get_internal_format(), args...);
 
-    auto comp = fetch_or_create(key, grady.get_descriptor(),
+    auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2049,7 +2049,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 3, epsilon);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2071,7 +2071,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 5, epsilon);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(), epsilon);
+    auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
@@ -2175,7 +2175,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2200,7 +2200,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2360,7 +2360,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
     comp.weights_.init<alloc, batch_normalization_backward>(
@@ -2472,7 +2472,7 @@ struct inner_product_forward: public computation,
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), dst_dims);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(), dst_desc);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2504,7 +2504,7 @@ struct inner_product_forward: public computation,
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), dst_dims);
 
-    auto comp = fetch_or_create(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), dst_desc);
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2587,7 +2587,7 @@ public:
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
         weights.get_dims(), gradx_dims);
 
-    auto comp = fetch_or_create(key, gradx_desc,
+    auto comp = fetch_or_create_m(key, gradx_desc,
         weights.get_descriptor(), grady.get_descriptor());
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2698,7 +2698,7 @@ public:
     auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
         grady.get_dims());
 
-    auto comp = fetch_or_create(key, x.get_descriptor(), gradw_desc,
+    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc,
         grady.get_descriptor());
 
     auto sg = utils::make_guard([&key, &comp]() {
@@ -2735,7 +2735,7 @@ public:
     auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
         gradb_dims, grady.get_dims());
 
-    auto comp = fetch_or_create(key, x.get_descriptor(), gradw_desc, gradb_desc,
+    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc, gradb_desc,
         grady.get_descriptor());
 
     auto sg = utils::make_guard([&key, &comp]() {

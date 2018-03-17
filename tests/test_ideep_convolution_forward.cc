@@ -96,8 +96,7 @@ TEST_P(convolution_test, TestManipulation) {
   convolution_forward comp;
   auto test = [&]() {
     comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
-        weights_.get_descriptor(),
-        dst_desc, tensor::dims {cd.strh, cd.strw},
+        weights_.get_descriptor(), dst_desc, tensor::dims {cd.strh, cd.strw},
         tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
   };
 
@@ -107,15 +106,14 @@ TEST_P(convolution_test, TestManipulation) {
   auto dup = comp;
 
   // Empty comp it should be
-  convolution_forward::release(key, std::move(comp));
-  EXPECT_TRUE(comp.get() == nullptr);
-  EXPECT_TRUE(comp.need_reorder_input(0) == false);
-  EXPECT_TRUE(comp.need_reorder_input(1) == false);
+  // convolution_forward::release(key, std::move(comp));
+  // EXPECT_TRUE(comp.get() == nullptr);
+  // EXPECT_TRUE(comp.need_reorder_input(0) == false);
+  // EXPECT_TRUE(comp.need_reorder_input(1) == false);
 
   // Get back old one
   auto comp1 = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
-      weights_.get_descriptor(),
-      dst_desc, tensor::dims {cd.strh, cd.strw},
+      weights_.get_descriptor(), dst_desc, tensor::dims {cd.strh, cd.strw},
       tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
 
   // Should be the same
@@ -123,6 +121,9 @@ TEST_P(convolution_test, TestManipulation) {
   EXPECT_TRUE(dup.get() == comp1.get());
   EXPECT_TRUE(dup.need_reorder_input(0) == comp1.need_reorder_input(0));
   EXPECT_TRUE(dup.need_reorder_input(1) == comp1.need_reorder_input(1));
+
+
+  // TODO: Add multi-thread tests
 }
 
 TEST_P(convolution_test, TestCompute) {

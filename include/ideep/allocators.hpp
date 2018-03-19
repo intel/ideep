@@ -91,9 +91,9 @@ public:
       (reinterpret_cast<t*>(reinterpret_cast<size_t>(p) + \
       static_cast<size_t>(offset)))
 
-  class memory {
+  class mpool {
   public:
-    memory(const char *owner) : alloc_size_(0), free_size_(0),
+    mpool(const char *owner) : alloc_size_(0), free_size_(0),
         alignment_(DEFAULT_ALIGNMENT), seq_(0), owner_(owner) {}
 
     void *malloc(size_t size) {
@@ -179,7 +179,7 @@ public:
 };
 
 #define SCRATCH_ALLOCATOR_INSTANCE(computation_t) \
-static scratch_allocator::memory computation_t##_mpool(#computation_t); \
+static scratch_allocator::mpool computation_t##_mpool(#computation_t); \
 \
 template<> \
 char *scratch_allocator::malloc<computation_t>(size_t size) { \

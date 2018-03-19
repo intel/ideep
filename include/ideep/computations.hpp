@@ -185,6 +185,123 @@ inline tensor::data_type tensor::descriptor::type_to_id<signed char>() {
 /// Descriptor group, create relative descriptors all in one
 class descriptor_group: public c_wrapper_complex<mkldnn_primitive_desc_t> {
   friend class primitive_group;
+public:
+  class post_ops : public c_wrapper<mkldnn_post_ops_t> {
+  public:
+    post_ops() : c_wrapper([]() {
+      mkldnn_post_ops_t result;
+      error::wrap_c_api(mkldnn_post_ops_create(&result),
+          "could not create post operation sequence");
+      return result;
+    }()) {}
+
+    int num_ops() const {
+      return mkldnn_post_ops_len(get());
+    }
+
+    kind op_kind(int index) const {
+      error::wrap_c_api(
+          index < num_ops() ? mkldnn_success : mkldnn_invalid_arguments,
+          "post_ops index is out of range");
+      return static_cast<kind>(mkldnn_post_ops_get_kind(get(), index));
+    }
+
+    void append(kind op_kind,
+        float scale, float alpha, float beta, algorithm alg) {
+      switch(op_kind) {
+        case kind::sum:
+          error::wrap_c_api(
+              mkldnn_post_ops_append_sum(get(), scale),
+              "could not append sum");
+          break;
+        case kind::eltwise:
+          error::wrap_c_api(mkldnn_post_ops_append_eltwise(get(), scale,
+                convert_to_c(alg), alpha, beta), "could not append eltwise");
+          break;
+        default:
+          // TODO: throw?
+          break;
+      }
+    }
+
+    std::tuple<kind, float, float, float, algorithm> get_params(int index) {
+      mkldnn_alg_kind_t c_alg = mkldnn_eltwise_relu;
+      float scale, alpha = 1.0, beta = 0.0;
+
+      auto akind = op_kind(index);
+      switch(akind) {
+        case kind::sum:
+          error::wrap_c_api(mkldnn_post_ops_get_params_sum(get(), index, &scale),
+              "could not get sum params");
+          break;
+        case kind::eltwise:
+          error::wrap_c_api(mkldnn_post_ops_get_params_eltwise(get(), index,
+                &scale, &c_alg, &alpha, &beta), "could not get eltwise params");
+          break;
+        default:
+          error::wrap_c_api(mkldnn_invalid_arguments, "could not get params");
+          break;
+      }
+
+      return std::make_tuple(
+          akind, scale, alpha, beta, static_cast<algorithm>(c_alg));
+    }
+  };
+
+  class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
+  public:
+    attr_t() : c_wrapper([]() {
+      mkldnn_primitive_attr_t result;
+      error::wrap_c_api(mkldnn_primitive_attr_create(&result),
+          "could not create a primitive attr");
+      return result;
+    }()) {}
+
+    round_mode get_int_output_round_mode() const {
+      mkldnn_round_mode_t result;
+      error::wrap_c_api(mkldnn_primitive_attr_get_int_output_round_mode(
+            get(), &result), "could not get int output round mode");
+      return round_mode(result);
+    }
+
+    void set_int_output_round_mode(round_mode mode) {
+      error::wrap_c_api(mkldnn_primitive_attr_set_int_output_round_mode(
+            get(), mkldnn::convert_to_c(mode)),
+          "could not set int output round mode");
+    }
+
+    std::pair<std::vector<float>, int> get_output_scales() const {
+      int count, c_mask;
+      const float *c_scales;
+      error::wrap_c_api(mkldnn_primitive_attr_get_output_scales(get(),
+            &count, &c_mask, &c_scales), "could not get int output scales");
+
+      return std::make_pair(
+          std::vector<float>(c_scales, c_scales + count), c_mask);
+    }
+
+    void set_output_scales(int mask, std::vector<float> scales) {
+      error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(get(),
+            (int)scales.size(), mask, &scales[0]),
+          "could not set int output scales");
+    }
+
+    const post_ops get_post_ops() const {
+      const_mkldnn_post_ops_t c_result;
+      error::wrap_c_api(mkldnn_primitive_attr_get_post_ops(get(), &c_result),
+          "could not get post operatoion sequence");
+
+      // XXX: resource management OK?
+      post_ops result;
+      result.reset(const_cast<mkldnn_post_ops_t>(c_result));
+      return result;
+    }
+
+    void set_post_ops(post_ops ops) {
+      error::wrap_c_api(mkldnn_primitive_attr_set_post_ops(get(), ops.get()),
+            "could not set post operation sequence");
+    }
+  };
 
 protected:
   std::vector<const_mkldnn_primitive_desc_t> cpp_to_c(

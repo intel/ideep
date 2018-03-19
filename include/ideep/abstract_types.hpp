@@ -84,6 +84,7 @@ protected:
 
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
+using round_mode = mkldnn::round_mode;
 
 /// hide other formats
 enum format {

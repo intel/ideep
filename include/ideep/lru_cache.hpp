@@ -290,7 +290,6 @@ private:
   size_type capacity_;
 };
 
-// TODO: thread local
 template <class value_t, class key_t = std::string, size_t capacity = 1024>
 class computation_cache {
 public:

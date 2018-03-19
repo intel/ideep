@@ -43,6 +43,7 @@
 #include <ideep/fast_math.hpp>
 #include <ideep/tensor.hpp>
 #include <ideep/computations.hpp>
+#include <ideep/allocators.hpp>
 #endif
 
 #endif

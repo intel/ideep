@@ -483,7 +483,7 @@ public:
     reset(result);
     // TODO: lazy buffer allocation
     buffer_.reset(alloc::template malloc<computation_t>(
-        adesc.get_size(), 4096), alloc::template free<computation_t>);
+        adesc.get_size()), alloc::template free<computation_t>);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
   }
@@ -627,8 +627,7 @@ public:
       auto adesc = get_descriptor();
 
       buffer_.reset(utils::allocator::template malloc<computation>(
-          adesc.get_size(), 4096),
-          utils::allocator::template free<computation>);
+          adesc.get_size()), utils::allocator::template free<computation>);
       // set_data_handle will generate exception if malloc fail
       set_data_handle(buffer_.get());
     }

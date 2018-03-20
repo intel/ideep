@@ -29,6 +29,7 @@
 #include "mkldnn.hpp"
 #include "mem.h"
 #include "utils.h"
+#include "ideep.hpp"
 using namespace std;
 using namespace mkldnn;
 extern engine cpu_engine;
@@ -182,90 +183,28 @@ inline mkldnn_memory_format_t format_2_as_4(mkldnn_memory_format_t origin)
     return ret;
 }
 
-class Tensor {
+class Tensor : public tensor {
 public:
     // Allocate memory in constructor
     Tensor() : ndims_(0), type_(UNKNOWN_TYPE), size_(0), data_(nullptr) {}
     virtual ~Tensor() = default; 
 
     Tensor(int ndims, vector<int> dims, data_type_t type)
-        : ndims_(ndims), dims_(dims), type_(type) {
-            size_ = std::accumulate(dims.begin(), dims.begin() + ndims, 1
-                    , std::multiplies<int>());
-            data_ = std::shared_ptr<avx::byte>(new avx::byte [len()]
-                    , [] (avx::byte *p) {delete [] p;});
-            mm_fmt_ = ndims2format(ndims);
-            memory::data_type dt = to_mkldnn_type();
-            mem_.reset(new mkldnn::memory(
-                        { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_) }
-                        , cpu_engine }, data_.get()));
-        }
+        : tensor({dims, type}) {}
     // input_type: 'd': data, 'w': weight
     Tensor(int ndims, vector<int> dims, void *data, data_type_t type, char input_type='d')
-        : ndims_(ndims), dims_(dims), type_(type) {
-            size_ = std::accumulate(dims.begin(), dims.begin() + ndims, 1
-                    , std::multiplies<int>());
-            data_ = std::shared_ptr<avx::byte>(new avx::byte [len()]
-                    , [] (avx::byte *p) {delete [] p;});
-            //memcpy(data_.get(), data, len());
-            memory::data_type dt = to_mkldnn_type();
-            if (dt == memory::data_type::f32 && len() > 0) { //currently, mkldnn only support most f32 currently, may add int8 in future?
-                auto mm_fmt_i = ndims2format(ndims, input_type);
-                mm_fmt_ = ndims2format_preferred(ndims, dims, input_type);
-                auto mem_i = mkldnn::memory(
-                            { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_i) }
-                            , cpu_engine }, data);
-
-                mem_.reset(new mkldnn::memory(
-                            { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_) }
-                            , cpu_engine }, data_.get()));
-                auto reorder_prim = reorder(mem_i, *mem_);
-                std::vector<mkldnn::primitive> prims = {reorder_prim};
-                mkldnn::stream s(mkldnn::stream::kind::eager);
-                s.submit(prims).wait();
-            } else {
-                mm_fmt_ =  ndims2format(ndims, input_type);
-                fast_memcpy((char*)data_.get(), (char*)data, len());
-                mem_.reset(new mkldnn::memory(
-                            { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_) }
-                            , cpu_engine }, data_.get()));                
-            }
-        }
+        : tensor({dims, type}, data) {}
 
     Tensor(int ndims, vector<int> dims, std::shared_ptr<avx::byte> data, data_type_t type)
-        : ndims_(ndims), dims_(dims), type_(type) {
-            size_ = std::accumulate(dims.begin(), dims.begin() + ndims, 1
-                    , std::multiplies<int>());
-            data_ = data;
-            mm_fmt_ = ndims2format(ndims);
-            memory::data_type dt = to_mkldnn_type();
-            mem_.reset(new mkldnn::memory(
-                        { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_) }
-                        , cpu_engine }, data_.get()));
-        }
+        : tensor({dims, type}, data) {}
 
     Tensor(int ndims, vector<int> dims, std::shared_ptr<avx::byte> data
             , mkldnn_memory_format_t mm_fmt, data_type_t type)
-        : ndims_(ndims), dims_(dims), type_(type) {
-            size_ = std::accumulate(dims.begin(), dims.begin() + ndims, 1
-                    , std::multiplies<int>());
-            data_ = data;
-            mm_fmt_ = mm_fmt;
-            memory::data_type dt = to_mkldnn_type();
-            mem_.reset(new mkldnn::memory(
-                        { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_) }
-                        , cpu_engine }, data_.get()));
-        }
+        : tensor({dims, type, public_compatible_format(mm_fmt)}, data) {}
 
     Tensor(int ndims, vector<int> dims,
             mkldnn_memory_format_t mm_fmt, data_type_t type)
-        : Tensor(ndims, dims, type) {
-            mm_fmt_ = mm_fmt;
-            memory::data_type dt = to_mkldnn_type();
-            mem_.reset(new mkldnn::memory(
-                        { { { dims_ }, dt, static_cast<memory::format>(mm_fmt_) }
-                        , cpu_engine }, data_.get()));
-        }
+        : tensor({dims, type, public_compatible_format(mm_fmt)}) {}
         
 #if 0
     Tensor(int ndims, vector<int> dims, void *data,
@@ -283,18 +222,8 @@ public:
         , mkldnn_data_type_t dt
         , mkldnn::memory::format format
         , shared_ptr<avx::byte> data)
-        : ndims_(dims.size()), dims_(dims) {
-            type_ = to_tensor_type(dt);
-            size_ = std::accumulate(dims.begin(), dims.end(), 1
-                    , std::multiplies<int>());
-            data_ = data;
-            mm_fmt_ = mkldnn_memory_format_t(format);
-            mem_.reset(new mkldnn::memory(
-                        { { { dims_ }, static_cast<memory::data_type>(dt)
-                        , static_cast<memory::format>(mm_fmt_) }
-                        , cpu_engine }, data_.get()));
-
-        }
+        : tensor({dims, static_cast<memory::data_type>(dt),
+                  public_compatible_format(mm_fmt)}, data) {}
 
     Tensor(mkldnn::memory::dims dims
         , mkldnn::memory::data_type dt
@@ -302,21 +231,8 @@ public:
         , const mkldnn::engine &engine)
             : Tensor({{std::move(dims), dt, format}, engine}) {}
 
-    Tensor(mkldnn::memory::primitive_desc pd) {
-        auto md = pd.desc().data;
-        ndims_ = md.ndims;
-        dims_.assign(md.dims, md.dims + md.ndims);
-        type_ = to_tensor_type(md.data_type);
-        size_ = std::accumulate(md.dims, md.dims + md.ndims, 1
-                , std::multiplies<int>());
-        data_ = std::shared_ptr<avx::byte>(new avx::byte [len()]
-                , [] (avx::byte *p) {delete [] p;});
-        mm_fmt_ = md.format;
-        memory::data_type dt = to_mkldnn_type();
-        mem_.reset(new mkldnn::memory(
-                    { { { dims_ }, dt , static_cast<memory::format>(mm_fmt_) }
-                    , cpu_engine }, data_.get()));
-    }
+    Tensor(mkldnn::memory::primitive_desc pd)
+        : tensor(pd) {}
 
     inline void reset_memory(mkldnn_memory_format_t mkldnn_mfmt, avx::byte *data) {
         mm_fmt_ = mkldnn_mfmt;

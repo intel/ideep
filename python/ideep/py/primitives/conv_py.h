@@ -49,13 +49,34 @@ public:
                            mdarray *weights,
                            mdarray *bias,
                            conv_param_t *cp) {
-        auto tensor = Convolution2D<T>::Forward(
-                src->get()->tensor(),
-                weights->get()->tensor(),
-                bias ? bias->get()->tensor() : nullptr, cp);
+        tensor *src_ = reinterpret_cast<tensor *>(src->get()->tensor());
+        tensor *weights_ = reinterpret_cast<tensor *>(weights->get()->tensor());
 
-        auto out = mdarray(tensor);
-        return out;
+        // TODO
+        // allocate buffer by user
+        tensor dst({cp->out_dims, src_->get_data_type()});
+
+        if (bias) {
+            tensor *bias_ = reinterpret_cast<tensor *>(bias->get()->tensor());
+
+            dst = convolution_forward::compute(
+                    *src_, *weights_, *bias_,
+                    cp->out_dims, dst.get_data_handle(),
+                    tensor::dims {cp->sy, cp->sx},
+                    tensor::dims {cp->dilate_y, cp->dilate_x},
+                    tensor::dims {cp->pad_lh, cp->pad_lw},
+                    tensor::dims {cp->pad_rh, cp->pad_rw});
+        } else {
+            dst = convolution_forward::compute(
+                    *src_, *weights_,
+                    cp->out_dims, dst.get_data_handle(),
+                    tensor::dims {cp->sy, cp->sx},
+                    tensor::dims {cp->dilate_y, cp->dilate_x},
+                    tensor::dims {cp->pad_lh, cp->pad_lw},
+                    tensor::dims {cp->pad_rh, cp->pad_rw});
+        }
+
+        return mdarray(dst);
     }
 
     /*

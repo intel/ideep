@@ -33,28 +33,28 @@ namespace ideep {
 
 #define DEFAULT_ALIGNMENT 64
 
-struct computation;
-struct convolution_forward;
-struct convolution_backward_data;
-struct convolution_backward_weights;
-struct lrn_forward;
-struct lrn_backward;
-struct pooling_forward;
-struct pooling_backward;
-struct eltwise_forward;
-struct eltwise_backward;
-struct sum;
-struct concat;
-struct softmax_forward;
-struct softmax_backward;
-struct batch_normalization_forward_inference;
-struct batch_normalization_forward_training;
-struct batch_normalization_backward;
-struct inner_product_forward;
-struct inner_product_backward_data;
-struct inner_product_backward_weights;
-struct eltwise_binary;
-struct reorder;
+// struct computation;
+// struct convolution_forward;
+// struct convolution_backward_data;
+// struct convolution_backward_weights;
+// struct lrn_forward;
+// struct lrn_backward;
+// struct pooling_forward;
+// struct pooling_backward;
+// struct eltwise_forward;
+// struct eltwise_backward;
+// struct sum;
+// struct concat;
+// struct softmax_forward;
+// struct softmax_backward;
+// struct batch_normalization_forward_inference;
+// struct batch_normalization_forward_training;
+// struct batch_normalization_backward;
+// struct inner_product_forward;
+// struct inner_product_backward_data;
+// struct inner_product_backward_weights;
+// struct eltwise_binary;
+// struct reorder;
 
 namespace utils {
 
@@ -62,7 +62,7 @@ class allocator {
 public:
   allocator() = default;
 
-  template<class computation_t = computation>
+  template<class computation_t = void>
   static char *malloc(size_t size) {
     void *ptr;
 #ifdef _WIN32
@@ -74,7 +74,7 @@ public:
     return (rc == 0) ? (char*)ptr : nullptr;
   }
 
-  template<class computation_t = computation>
+  template<class computation_t = void>
   static void free(void *p) {
 #ifdef _WIN32
     _aligned_free((void*)p);
@@ -165,13 +165,13 @@ public:
   scratch_allocator() = default;
 
   // To instance for compuatations
-  template<class computation_t = computation>
+  template<class computation_t = void>
   static char *malloc(size_t size) {
     // Route default computation type to default allocator
     return allocator::template malloc<computation_t>(size);
   }
 
-  template<class computation_t>
+  template<class computation_t = void>
   static void free(void *p) {
     // Route default computation type to default allocator
     return allocator::template free<computation_t>(p);
@@ -191,27 +191,27 @@ void scratch_allocator::free<computation_t>(void *ptr) { \
   return computation_t##_mpool.free(ptr); \
 }
 
-SCRATCH_ALLOCATOR_INSTANCE(convolution_forward)
-SCRATCH_ALLOCATOR_INSTANCE(convolution_backward_data)
-SCRATCH_ALLOCATOR_INSTANCE(convolution_backward_weights)
-SCRATCH_ALLOCATOR_INSTANCE(lrn_forward)
-SCRATCH_ALLOCATOR_INSTANCE(lrn_backward)
-SCRATCH_ALLOCATOR_INSTANCE(pooling_forward)
-SCRATCH_ALLOCATOR_INSTANCE(pooling_backward)
-SCRATCH_ALLOCATOR_INSTANCE(eltwise_forward)
-SCRATCH_ALLOCATOR_INSTANCE(eltwise_backward)
-SCRATCH_ALLOCATOR_INSTANCE(sum)
-SCRATCH_ALLOCATOR_INSTANCE(concat)
-SCRATCH_ALLOCATOR_INSTANCE(softmax_forward)
-SCRATCH_ALLOCATOR_INSTANCE(softmax_backward)
-SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_forward_inference)
-SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_forward_training)
-SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_backward)
-SCRATCH_ALLOCATOR_INSTANCE(inner_product_forward)
-SCRATCH_ALLOCATOR_INSTANCE(inner_product_backward_data)
-SCRATCH_ALLOCATOR_INSTANCE(inner_product_backward_weights)
-SCRATCH_ALLOCATOR_INSTANCE(eltwise_binary)
-SCRATCH_ALLOCATOR_INSTANCE(reorder)
+// SCRATCH_ALLOCATOR_INSTANCE(convolution_forward)
+// SCRATCH_ALLOCATOR_INSTANCE(convolution_backward_data)
+// SCRATCH_ALLOCATOR_INSTANCE(convolution_backward_weights)
+// SCRATCH_ALLOCATOR_INSTANCE(lrn_forward)
+// SCRATCH_ALLOCATOR_INSTANCE(lrn_backward)
+// SCRATCH_ALLOCATOR_INSTANCE(pooling_forward)
+// SCRATCH_ALLOCATOR_INSTANCE(pooling_backward)
+// SCRATCH_ALLOCATOR_INSTANCE(eltwise_forward)
+// SCRATCH_ALLOCATOR_INSTANCE(eltwise_backward)
+// SCRATCH_ALLOCATOR_INSTANCE(sum)
+// SCRATCH_ALLOCATOR_INSTANCE(concat)
+// SCRATCH_ALLOCATOR_INSTANCE(softmax_forward)
+// SCRATCH_ALLOCATOR_INSTANCE(softmax_backward)
+// SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_forward_inference)
+// SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_forward_training)
+// SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_backward)
+// SCRATCH_ALLOCATOR_INSTANCE(inner_product_forward)
+// SCRATCH_ALLOCATOR_INSTANCE(inner_product_backward_data)
+// SCRATCH_ALLOCATOR_INSTANCE(inner_product_backward_weights)
+// SCRATCH_ALLOCATOR_INSTANCE(eltwise_binary)
+// SCRATCH_ALLOCATOR_INSTANCE(reorder)
 
 }
 }

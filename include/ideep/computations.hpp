@@ -49,9 +49,6 @@
 
 namespace ideep {
 
-using direct_copy = reorder;
-using spliter = reorder;
-
 template<>
 inline tensor::data_type tensor::descriptor::type_to_id<float>() {
   return tensor::data_type::f32;
@@ -555,6 +552,9 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
 protected:
   param in, out;
 };
+
+using direct_copy = reorder;
+using spliter = reorder;
 
 struct computation : public primitive_group {
   computation() = default;
@@ -2109,7 +2109,7 @@ struct batch_norm_forward_base : public computation {
       "could not create a batch normalization forward primitive descriptor");
       reset(result);
     }
-    descriptor(const tensor::descriptor &src_desc, attr_t attr, float epsilon,
+    descriptor(const tensor::descriptor &src_desc, float epsilon, attr_t attr,
         unsigned flags, prop_kind aprop_kind) {
       mkldnn_batch_normalization_desc_t data;
       error::wrap_c_api(

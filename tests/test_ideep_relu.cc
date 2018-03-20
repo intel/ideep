@@ -7,59 +7,6 @@
 using namespace ideep;
 
 template <typename data_t>
-struct relu_test_params {
-  mkldnn::engine::kind engine_kind;
-  mkldnn::memory::format data_format;
-  mkldnn::memory::format diff_format;
-  data_t negative_slope;
-  mkldnn::memory::dims dims;
-  bool expect_to_fail;
-  mkldnn_status_t expected_status;
-};
-
-template <typename data_t>
-void check_relu_fwd(data_t negative_slope, const tensor &src, const tensor &dst)
-{
-  data_t *src_data = (data_t *)src.get_data_handle();
-  data_t *dst_data = (data_t *)dst.get_data_handle();
-
-  ASSERT_EQ(src.ndims(), 4);
-  ASSERT_EQ(dst.ndims(), 4);
-  ASSERT_EQ(src.get_data_type(), mkldnn::memory::data_type::f32);
-  ASSERT_EQ(dst.get_data_type(), mkldnn::memory::data_type::f32);
-
-  for (size_t i = 0; i < src.get_size() / sizeof(data_t); ++i) {
-    data_t s = src_data[i];
-    EXPECT_NEAR(dst_data[i], s > 0 ? s : s * negative_slope, 1.e-7);
-  }
-}
-
-template <typename data_t>
-void check_relu_bwd(data_t negative_slope, const tensor &src, const tensor &grady, const tensor &gradx)
-{
-  data_t *src_data = (data_t *)src.get_data_handle();
-  data_t *grady_data = (data_t *)grady.get_data_handle();
-  data_t *gradx_data = (data_t *)gradx.get_data_handle();
-
-  const mkldnn::memory::desc src_d =
-      mkldnn::memory::desc(*src.get_mkldnn_memory_desc_t());
-  const mkldnn::memory::desc gradx_d =
-      mkldnn::memory::desc(*gradx.get_mkldnn_memory_desc_t());
-
-  ASSERT_EQ(src.ndims(), 4);
-  ASSERT_EQ(grady.ndims(), 4);
-  ASSERT_EQ(src.get_data_type(), mkldnn::memory::data_type::f32);
-  ASSERT_EQ(grady.get_data_type(), mkldnn::memory::data_type::f32);
-
-  for (size_t i = 0; i < src.get_size() / sizeof(data_t); ++i) {
-    data_t ref_x = src_data[map_index(src_d, i)];
-    data_t ref_gy = grady_data[map_index(gradx_d, i)];
-    data_t ref_gx = ref_gy * ((ref_x > 0) ? data_t{1} : negative_slope);
-    EXPECT_NEAR(gradx_data[map_index(gradx_d, i)], ref_gx, 1.e-7);
-  }
-}
-
-template <typename data_t>
 class relu_tests:
   public ::testing::TestWithParam<relu_test_params<data_t>> {
 private:

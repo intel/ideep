@@ -39,6 +39,15 @@
 #include <functional>
 #include <iostream>
 #include <immintrin.h>
+#include <random>
+#include <atomic>
+#include <chrono>
+
+#ifdef _WIN32
+  #include <process.h>
+#else
+  #include <unistd.h>
+#endif
 
 #include <ideep/abstract_types.hpp>
 #include <ideep/fast_math.hpp>
@@ -2940,6 +2949,110 @@ public:
     tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
     comp.execute(x_in, grady_in, gradw, gradb);
     return std::make_pair(gradw, gradb);
+  }
+};
+
+struct dropout_forward {
+public:
+  dropout_forward() = default;
+
+  static uint32_t randomNumberSeed() {
+    // from folly/caffe2
+    static std::atomic<uint32_t> seed(0);
+    auto tv = std::chrono::system_clock::now().time_since_epoch();
+    uint64_t usec = static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(tv).count());
+    uint32_t tv_sec = usec / 1000000;
+    uint32_t tv_usec = usec % 1000000;
+    const uint32_t kPrime0 = 51551;
+    const uint32_t kPrime1 = 61631;
+    const uint32_t kPrime2 = 64997;
+    const uint32_t kPrime3 = 111857;
+    return kPrime0 * (seed++) + kPrime1 * static_cast<uint32_t>(getpid()) +
+        kPrime2 * tv_sec + kPrime3 * tv_usec;
+  }
+
+  template<class alloc, class T>
+  static std::pair<tensor, tensor> compute_impl(const tensor &src, float ratio) {
+    const auto scale = 1.0 / (1.0 - ratio);
+    const auto size = src.get_size();
+    tensor mask(src.get_descriptor());
+    tensor dst(src.get_descriptor());
+
+    // TODO:
+    // replace with high-efficiency bernoulli distribution
+    std::bernoulli_distribution dist(1. - ratio);
+    std::mt19937 gen(randomNumberSeed());
+
+    const auto src_data = static_cast<T *>(src.get_data_handle());
+    const auto mask_data = static_cast<T *>(mask.get_data_handle());
+    const auto dst_data = static_cast<T *>(dst.get_data_handle());
+
+    # pragma omp parallel for schedule(static)
+    for (size_t i = 0; i < size; i++) {
+      mask_data[i] = dist(gen) * scale;
+      dst_data[i] = mask_data[i] * src_data[i];
+    }
+
+    return std::make_pair(mask, dst);
+  }
+
+  template<class alloc = utils::allocator>
+  static std::pair<tensor, tensor> compute(const tensor &src, float ratio) {
+    switch(src.get_data_type()) {
+    case tensor::data_type::f32:
+      return compute_impl<alloc, float>(src, ratio);
+    case tensor::data_type::s32:
+      return compute_impl<alloc, int32_t>(src, ratio);
+    case tensor::data_type::s16:
+      return compute_impl<alloc, int16_t>(src, ratio);
+    case tensor::data_type::s8:
+      return compute_impl<alloc, int8_t>(src, ratio);
+    case tensor::data_type::u8:
+      return compute_impl<alloc, uint8_t>(src, ratio);
+    default:
+      throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
+    }
+  }
+};
+
+struct dropout_backward {
+public:
+  dropout_backward() = default;
+
+  template<class alloc, class T>
+  static tensor compute_impl(const tensor &mask, const tensor &gy) {
+    const auto size = mask.get_size();
+    tensor gx(gy.get_descriptor());
+
+    const auto mask_data = static_cast<T *>(mask.get_data_handle());
+    const auto gy_data = static_cast<T *>(gy.get_data_handle());
+    const auto gx_data = static_cast<T *>(gx.get_data_handle());
+
+    # pragma omp parallel for schedule(static)
+    for (size_t i = 0; i < size; i++) {
+      gx_data[i] = mask_data[i] * gy_data[i];
+    }
+
+    return gx;
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor &mask, const tensor &gy) {
+    switch(gy.get_data_type()) {
+    case tensor::data_type::f32:
+      return compute_impl<alloc, float>(mask, gy);
+    case tensor::data_type::s32:
+      return compute_impl<alloc, int32_t>(mask, gy);
+    case tensor::data_type::s16:
+      return compute_impl<alloc, int16_t>(mask, gy);
+    case tensor::data_type::s8:
+      return compute_impl<alloc, int8_t>(mask, gy);
+    case tensor::data_type::u8:
+      return compute_impl<alloc, uint8_t>(mask, gy);
+    default:
+      throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
+    }
   }
 };
 

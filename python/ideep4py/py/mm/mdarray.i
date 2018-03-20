@@ -109,11 +109,21 @@
      int argc;
      argc = PySequence_Size(varargs);
      if (argc > 4) {
-       PyErr_SetString(PyExc_ValueError,"Too many arguments");
-       return NULL;
+       // fallback to numpy
+       auto *surrogate = reinterpret_cast<PyArrayObject *>(PyArray_FromAny(
+                   $self, nullptr, 0, 0, NPY_ARRAY_ELEMENTSTRIDES, nullptr));
+       if (surrogate == nullptr)
+         return nullptr;
+
+       PyObject *res = reinterpret_cast<PyObject *>(PyArray_Reshape(
+                   (PyArrayObject *)surrogate, varargs));
+
+       Py_DECREF(surrogate);
+       return res;
      }
+
      if (argc == 1) {
-       Py_ssize_t size = 0; 
+       Py_ssize_t size = 0;
        PyObject *o = PySequence_GetItem(varargs,0);
        if (PyNumber_Check(o)) {
          goto numpy_surrogate;

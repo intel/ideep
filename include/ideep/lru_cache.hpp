@@ -419,10 +419,6 @@ inline std::string to_string(T&& arg, Ts&&... args) {
 // Fast alternative to heavy string method
 using bytestring = std::string;
 
-template <typename T>
-inline bytestring to_bytes(const T arg) {
-  return bytestring();
-}
 
 inline bytestring to_bytes(const int arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
@@ -436,7 +432,8 @@ inline bytestring to_bytes(const float arg) {
   return bytestring(as_cstring, sizeof(float));
 }
 
-inline bytestring to_bytes(const tensor::dims arg) {
+template <typename T>
+inline bytestring to_bytes(const std::vector<T> arg) {
   if (arg.empty())
     return bytestring();
 
@@ -444,6 +441,18 @@ inline bytestring to_bytes(const tensor::dims arg) {
       to_bytes(arg[0]), [](bytestring a, int b) {
         return a + 'x' + to_bytes(b);
       });
+}
+
+template <typename T, typename =
+  typename std::enable_if<std::is_enum<T>::value>::type>
+inline bytestring to_bytes(T arg) {
+  return std::to_string(static_cast<int>(arg));
+}
+
+template <typename T, typename =
+  typename std::enable_if< std::is_class<T>::value>::type, typename = void>
+inline bytestring to_bytes(const T arg) {
+  return arg.to_bytes();
 }
 
 template <typename T, typename ...Ts>
@@ -457,7 +466,7 @@ using key_t = std::string;
 
 template <typename ...Ts>
 inline key_t create_key(Ts&&... args) {
-  return to_string(std::forward<Ts>(args)...);
+  return to_bytes(std::forward<Ts>(args)...);
 }
 
 }

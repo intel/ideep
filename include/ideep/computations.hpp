@@ -224,7 +224,8 @@ public:
       }
     }
 
-    std::tuple<kind, float, float, float, algorithm> get_params(int index) {
+    std::tuple<kind, float, float, float, algorithm>
+      get_params(int index) const {
       mkldnn_alg_kind_t c_alg = mkldnn_eltwise_relu;
       float scale, alpha = 1.0, beta = 0.0;
 
@@ -245,6 +246,31 @@ public:
 
       return std::make_tuple(
           akind, scale, alpha, beta, static_cast<algorithm>(c_alg));
+    }
+
+    utils::bytestring to_bytes() const {
+      utils::bytestring ret;
+
+      for (int i = 0; i < num_ops(); i ++) {
+        kind akind;
+        float scale, alpha, beta;
+        algorithm alg;
+        std::tie(akind, scale, alpha, beta, alg) = get_params(i);
+
+        switch(akind) {
+          case kind::sum:
+            ret += utils::to_bytes(akind) + '.' + utils::to_bytes(scale);
+            break;
+          case kind::eltwise:
+            ret += utils::to_bytes(akind) + '.' + utils::to_bytes(scale)
+              + '.' + utils::to_bytes(alpha) + '.' + utils::to_bytes(beta)
+              + '.' + utils::to_bytes(alg);
+          default:
+            break;
+        }
+      }
+
+      return ret;
     }
   };
 
@@ -293,13 +319,21 @@ public:
 
       // XXX: resource management OK?
       post_ops result;
-      result.reset(const_cast<mkldnn_post_ops_t>(c_result));
+      result.reset(const_cast<mkldnn_post_ops_t>(c_result), true);
       return result;
     }
 
     void set_post_ops(post_ops ops) {
       error::wrap_c_api(mkldnn_primitive_attr_set_post_ops(get(), ops.get()),
             "could not set post operation sequence");
+    }
+
+    utils::bytestring to_bytes() const {
+      auto bytes = get_post_ops().to_bytes();
+      auto scales = get_output_scales();
+
+      bytes += utils::to_bytes(scales.first) + utils::to_bytes(scales.second);
+      return bytes;
     }
   };
 
@@ -670,6 +704,7 @@ struct convolution_forward: public computation,
         const tensor::dims strides,
         const tensor::dims padding_l,
         const tensor::dims padding_r,
+        const attr_t attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct,
         prop_kind aprop_kind = prop_kind::forward,
         const padding_kind apadding_kind = padding_kind::zero) {
@@ -692,8 +727,8 @@ struct convolution_forward: public computation,
               "could not create a convolution forward descriptor");
 
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr)
+      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+            &result, &data, attr.get(), engine::cpu_engine().get(), nullptr)
           , "could not create a convolution forward primitive descriptor");
 
       reset(result);
@@ -705,6 +740,7 @@ struct convolution_forward: public computation,
         const tensor::dims strides,
         const tensor::dims padding_l,
         const tensor::dims padding_r,
+        const attr_t attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct,
         prop_kind aprop_kind = prop_kind::forward,
         const padding_kind apadding_kind = padding_kind::zero) {
@@ -726,8 +762,8 @@ struct convolution_forward: public computation,
               "could not create a convolution forward descriptor");
 
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
+      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+            &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
             "could not create a convolution forward primitive descriptor");
 
       reset(result);
@@ -741,6 +777,7 @@ struct convolution_forward: public computation,
         const tensor::dims dilates,
         const tensor::dims padding_l,
         const tensor::dims padding_r,
+        const attr_t attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct,
         prop_kind aprop_kind = prop_kind::forward,
         const padding_kind apadding_kind = padding_kind::zero) {
@@ -763,8 +800,8 @@ struct convolution_forward: public computation,
               "could not create a dilated convolution forward descriptor");
 
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-        &result, &data, engine::cpu_engine().get(), nullptr),
+      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+        &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
           "could not create a convolution forward primitive descriptor");
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
@@ -776,6 +813,7 @@ struct convolution_forward: public computation,
         const tensor::dims dilates,
         const tensor::dims padding_l,
         const tensor::dims padding_r,
+        const attr_t attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct,
         prop_kind aprop_kind = prop_kind::forward,
         const padding_kind apadding_kind = padding_kind::zero) {
@@ -797,8 +835,8 @@ struct convolution_forward: public computation,
             "could not create a dilated convolution forward descriptor");
 
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-        &result, &data, engine::cpu_engine().get(), nullptr),
+      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+        &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
         "could not create a convolution forward primitive descriptor");
 
       reset(result);
@@ -893,7 +931,7 @@ struct convolution_forward: public computation,
       const tensor& weights, const tensor::dims& result_dims,
       void *result, Ts&&... args) {
     tensor::descriptor result_desc(result_dims, src.get_data_type());
-    std::string key = utils::to_string(src.get_data_type(), src.get_dims(),
+    std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), result_dims, args...);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
@@ -926,11 +964,13 @@ struct convolution_forward: public computation,
       const tensor::dims result_dims, void *result, const tensor::dims strides,
       const tensor::dims dilateds, const tensor::dims padding_l,
       const tensor::dims padding_r,
+      const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     return compute_impl<alloc>(src, weights, result_dims, result, strides,
-        dilateds, padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+        dilateds, padding_l, padding_r,
+        attr, aalogorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator>
@@ -939,22 +979,25 @@ struct convolution_forward: public computation,
       void *result, const tensor::dims strides,
       const tensor::dims dilateds, const tensor::dims padding_l,
       const tensor::dims padding_r,
+      const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     return compute_impl<alloc>(src, weights, bias, result_dims, result, strides,
-        dilateds, padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+        dilateds, padding_l, padding_r,
+        attr, aalogorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, void *result, const tensor::dims strides,
       const tensor::dims padding_l, const tensor::dims padding_r,
+      const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     return compute_impl<alloc>(src, weights, result_dims, result, strides,
-        padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator>
@@ -962,11 +1005,12 @@ struct convolution_forward: public computation,
       const tensor& bias, const tensor::dims result_dims, void *result,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r,
+      const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     return compute_impl<alloc>(src, weights, bias, result_dims, result, strides,
-        padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
   }
 };
 

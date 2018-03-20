@@ -66,6 +66,39 @@ protected:
     wgt_.init(wgt_desc);
     dst_ref_.init(dst_desc);
     raw_dst_.reset(new char[dst_desc.get_size()]);
+
+    // tensor cases
+    std::shared_ptr<tensor> src1(new tensor()), src2(new tensor()),
+                            src3(new tensor()), src4(new tensor()),
+                            wgt1(new tensor()), wgt2(new tensor());
+    src1->init<SCRATCH_ALLOCATOR(convolution_forward)>(src_desc);
+    auto raw_src1 = (unsigned long long)src1->get_data_handle();
+    src1.reset();
+    src2->init<SCRATCH_ALLOCATOR(convolution_forward)>(src_desc);
+    auto raw_src2 = (unsigned long long)src2->get_data_handle();
+    ASSERT_EQ(raw_src1, raw_src2);
+
+    src3->init<SCRATCH_ALLOCATOR(convolution_backward_data)>(src_desc);
+    auto raw_src3 = (unsigned long long)src3->get_data_handle();
+    src3.reset();
+    src4->init<SCRATCH_ALLOCATOR(convolution_backward_data)>(src_desc);
+    auto raw_src4 = (unsigned long long)src4->get_data_handle();
+    ASSERT_EQ(raw_src3, raw_src4);
+
+    ASSERT_TRUE(raw_src2 != raw_src4);
+
+    wgt1->init<SCRATCH_ALLOCATOR(convolution_forward)>(wgt_desc);
+    auto raw_wgt1 = (unsigned long long)wgt1->get_data_handle();
+    wgt1.reset();
+    wgt2->init<SCRATCH_ALLOCATOR(convolution_forward)>(wgt_desc);
+    auto raw_wgt2 = (unsigned long long)wgt2->get_data_handle();
+    ASSERT_EQ(raw_wgt1, raw_wgt2);
+    ASSERT_TRUE(raw_wgt2 != raw_src2);
+
+    src2.reset();
+    src4.reset();
+    wgt2.reset();
+
     forward();
   }
 

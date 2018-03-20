@@ -93,8 +93,8 @@ public:
 
   class mpool {
   public:
-    mpool(const char *owner) : alloc_size_(0), free_size_(0),
-        alignment_(DEFAULT_ALIGNMENT), seq_(0), owner_(owner) {}
+    mpool() : alloc_size_(0), free_size_(0),
+        alignment_(DEFAULT_ALIGNMENT), seq_(0) {}
 
     void *malloc(size_t size) {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -159,61 +159,30 @@ public:
     std::list<header_t *> free_hashline_[MAX_ENTRY];
     std::mutex mutex_;
     int seq_;
-    std::string owner_;
   };
 
   scratch_allocator() = default;
 
-  // To instance for compuatations
+  template<class computation_t = void>
+  static inline mpool *get_mpool(void) {
+    static std::shared_ptr<mpool> mpool_(new mpool());
+    return mpool_.get();
+  }
+
   template<class computation_t = void>
   static char *malloc(size_t size) {
-    // Route default computation type to default allocator
-    return allocator::template malloc<computation_t>(size);
+    return static_cast<char *>(get_mpool<computation_t>()->malloc(size));
   }
 
   template<class computation_t = void>
   static void free(void *p) {
-    // Route default computation type to default allocator
-    return allocator::template free<computation_t>(p);
+    return get_mpool<computation_t>()->free(p);
   }
 };
-
-#define SCRATCH_ALLOCATOR_INSTANCE(computation_t) \
-static scratch_allocator::mpool computation_t##_mpool(#computation_t); \
-\
-template<> \
-char *scratch_allocator::malloc<computation_t>(size_t size) { \
-  return static_cast<char *>(computation_t##_mpool.malloc(size)); \
-} \
-\
-template<> \
-void scratch_allocator::free<computation_t>(void *ptr) { \
-  return computation_t##_mpool.free(ptr); \
-}
-
-// SCRATCH_ALLOCATOR_INSTANCE(convolution_forward)
-// SCRATCH_ALLOCATOR_INSTANCE(convolution_backward_data)
-// SCRATCH_ALLOCATOR_INSTANCE(convolution_backward_weights)
-// SCRATCH_ALLOCATOR_INSTANCE(lrn_forward)
-// SCRATCH_ALLOCATOR_INSTANCE(lrn_backward)
-// SCRATCH_ALLOCATOR_INSTANCE(pooling_forward)
-// SCRATCH_ALLOCATOR_INSTANCE(pooling_backward)
-// SCRATCH_ALLOCATOR_INSTANCE(eltwise_forward)
-// SCRATCH_ALLOCATOR_INSTANCE(eltwise_backward)
-// SCRATCH_ALLOCATOR_INSTANCE(sum)
-// SCRATCH_ALLOCATOR_INSTANCE(concat)
-// SCRATCH_ALLOCATOR_INSTANCE(softmax_forward)
-// SCRATCH_ALLOCATOR_INSTANCE(softmax_backward)
-// SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_forward_inference)
-// SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_forward_training)
-// SCRATCH_ALLOCATOR_INSTANCE(batch_normalization_backward)
-// SCRATCH_ALLOCATOR_INSTANCE(inner_product_forward)
-// SCRATCH_ALLOCATOR_INSTANCE(inner_product_backward_data)
-// SCRATCH_ALLOCATOR_INSTANCE(inner_product_backward_weights)
-// SCRATCH_ALLOCATOR_INSTANCE(eltwise_binary)
-// SCRATCH_ALLOCATOR_INSTANCE(reorder)
-
 }
 }
+
+#define SCRATCH_ALLOCATOR(computation_t) \
+    ideep::utils::scratch_allocator, ideep::computation_t
 
 #endif

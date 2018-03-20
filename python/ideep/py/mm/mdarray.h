@@ -167,8 +167,6 @@ public:
   virtual ~mdarray() = default;
 
   mdarray(Tensor *tensor) : tensor_(tensor) {}
-  mdarray(const tensor &tensor)
-      : tensor_(make_unique<Tensor>(tensor)) {}
 
   mdarray(mkldnn::memory::dims &dims
       , mkldnn::memory::data_type dt
@@ -383,13 +381,13 @@ public:
       return tensor_->ndims();
   }
   inline memory::desc desc() const {
-      return tensor_->get_mkldnn_memory_desc_t();
+      return tensor_->desc();
   }
   inline size_type size() const {
-      return tensor_->get_size();
+      return tensor_->size();
   }
   inline void *data() const {
-      return tensor_->get_data_handle();
+      return tensor_->data();
   }
   inline mkldnn::engine get_engine() const {
       return tensor_->get_engine();

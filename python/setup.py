@@ -220,7 +220,9 @@ includes = ['ideep/include',
             'ideep/include/blas',
             'ideep/include/primitives/ops',
             'ideep/include/primitives/prim_mgr',
-            'include']
+            'include',
+            '../include',
+            '../include/ideep']
 
 libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
 

@@ -199,8 +199,10 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep/py/primitives',
              '-Iideep/py/swig_utils',
              # '-Iideep/py/dlcp',
-             '-Iideep/include/primitives/',
-             '-Iideep/include/mm/']
+             '-Iideep/include/primitives',
+             '-Iideep/include/mm',
+             '-I../include',
+             '-I../include/ideep']
 
 if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']

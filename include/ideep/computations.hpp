@@ -49,116 +49,6 @@
 
 namespace ideep {
 
-struct reorder: public c_wrapper<mkldnn_primitive_t>,
-  public utils::computation_cache<reorder> {
-  struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
-    descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input
-        , const tensor::descriptor &output) {
-      // TODO: check to make sure primitive_desc is memory/view
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-            &result, input.get(), output.get()),
-          "could not create a reorder primitive descriptor");
-      reset(result);
-    }
-  };
-
-  reorder() = default;
-
-  void init(const tensor::descriptor& src_desc,
-      const tensor::descriptor& dst_desc) {
-    mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-          &desc, src_desc.get(), dst_desc.get()),
-        "could not create a reorder primitive descriptor");
-    in.init(src_desc, invalid_buffer);
-    out.init(dst_desc, invalid_buffer);
-
-    mkldnn_primitive_t result;
-    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
-        "could not create a reorder primitive");
-    reset(result);
-  }
-
-  void init(const tensor::view& view, const tensor::descriptor& src_desc,
-      const tensor::descriptor& dst_desc) {
-    mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-          &desc, view.get(), dst_desc.get()),
-        "could not create a reorder primitive descriptor");
-    in.init(src_desc, invalid_buffer);
-    out.init(dst_desc, invalid_buffer);
-
-    mkldnn_primitive_t result;
-    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
-        "could not create a reorder primitive");
-    reset(result);
-  }
-
-  void init(const tensor::descriptor& src_desc, const tensor::view& view,
-      const tensor::descriptor& dst_desc) {
-    mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-          &desc, src_desc.get(), view.get()),
-        "could not create a reorder primitive descriptor");
-    in.init(src_desc, invalid_buffer);
-    out.init(dst_desc, invalid_buffer);
-
-    mkldnn_primitive_t result;
-    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
-        "could not create a reorder primitive");
-    reset(result);
-  }
-
-  template<typename T, typename... Ts>
-  reorder(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void operator() (const tensor &input, const tensor &output) {
-    assert(input.get_descriptor() == in.get_descriptor()
-        && output.get_descriptor() == out.get_descriptor());
-    in.set_data_handle(input.get_data_handle());
-    out.set_data_handle(output.get_data_handle());
-
-    std::vector<mkldnn_primitive_t> execution_sequence = {get()};
-    mkldnn_primitive_t c_api_error_primitive;
-
-    error::wrap_c_api(
-        mkldnn_stream_submit(stream::default_stream().get(),
-          execution_sequence.size(), &execution_sequence[0],
-          &c_api_error_primitive),
-        "could not execute reorder", &c_api_error_primitive);
-  }
-
-  static const void compute(
-      const tensor& input, const tensor& output) {
-    auto key = utils::create_key(input.get_dims(), input.get_data_type(),
-        input.get_internal_format(), output.get_dims(), output.get_data_type(),
-        output.get_internal_format());
-
-    auto op = fetch_or_create_m(key, input.get_descriptor(),
-        output.get_descriptor());
-    auto sg = utils::make_guard([&key, &op]() {
-        release(key, std::move(op));
-        });
-
-    op(input, output);
-  }
-
-  // static void split(const tensor& input, const tensor::view& subregion,
-  //     const tensor output) {
-  // }
-protected:
-  param in, out;
-};
-
 using direct_copy = reorder;
 using spliter = reorder;
 
@@ -548,6 +438,122 @@ protected:
         , "could not execute the computation"
         , &c_api_error_primitive);
   }
+};
+
+struct reorder: public c_wrapper<mkldnn_primitive_t>,
+  public utils::computation_cache<reorder> {
+  struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
+    using attr_t = descriptor_group::attr_t;
+    using post_ops = descriptor_group::post_ops;
+
+    descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input,
+        const tensor::descriptor &output,
+        const attr_t attr = attr_t()) {
+      // TODO: check to make sure primitive_desc is memory/view
+      mkldnn_primitive_desc_t result;
+      error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
+            &result, input.get(), output.get(), attr.get()),
+          "could not create a reorder primitive descriptor");
+      reset(result);
+    }
+  };
+
+  reorder() = default;
+
+  void init(const tensor::descriptor& src_desc,
+      const tensor::descriptor& dst_desc,
+      const descriptor::attr_t attr = descriptor::attr_t()) {
+    mkldnn_primitive_desc_t desc;
+    error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
+          &desc, src_desc.get(), dst_desc.get(), attr.get()),
+        "could not create a reorder primitive descriptor");
+    in.init(src_desc, invalid_buffer);
+    out.init(dst_desc, invalid_buffer);
+
+    mkldnn_primitive_t result;
+    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
+    const_mkldnn_primitive_t outputs[] = { out.get() };
+    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
+        "could not create a reorder primitive");
+    reset(result);
+  }
+
+  void init(const tensor::view& view, const tensor::descriptor& src_desc,
+      const tensor::descriptor& dst_desc) {
+    mkldnn_primitive_desc_t desc;
+    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
+          &desc, view.get(), dst_desc.get()),
+        "could not create a reorder primitive descriptor");
+    in.init(src_desc, invalid_buffer);
+    out.init(dst_desc, invalid_buffer);
+
+    mkldnn_primitive_t result;
+    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
+    const_mkldnn_primitive_t outputs[] = { out.get() };
+    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
+        "could not create a reorder primitive");
+    reset(result);
+  }
+
+  void init(const tensor::descriptor& src_desc, const tensor::view& view,
+      const tensor::descriptor& dst_desc) {
+    mkldnn_primitive_desc_t desc;
+    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
+          &desc, src_desc.get(), view.get()),
+        "could not create a reorder primitive descriptor");
+    in.init(src_desc, invalid_buffer);
+    out.init(dst_desc, invalid_buffer);
+
+    mkldnn_primitive_t result;
+    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
+    const_mkldnn_primitive_t outputs[] = { out.get() };
+    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
+        "could not create a reorder primitive");
+    reset(result);
+  }
+
+  template<typename T, typename... Ts>
+  reorder(T arg, Ts&&... args) {
+    init(arg, std::forward<Ts>(args)...);
+  }
+
+  void operator() (const tensor &input, const tensor &output) {
+    assert(input.get_descriptor() == in.get_descriptor()
+        && output.get_descriptor() == out.get_descriptor());
+    in.set_data_handle(input.get_data_handle());
+    out.set_data_handle(output.get_data_handle());
+
+    std::vector<mkldnn_primitive_t> execution_sequence = {get()};
+    mkldnn_primitive_t c_api_error_primitive;
+
+    error::wrap_c_api(
+        mkldnn_stream_submit(stream::default_stream().get(),
+          execution_sequence.size(), &execution_sequence[0],
+          &c_api_error_primitive),
+        "could not execute reorder", &c_api_error_primitive);
+  }
+
+  static const void compute(
+      const tensor& input, const tensor& output,
+      const descriptor::attr_t attr = descriptor::attr_t()) {
+    auto key = utils::create_key(input.get_dims(), input.get_data_type(),
+        input.get_internal_format(), output.get_dims(), output.get_data_type(),
+        output.get_internal_format(), attr);
+
+    auto op = fetch_or_create_m(key, input.get_descriptor(),
+        output.get_descriptor(), attr);
+    auto sg = utils::make_guard([&key, &op]() {
+        release(key, std::move(op));
+        });
+
+    op(input, output);
+  }
+
+  // static void split(const tensor& input, const tensor::view& subregion,
+  //     const tensor output) {
+  // }
+protected:
+  param in, out;
 };
 
 struct computation : public primitive_group {
@@ -2100,6 +2106,20 @@ struct batch_norm_forward_base : public computation {
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(
           &result, &data, engine::cpu_engine().get(), nullptr),
+      "could not create a batch normalization forward primitive descriptor");
+      reset(result);
+    }
+    descriptor(const tensor::descriptor &src_desc, attr_t attr, float epsilon,
+        unsigned flags, prop_kind aprop_kind) {
+      mkldnn_batch_normalization_desc_t data;
+      error::wrap_c_api(
+          mkldnn_batch_normalization_forward_desc_init(&data,
+            mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(),
+            epsilon, flags),
+          "could not create a batch normalization forward descriptor");
+      mkldnn_primitive_desc_t result;
+      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+          &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
       "could not create a batch normalization forward primitive descriptor");
       reset(result);
     }

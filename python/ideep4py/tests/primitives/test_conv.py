@@ -13,14 +13,7 @@ w = ideep4py.mdarray(w)
 b = numpy.ndarray(shape=(32,), dtype=numpy.float32, order='C')
 b = ideep4py.mdarray(b)
 
-cp = convolution2DParam()
-cp.out_dims = intVector()
-cp.out_dims.push_back(1)
-cp.out_dims.push_back(32)
-cp.out_dims.push_back(224)
-cp.out_dims.push_back(224)
-cp.sy = cp.sx = 1
-cp.pad_lh = cp.pad_lw = cp.pad_rh = cp.pad_rw = 1
+cp = convolution2DParam((1, 32, 224, 224), 1, 1, 1, 1, 1, 1, 1, 1)
 
 print("fwd with bias")
 y = convolution2D.Forward(x, w, b, cp)

@@ -1,8 +1,8 @@
 import numpy
-import ideep
+import ideep4py
 
 # from ideep4py import convolution2DParam, conv_test
-from ideep import intVector, convolution2DParam, convolution2D
+from ideep4py import intVector, convolution2DParam, convolution2D
 
 x = numpy.ndarray(shape=(1, 32, 224, 224), dtype=numpy.float32, order='C')
 x = ideep4py.mdarray(x)

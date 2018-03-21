@@ -179,9 +179,10 @@ public:
       return ret;
     }
 
-    static post_ops relu(float scale = 1.0) {
+    static post_ops relu(float scale = 1.f,
+        float alpha = 0.f, float beta = 0.f) {
       post_ops ret;
-      ret.append(kind::eltwise, scale, 1.0, 0.0, algorithm::eltwise_relu);
+      ret.append(kind::eltwise, scale, alpha, beta, algorithm::eltwise_relu);
       return ret;
     }
   };
@@ -257,9 +258,10 @@ public:
       return attr;
     }
 
-    static inline attr_t relu(float scale = 1.0) {
+    static inline attr_t relu(float scale = 1.0,
+        float alpha = 0.f, float beta = 0.f) {
       attr_t attr;
-      attr.set_post_ops(post_ops::relu(scale));
+      attr.set_post_ops(post_ops::relu(scale, alpha, beta));
       return attr;
     }
 

@@ -438,9 +438,9 @@ inline bytestring to_bytes(const std::vector<T> arg) {
     return bytestring();
 
   return std::accumulate(std::next(arg.begin()), arg.end(),
-      to_bytes(arg[0]), [](bytestring a, int b) {
-        return a + 'x' + to_bytes(b);
-      });
+    to_bytes(arg[0]), [](bytestring a, int b) {
+      return a + 'x' + to_bytes(b);
+    });
 }
 
 template <typename T, typename =

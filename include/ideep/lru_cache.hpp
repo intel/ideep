@@ -461,7 +461,6 @@ inline bytestring to_bytes(T&& arg, Ts&&... args) {
     '*' + to_bytes(std::forward<Ts>(args)...);
 }
 
-
 using key_t = std::string;
 
 template <typename ...Ts>

@@ -91,6 +91,7 @@ public:
       return result;
     }()) {}
 
+
     int num_ops() const {
       return mkldnn_post_ops_len(get());
     }
@@ -168,6 +169,21 @@ public:
 
       return ret;
     }
+
+  public:
+    // Helper factory
+    static post_ops sum(float scale = 1.0) {
+      post_ops ret;
+      ret.append(kind::sum, scale,
+          /* meanless dummies */1.0, 0.0, algorithm::eltwise_relu);
+      return ret;
+    }
+
+    static post_ops relu(float scale = 1.0) {
+      post_ops ret;
+      ret.append(kind::eltwise, scale, 1.0, 0.0, algorithm::eltwise_relu);
+      return ret;
+    }
   };
 
   class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
@@ -230,6 +246,27 @@ public:
 
       bytes += utils::to_bytes(scales.first) + utils::to_bytes(scales.second);
       return bytes;
+    }
+
+  public:
+    // Helper factory
+    //
+    static inline attr_t sum(float scale = 1.0) {
+      attr_t attr;
+      attr.set_post_ops(post_ops::sum(scale));
+      return attr;
+    }
+
+    static inline attr_t relu(float scale = 1.0) {
+      attr_t attr;
+      attr.set_post_ops(post_ops::relu(scale));
+      return attr;
+    }
+
+    static inline attr_t attr_post_ops(post_ops post) {
+      attr_t attr;
+      attr.set_post_ops(post);
+      return attr;
     }
   };
 

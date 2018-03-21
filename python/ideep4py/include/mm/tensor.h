@@ -183,6 +183,10 @@ inline mkldnn_memory_format_t format_2_as_4(mkldnn_memory_format_t origin)
     return ret;
 }
 
+using tensor = ideep::tensor;
+using descriptor = ideep::tensor::descriptor;
+using dims = mkldnn::memory::dims;
+using data_type = mkldnn::memory::data_type;
 class Tensor : public tensor {
 public:
     // Allocate memory in constructor
@@ -190,21 +194,26 @@ public:
     virtual ~Tensor() = default; 
 
     Tensor(int ndims, vector<int> dims, data_type_t type)
-        : tensor({dims, type}) {}
+        : tensor(descriptor(static_cast<mkldnn::memory::dims>(dims),
+          static_cast<mkldnn::memory::data_type>(type))) {}
     // input_type: 'd': data, 'w': weight
     Tensor(int ndims, vector<int> dims, void *data, data_type_t type, char input_type='d')
-        : tensor({dims, type}, data) {}
+        : tensor(descriptor(static_cast<mkldnn::memory::dims>(dims),
+          static_cast<mkldnn::memory::data_type>(type)), data) {}
 
     Tensor(int ndims, vector<int> dims, std::shared_ptr<avx::byte> data, data_type_t type)
-        : tensor({dims, type}, data) {}
+        : tensor(descriptor(static_cast<mkldnn::memory::dims>(dims),
+          static_cast<mkldnn::memory::data_type>(type)), (void *)data.get()) {}
 
     Tensor(int ndims, vector<int> dims, std::shared_ptr<avx::byte> data
             , mkldnn_memory_format_t mm_fmt, data_type_t type)
-        : tensor({dims, type, public_compatible_format(mm_fmt)}, data) {}
+        : tensor(descriptor(static_cast<mkldnn::memory::dims>(dims),
+          static_cast<mkldnn::memory::data_type>(type), (ideep::format)mm_fmt), (void *)data.get()) {}
 
     Tensor(int ndims, vector<int> dims,
             mkldnn_memory_format_t mm_fmt, data_type_t type)
-        : tensor({dims, type, public_compatible_format(mm_fmt)}) {}
+        : tensor(descriptor(static_cast<mkldnn::memory::dims>(dims),
+          static_cast<mkldnn::memory::data_type>(type), (ideep::format)mm_fmt)) {}
         
 #if 0
     Tensor(int ndims, vector<int> dims, void *data,
@@ -222,8 +231,8 @@ public:
         , mkldnn_data_type_t dt
         , mkldnn::memory::format format
         , shared_ptr<avx::byte> data)
-        : tensor({dims, static_cast<memory::data_type>(dt),
-                  public_compatible_format(mm_fmt)}, data) {}
+        : tensor(descriptor(dims, static_cast<memory::data_type>(dt),
+                 (ideep::format)format), (void *)data.get()) {}
 
     Tensor(mkldnn::memory::dims dims
         , mkldnn::memory::data_type dt
@@ -231,8 +240,10 @@ public:
         , const mkldnn::engine &engine)
             : Tensor({{std::move(dims), dt, format}, engine}) {}
 
+    Tensor(const tensor &t) : tensor(t) {}
+
     Tensor(mkldnn::memory::primitive_desc pd)
-        : tensor(pd) {}
+        : tensor(pd.get()) {}
 
     inline void reset_memory(mkldnn_memory_format_t mkldnn_mfmt, avx::byte *data) {
         mm_fmt_ = mkldnn_mfmt;
@@ -377,7 +388,7 @@ public:
                     { { { dims_ }, dt, static_cast<memory::format>(public_fmt) }
                     , cpu_engine }, data);
             
-            auto reorder_prim = reorder(*mem_, mem);
+            auto reorder_prim = mkldnn::reorder(*mem_, mem);
             std::vector<mkldnn::primitive> prims = { reorder_prim };
             mkldnn::stream s(mkldnn::stream::kind::eager);
             s.submit(prims).wait();

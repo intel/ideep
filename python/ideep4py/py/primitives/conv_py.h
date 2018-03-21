@@ -30,6 +30,9 @@
 #include "op_param.h"
 #include "mdarray.h"
 #include "conv.h"
+#include "ideep.hpp"
+
+using tensor = ideep::tensor;
 
 template <typename T>
 class Convolution2D_Py
@@ -59,7 +62,7 @@ public:
         if (bias) {
             tensor *bias_ = reinterpret_cast<tensor *>(bias->get()->tensor());
 
-            dst = convolution_forward::compute(
+            dst = ideep::convolution_forward::compute(
                     *src_, *weights_, *bias_,
                     cp->out_dims, dst.get_data_handle(),
                     tensor::dims {cp->sy, cp->sx},
@@ -67,7 +70,7 @@ public:
                     tensor::dims {cp->pad_lh, cp->pad_lw},
                     tensor::dims {cp->pad_rh, cp->pad_rw});
         } else {
-            dst = convolution_forward::compute(
+            dst = ideep::convolution_forward::compute(
                     *src_, *weights_,
                     cp->out_dims, dst.get_data_handle(),
                     tensor::dims {cp->sy, cp->sx},

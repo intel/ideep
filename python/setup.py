@@ -97,7 +97,7 @@ def prepare_mkldnn():
 EXT_LIB_PATH = PYTHON_ROOT + '/lib'
 EXT_INCLUDE_PATH = PYTHON_ROOT + '/include'
 EXT_SHARE_PATH = PYTHON_ROOT + '/share'
-TARGET_LIB_PATH = PYTHON_ROOT + '/ideep/lib'
+TARGET_LIB_PATH = PYTHON_ROOT + '/ideep4py/lib'
 
 target_libs = [
     # 'libdlcomp.so',
@@ -195,12 +195,12 @@ cmdclass = {
 ###############################################################################
 
 swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
-             '-Iideep/py/mm',
-             '-Iideep/py/primitives',
-             '-Iideep/py/swig_utils',
-             # '-Iideep/py/dlcp',
-             '-Iideep/include/primitives',
-             '-Iideep/include/mm',
+             '-Iideep4py/py/mm',
+             '-Iideep4py/py/primitives',
+             '-Iideep4py/py/swig_utils',
+             # '-Iideep4py/py/dlcp',
+             '-Iideep4py/include/primitives',
+             '-Iideep4py/include/mm',
              '-I../include',
              '-I../include/ideep']
 
@@ -211,17 +211,17 @@ ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas']
 link_opts = ['-Wl,-z,now', '-Wl,-z,noexecstack',
              '-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './lib']
 
-includes = ['ideep/include',
-            'ideep/include/mkl',
-            'ideep/common',
-            'ideep/include/mm',
-            'ideep/py/mm',
-            'ideep/py/primitives',
-            # 'ideep/py/dlcp',
-            'ideep/include/primitives',
-            'ideep/include/blas',
-            'ideep/include/primitives/ops',
-            'ideep/include/primitives/prim_mgr',
+includes = ['ideep4py/include',
+            'ideep4py/include/mkl',
+            'ideep4py/common',
+            'ideep4py/include/mm',
+            'ideep4py/py/mm',
+            'ideep4py/py/primitives',
+            # 'ideep4py/py/dlcp',
+            'ideep4py/include/primitives',
+            'ideep4py/include/blas',
+            'ideep4py/include/primitives/ops',
+            'ideep4py/include/primitives/prim_mgr',
             'include',
             '../include',
             '../include/ideep']
@@ -231,41 +231,41 @@ libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
 if system() == 'Linux':
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
     libraries += ['m']
-    src = ['ideep/py/ideep4py.i',
-           # 'ideep/py/dlcp/dlcp_py.cc',
-           'ideep/mm/mem.cc',
-           'ideep/mm/tensor.cc',
-           'ideep/py/mm/mdarray.cc',
-           'ideep/common/cpu_info.cc',
-           'ideep/common/utils.cc',
-           'ideep/common/common.cc',
-           'ideep/blas/sum.cc',
-           'ideep/py/mm/basic.cc',
-           'ideep/primitives/ops/eltwise_fwd.cc',
-           'ideep/primitives/ops/eltwise_bwd.cc',
-           'ideep/primitives/eltwise.cc',
-           'ideep/primitives/ops/conv_fwd.cc',
-           'ideep/primitives/ops/conv_bwd_weights.cc',
-           'ideep/primitives/ops/conv_bwd_data.cc',
-           'ideep/primitives/ops/reorder_op.cc',
-           'ideep/primitives/conv.cc',
-           'ideep/primitives/ops/pooling_fwd.cc',
-           'ideep/primitives/ops/pooling_bwd.cc',
-           'ideep/primitives/pooling.cc',
-           'ideep/primitives/ops/linear_fwd.cc',
-           'ideep/primitives/ops/linear_bwd_weights.cc',
-           'ideep/primitives/ops/linear_bwd_data.cc',
-           'ideep/primitives/linear.cc',
-           'ideep/primitives/bn.cc',
-           'ideep/primitives/ops/bn_fwd.cc',
-           'ideep/primitives/ops/bn_bwd.cc',
-           'ideep/primitives/ops/concat_fwd.cc',
-           'ideep/primitives/ops/concat_bwd.cc',
-           'ideep/primitives/concat.cc',
-           'ideep/primitives/ops/lrn_fwd.cc',
-           'ideep/primitives/ops/lrn_bwd.cc',
-           'ideep/primitives/lrn.cc',
-           'ideep/primitives/dropout.cc',
+    src = ['ideep4py/py/ideep4py.i',
+           # 'ideep4py/py/dlcp/dlcp_py.cc',
+           'ideep4py/mm/mem.cc',
+           'ideep4py/mm/tensor.cc',
+           'ideep4py/py/mm/mdarray.cc',
+           'ideep4py/common/cpu_info.cc',
+           'ideep4py/common/utils.cc',
+           'ideep4py/common/common.cc',
+           'ideep4py/blas/sum.cc',
+           'ideep4py/py/mm/basic.cc',
+           'ideep4py/primitives/ops/eltwise_fwd.cc',
+           'ideep4py/primitives/ops/eltwise_bwd.cc',
+           'ideep4py/primitives/eltwise.cc',
+           'ideep4py/primitives/ops/conv_fwd.cc',
+           'ideep4py/primitives/ops/conv_bwd_weights.cc',
+           'ideep4py/primitives/ops/conv_bwd_data.cc',
+           'ideep4py/primitives/ops/reorder_op.cc',
+           'ideep4py/primitives/conv.cc',
+           'ideep4py/primitives/ops/pooling_fwd.cc',
+           'ideep4py/primitives/ops/pooling_bwd.cc',
+           'ideep4py/primitives/pooling.cc',
+           'ideep4py/primitives/ops/linear_fwd.cc',
+           'ideep4py/primitives/ops/linear_bwd_weights.cc',
+           'ideep4py/primitives/ops/linear_bwd_data.cc',
+           'ideep4py/primitives/linear.cc',
+           'ideep4py/primitives/bn.cc',
+           'ideep4py/primitives/ops/bn_fwd.cc',
+           'ideep4py/primitives/ops/bn_bwd.cc',
+           'ideep4py/primitives/ops/concat_fwd.cc',
+           'ideep4py/primitives/ops/concat_bwd.cc',
+           'ideep4py/primitives/concat.cc',
+           'ideep4py/primitives/ops/lrn_fwd.cc',
+           'ideep4py/primitives/ops/lrn_bwd.cc',
+           'ideep4py/primitives/lrn.cc',
+           'ideep4py/primitives/dropout.cc',
            ]
 else:
     # TODO
@@ -288,14 +288,14 @@ tests_require = [
 ext_modules = []
 
 ext = Extension(
-    'ideep._ideep4py', sources=src,
+    'ideep4py._ideep4py', sources=src,
     swig_opts=swig_opts,
     extra_compile_args=ccxx_opts, extra_link_args=link_opts,
     include_dirs=includes, libraries=libraries)
 
 ext_modules.append(ext)
 
-packages = ['ideep', 'ideep.cosim']
+packages = ['ideep4py', 'ideep4py.cosim']
 
 setup(
     name='ideep4py',
@@ -306,8 +306,8 @@ setup(
     url='https://github.com/intel/ideep',
     license='MIT License',
     packages=packages,
-    package_dir={'ideep': 'ideep/'},
-    package_data={'ideep': ['lib/*', ]},
+    package_dir={'ideep4py': 'ideep4py/'},
+    package_data={'ideep4py': ['lib/*', ]},
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     zip_safe=False,

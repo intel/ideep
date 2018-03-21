@@ -168,7 +168,7 @@ public:
 
   mdarray(Tensor *tensor) : tensor_(tensor) {}
   mdarray(const tensor &tensor)
-      : tensor_(make_unique<Tensor>(tensor)) {}
+      : tensor_(new Tensor(tensor)) {}
 
   mdarray(mkldnn::memory::dims &dims
       , mkldnn::memory::data_type dt
@@ -383,7 +383,7 @@ public:
       return tensor_->ndims();
   }
   inline memory::desc desc() const {
-      return tensor_->get_mkldnn_memory_desc_t();
+      return memory::desc(*tensor_->get_mkldnn_memory_desc_t());
   }
   inline size_type size() const {
       return tensor_->get_size();
@@ -457,6 +457,9 @@ public:
   mdarray() {};
 
   mdarray(Tensor *tensor)
+    : py_handle(std::make_shared<implementation::mdarray>(tensor)) {}
+
+  mdarray(tensor &tensor)
     : py_handle(std::make_shared<implementation::mdarray>(tensor)) {}
 
   mdarray(mkldnn::memory::dims &dims

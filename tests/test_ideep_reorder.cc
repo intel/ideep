@@ -23,8 +23,13 @@ protected:
             size_t(1), std::multiplies<size_t>());
     ASSERT_EQ(nelems_i, nelems_o);
 
-    src_data_.reset(new data_i_t[nelems_i]);
-    dst_data_.reset(new data_o_t[nelems_o]);
+    void *src_mem, *dst_mem;
+
+    ::posix_memalign(&src_mem, 64, nelems_i * sizeof(data_i_t));
+    ::posix_memalign(&dst_mem, 64, nelems_o * sizeof(data_o_t));
+
+    src_data_.reset(new (src_mem) data_i_t[nelems_i]);
+    dst_data_.reset(new (dst_mem) data_o_t[nelems_o]);
 
     auto prec_i = data_traits<data_i_t>::data_type;
     auto prec_o = data_traits<data_o_t>::data_type;

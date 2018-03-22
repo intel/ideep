@@ -185,6 +185,16 @@ public:
       ret.append(kind::eltwise, scale, alpha, beta, algorithm::eltwise_relu);
       return ret;
     }
+
+    static post_ops residual(float scale = 1.0,
+        float alpha = 0.f, float beta = 0.f) {
+      post_ops ret;
+
+      ret.append(kind::sum, scale, 1.0, 0.0, algorithm::eltwise_relu);
+      ret.append(kind::eltwise, scale, alpha, beta, algorithm::eltwise_relu);
+
+      return ret;
+    }
   };
 
   class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
@@ -252,16 +262,23 @@ public:
   public:
     // Helper factory
     //
-    static inline attr_t sum(float scale = 1.0) {
+    static inline attr_t fuse_sum(float scale = 1.0) {
       attr_t attr;
       attr.set_post_ops(post_ops::sum(scale));
       return attr;
     }
 
-    static inline attr_t relu(float scale = 1.0,
+    static inline attr_t fuse_relu(float scale = 1.0,
         float alpha = 0.f, float beta = 0.f) {
       attr_t attr;
       attr.set_post_ops(post_ops::relu(scale, alpha, beta));
+      return attr;
+    }
+
+    static inline attr_t residual(float scale = 1.0,
+        float alpha = 0.f, float beta = 0.f) {
+      attr_t attr;
+      attr.set_post_ops(post_ops::residual(scale, alpha, beta));
       return attr;
     }
 

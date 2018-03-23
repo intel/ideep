@@ -351,6 +351,7 @@ protected:
 class mdarray : public py_handle {
 public:
   using tensor = ideep::tensor;
+  using data_type_t = mkldnn::memory::data_type;
 
   mdarray() {};
 
@@ -394,19 +395,19 @@ public:
 
     // Translate our data_type to numpy one
     switch (m->get_data_type()) {
-      case mkldnn::memory::f32:
+      case data_type_t::f32:
         pd = PyArray_DescrFromType(NPY_FLOAT);
         break;
-      case mkldnn::memory::s32:
+      case data_type_t::s32:
         pd= PyArray_DescrFromType(NPY_INT);
         break;
-      case mkldnn::memory::s16:
+      case data_type_t::s16:
         pd= PyArray_DescrFromType(NPY_INT16);
         break;
-      case mkldnn::memory::s8:
+      case data_type_t::s8:
         pd= PyArray_DescrFromType(NPY_INT8);
         break;
-      case mkldnn::memory::u8:
+      case data_type_t::u8:
         pd= PyArray_DescrFromType(NPY_UINT8);
         break;
       default:

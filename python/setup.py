@@ -207,7 +207,7 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
 if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']
 
-ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas']
+ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-mavx']
 link_opts = ['-Wl,-z,now', '-Wl,-z,noexecstack',
              '-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './lib']
 

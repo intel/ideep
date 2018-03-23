@@ -96,6 +96,33 @@ TEST_P(convolution_test, TestCompute) {
   compare_tensor<float>(ref_gradb, gradwb.second);
 }
 
+TEST_P(convolution_test, TestCompute2) {
+  test_convolution_params_t p =
+    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
+  test_convolution_sizes_t cd = p.sizes;
+
+  std::pair<tensor, tensor> gradwb;
+  bool with_bias_ = true;
+  auto test = [&]() {
+    gradwb = convolution_backward_weights::compute(
+        src_, grady_, gradw_dims_, with_bias_,
+        tensor::dims {cd.strh, cd.strw},
+        tensor::dims {cd.dilh, cd.dilw},
+        tensor::dims {cd.padh, cd.padw}, padR_);
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
+
+  tensor ref_gradw(gradwb.first.get_descriptor());
+  //tensor::descriptor gradb_desc ({grady_.get_dim(1)}, grady_.get_data_type());
+  tensor ref_gradb(gradwb.second.get_descriptor());
+  compute_ref_conv_bwd_weights<float>(cd, src_, grady_, ref_gradw);
+  compare_tensor<float>(ref_gradw, gradwb.first);
+  compute_ref_conv_bwd_bias<float>(cd, grady_, ref_gradb);
+  compare_tensor<float>(ref_gradb, gradwb.second);
+}
+
 #define FP32
 #define DIRECTION_BACKWARD_WEIGHTS
 #include "convolution_common.h"

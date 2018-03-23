@@ -42,9 +42,9 @@ public:
 
 
   static mdarray Forward(mdarray *src,
-                       mdarray *weights,
-                       mdarray *bias,
-                       conv_param_t *cp) {
+                         mdarray *weights,
+                         mdarray *bias,
+                         conv_param_t *cp) {
     auto dst = bias ?
                convolution_forward::compute<scratch_allocator>(
                    *(src->get()->tensor()),
@@ -81,8 +81,8 @@ public:
                    tensor::dims {cp->pad_lh, cp->pad_lw},
                    tensor::dims {cp->pad_rh, cp->pad_rw});
 
-      auto out = mdarray(gW);
-      return out;
+    auto out = mdarray(gW);
+    return out;
   }
 
 
@@ -98,11 +98,11 @@ public:
                    tensor::dims {cp->pad_lh, cp->pad_lw},
                    tensor::dims {cp->pad_rh, cp->pad_rw});
 
-      std::vector<mdarray> outs;
-      outs.push_back(mdarray(gWb.first));
-      outs.push_back(mdarray(gWb.second));
+    std::vector<mdarray> outs;
+    outs.push_back(mdarray(gWb.first));
+    outs.push_back(mdarray(gWb.second));
 
-      return outs;
+    return outs;
   }
 
 
@@ -118,8 +118,8 @@ public:
                    tensor::dims {cp->pad_lh, cp->pad_lw},
                    tensor::dims {cp->pad_rh, cp->pad_rw});
 
-      auto out = mdarray(gx);
-      return out;
+    auto out = mdarray(gx);
+    return out;
   }
 
 };

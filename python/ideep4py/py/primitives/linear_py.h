@@ -29,7 +29,6 @@
 #include <memory>
 #include "op_param.h"
 #include "mdarray.h"
-#include "linear.h"
 #include "ideep.hpp"
 
 class linear
@@ -55,38 +54,35 @@ public:
     return out;
   }
 
-  // static mdarray BackwardWeights(mdarray *src,
-  //                                mdarray *diff_dst) {
-  //   auto tensors = Linear<T>::BackwardWeights(
-  //                      src->get()->tensor(),
-  //                      diff_dst->get()->tensor(), false);
+  static mdarray BackwardWeights(mdarray *src,
+                                 mdarray *grady) {
+    auto gW = inner_product_backward_weights::compute<scratch_allocator>(
+                  *(src->get()->tensor()), *(grady->get()->tensor()));
 
-  //   auto out = mdarray(tensors[0]);
-  //   return out;
-  // }
+    auto out = mdarray(gW);
+    return out;
+  }
 
-  // static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
-  //                                                 mdarray *diff_dst) {
-  //   std::vector<mdarray> outs;
-  //   auto tensors = Linear<T>::BackwardWeights(
-  //                      src->get()->tensor(),
-  //                      diff_dst->get()->tensor(), true);
+  static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
+                                                  mdarray *grady) {
+    auto gWb = inner_product_backward_weights::compute<scratch_allocator>(
+                  *(src->get()->tensor()), *(grady->get()->tensor()), true);
 
-  //   for (int i = 0; i < tensors.size(); i++)
-  //       outs.push_back(mdarray(tensors[i]));
+    std::vector<mdarray> outs;
+    outs.push_back(mdarray(gWb.first));
+    outs.push_back(mdarray(gWb.second));
+    return outs;
+  }
 
-  //   return outs;
-  // }
+  static mdarray BackwardData(mdarray *weights,
+                              mdarray *grady) {
+    // auto gx = inner_product_backward_data::compute<scratch_allocator>(
+    //               *(weights->get()->tensor()), *(grady->get()->tensor()),
+    //               tensor::dims {grady->get_dims()[0], weights->get_dims()[1]});
 
-  // static mdarray BackwardData(mdarray *weights,
-  //                             mdarray *diff_dst) {
-  //   auto tensor = Linear<T>::BackwardData(
-  //                     weights->get()->tensor(),
-  //                     diff_dst->get()->tensor());
-
-  //   auto out = mdarray(tensor);
-  //   return out;
-  // }
+    // auto out = mdarray(gx);
+    // return out;
+  }
 };
 
 #endif //_LINEAR_PY_H

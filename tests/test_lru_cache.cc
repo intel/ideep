@@ -46,6 +46,10 @@ void test_to_string() {
 
   std::cout<<to_string(A, B, C)<<std::endl;
   std::cout<<to_string(A, a, B, b, C, c, d)<<std::endl;
+
+  bytestring key = to_bytes(A, a, B, b, C, c, d);
+  std::cout<<to_string(A, a, B, b, C, c, d).size()<<std::endl;
+  std::cout<<key.size()<<std::endl;
 }
 
 void test_to_bytestring() {

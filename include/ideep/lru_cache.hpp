@@ -434,13 +434,17 @@ inline bytestring to_bytes(const float arg) {
 
 template <typename T>
 inline bytestring to_bytes(const std::vector<T> arg) {
-  if (arg.empty())
-    return bytestring();
+  bytestring bytes;
+  bytes.reserve(arg.size() * sizeof(T));
 
-  return std::accumulate(std::next(arg.begin()), arg.end(),
-    to_bytes(arg[0]), [](bytestring a, int b) {
-      return a + 'x' + to_bytes(b);
-    });
+  for (T elems : arg) {
+    bytes.append(to_bytes(elems));
+    bytes.append(1, 'x');
+  }
+
+  bytes.pop_back();
+
+  return bytes;
 }
 
 template <typename T, typename =
@@ -457,8 +461,15 @@ inline bytestring to_bytes(const T arg) {
 
 template <typename T, typename ...Ts>
 inline bytestring to_bytes(T&& arg, Ts&&... args) {
-  return to_bytes(std::forward<T>(arg)) +
-    '*' + to_bytes(std::forward<Ts>(args)...);
+  bytestring bytes;
+
+  // over booking
+  bytes.reserve((sizeof...(args) + 1) * 8);
+  bytes.append(to_bytes(std::forward<T>(arg)));
+  bytes.append(1, '*');
+  bytes.append(to_bytes(std::forward<Ts>(args)...));
+
+  return bytes;
 }
 
 using key_t = std::string;

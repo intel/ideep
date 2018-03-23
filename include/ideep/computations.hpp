@@ -2773,6 +2773,73 @@ struct inner_product_forward: public computation,
     comp.execute(src_in, weights_in, dst);
     return dst;
   }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor& src, const tensor& weights,
+      const tensor& bias) {
+    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        weights.get_dims(), bias.get_dims(), dst_dims);
+
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+        weights.get_descriptor(), bias.get_descriptor(), dst_desc);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
+      reorder::compute(src, src_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init<alloc, inner_product_forward>(
+          comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor dst;
+    dst.init<alloc, inner_product_forward>(comp.expected_dst_descriptor());
+    comp.execute(src_in, weights_in, bias, dst);
+    return dst;
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor& src, const tensor& weights) {
+    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        weights.get_dims(), dst_dims);
+
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+        weights.get_descriptor(), dst_desc);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
+      reorder::compute(src, src_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init<alloc, inner_product_forward>(
+          comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor dst;
+    dst.init<alloc, inner_product_forward>(comp.expected_dst_descriptor());
+    comp.execute(src_in, weights_in, dst);
+    return dst;
+  }
 };
 
 // TODO: parameter sequence adjust?

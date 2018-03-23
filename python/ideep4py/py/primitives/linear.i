@@ -32,7 +32,6 @@
 %include "std_vector.i"
 %include "linear_py.h"
 
-%template(linear) Linear_Py<float>;
 //
 // API for Linear
 // mdarray Linear_F32::Forward(

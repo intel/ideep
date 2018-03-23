@@ -30,55 +30,63 @@
 #include "op_param.h"
 #include "mdarray.h"
 #include "linear.h"
+#include "ideep.hpp"
 
-template <typename T>
-class Linear_Py
+class linear
 {
 public:
-     static mdarray Forward(mdarray *src,
-                            mdarray *weights,
-                            mdarray *bias) {
-        auto tensor = Linear<T>::Forward(
-                          src->get()->tensor(),
-                          weights->get()->tensor(),
-                          bias ? bias->get()->tensor(): nullptr);
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using tensor = ideep::tensor;
+  using inner_product_forward = ideep::inner_product_forward;
+  using inner_product_backward_data = ideep::inner_product_backward_data;
+  using inner_product_backward_weights = ideep::inner_product_backward_weights;
 
-        auto out = mdarray(tensor);
-        return out;
-     }
+  static mdarray Forward(mdarray *src,
+                         mdarray *weights,
+                         mdarray *bias) {
+    auto dst = bias ?
+               inner_product_forward::compute<scratch_allocator>(
+                   *src->get()->tensor(), *weights->get()->tensor(),
+                   *bias->get()->tensor()) :
+               inner_product_forward::compute<scratch_allocator>(
+                   *src->get()->tensor(), *weights->get()->tensor());
 
-     static mdarray BackwardWeights(mdarray* src,
-                                    mdarray* diff_dst) {
-        auto tensors = Linear<T>::BackwardWeights(
-                           src->get()->tensor(),
-                           diff_dst->get()->tensor(), false);
+    auto out = mdarray(dst);
+    return out;
+  }
 
-        auto out = mdarray(tensors[0]);
-        return out;
-     }
+  // static mdarray BackwardWeights(mdarray *src,
+  //                                mdarray *diff_dst) {
+  //   auto tensors = Linear<T>::BackwardWeights(
+  //                      src->get()->tensor(),
+  //                      diff_dst->get()->tensor(), false);
 
-     static std::vector<mdarray> BackwardWeightsBias(mdarray* src,
-                                                     mdarray* diff_dst) {
-        std::vector<mdarray> outs;
-        auto tensors = Linear<T>::BackwardWeights(
-                           src->get()->tensor(),
-                           diff_dst->get()->tensor(), true);
+  //   auto out = mdarray(tensors[0]);
+  //   return out;
+  // }
 
-        for (int i = 0; i < tensors.size(); i++)
-            outs.push_back(mdarray(tensors[i]));
+  // static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
+  //                                                 mdarray *diff_dst) {
+  //   std::vector<mdarray> outs;
+  //   auto tensors = Linear<T>::BackwardWeights(
+  //                      src->get()->tensor(),
+  //                      diff_dst->get()->tensor(), true);
 
-        return outs;
-     }
+  //   for (int i = 0; i < tensors.size(); i++)
+  //       outs.push_back(mdarray(tensors[i]));
 
-     static mdarray BackwardData(mdarray* weights,
-                                 mdarray* diff_dst) {
-         auto tensor = Linear<T>::BackwardData(
-                           weights->get()->tensor(),
-                           diff_dst->get()->tensor());
+  //   return outs;
+  // }
 
-         auto out = mdarray(tensor);
-         return out;
-     }
+  // static mdarray BackwardData(mdarray *weights,
+  //                             mdarray *diff_dst) {
+  //   auto tensor = Linear<T>::BackwardData(
+  //                     weights->get()->tensor(),
+  //                     diff_dst->get()->tensor());
+
+  //   auto out = mdarray(tensor);
+  //   return out;
+  // }
 };
 
 #endif //_LINEAR_PY_H

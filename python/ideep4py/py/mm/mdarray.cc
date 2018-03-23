@@ -63,7 +63,7 @@ static inline bool is_mdarray_supported(PyObject *self, PyObject *o) {
     // if size not equal, mean array broadcast
     if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type) {
         if ((size_t)PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o))
-                != self_mdarray->size() ||
+                != self_mdarray->get_size() ||
                 !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o))) {
             return false;
         }
@@ -79,7 +79,7 @@ static inline bool is_mdarray_supported(PyObject *self, PyObject *o) {
             return false;
 
         // not support different size's mdarray's operations
-        if (o_mdarray->size() != self_mdarray->size())
+        if (o_mdarray->get_size() != self_mdarray->get_size())
             return false;
 
         return true;
@@ -147,10 +147,11 @@ void g_init() {
 //FIXME: macro SWIG_as_voidptr is copied from mdarray_wrap.cpp
 #define SWIG_as_voidptr(a) const_cast< void * >(static_cast< const void * >(a))
 
+#if 0
 // Pickle
 PyObject *mdarray::__getstate__() const {
   auto md = desc();
-  void *raw_data = data();
+  void *raw_data = get_data_handle();
   int ndims = md.data.ndims;
   mkldnn::memory::dims dims;
   mkldnn::memory::data_type dtype = static_cast<mkldnn::memory::data_type>(md.data.data_type);
@@ -182,6 +183,7 @@ PyObject *mdarray::__getstate__() const {
 void mdarray::__setstate__(PyObject *state) {
   return;
 }
+#endif
 
 PyObject *mdarray::py_mdarray_from(PyObject *o) const {
   PyObject *argList = Py_BuildValue("(O)", o);
@@ -205,7 +207,7 @@ PyObject *mdarray::py_mdarray_from(PyObject *o) const {
 
 template<class T>
 void mdarray::axpby(mdarray *dst, T a, mdarray *x, T b, mdarray *y) {
-    ::axpby(dst->tensor(), a, x->tensor(), b, y->tensor());
+    ::axpby(dst, a, x, b, y);
 }
 
 template<class T>
@@ -234,7 +236,7 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   }
 
   auto x = (reinterpret_cast<py_handle *>(oprd2))->get();
-  py_handle *output = new py_handle(new mdarray(x->mkldnn_memory().get_primitive_desc()));
+  py_handle *output = new py_handle(new mdarray(*x));
 
   /// Switch position for format consistency
   axpby(output->get(), b, x, a, this);
@@ -412,11 +414,14 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
     auto oprd1_mdarr = this;
     auto oprd2_mdarr = (reinterpret_cast<py_handle *>(oprd2))->get();
 
-    if (oprd1_mdarr->size() != oprd2_mdarr->size()) {
+    if (oprd1_mdarr->get_size() != oprd2_mdarr->get_size()) {
       PyErr_SetString(PyExc_SystemError, "Abnormal matrix size %matrix element multiply");
       break;
     }
 
+    // TODO: computation reorder
+    auto oprd2_internal_m = *oprd2_mdarr;
+    #if 0
     std::vector<mkldnn::primitive> prims;
     std::unique_ptr<mkldnn::memory> mreorder;
 
@@ -426,111 +431,103 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
                                &prims);
     mkldnn::stream s(mkldnn::stream::kind::eager);
     s.submit(prims).wait();
-
-    mkldnn::memory::desc res_desc = oprd1_mdarr->desc();
-    mkldnn::memory::dims res_tz;
-    mkldnn::memory::data_type res_dtype =
-          static_cast<mkldnn::memory::data_type>(res_desc.data.data_type);
-    mkldnn::memory::format res_fmt =
-          static_cast<mkldnn::memory::format>(res_desc.data.format);
-    mkldnn::engine res_engine = oprd1_mdarr->get_engine();
+    #endif
 
     assert(oprd1_mdarr->ndims() == 2 || oprd1_mdarr->ndims() == 4);
-    for (int ndim = 0; ndim < static_cast<int>(oprd1_mdarr->ndims()); ndim++)
-      res_tz.push_back(res_desc.data.dims[ndim]);
 
     mdarray *res_mdarr;
     if (!inplace) {
-      res_mdarr = new mdarray(res_tz, res_dtype, res_fmt, res_engine);
+      res_mdarr = new mdarray(*oprd1_mdarr);
     } else {
       res_mdarr = oprd1_mdarr;
     }
 
-    assert(mkldnn::memory::f32 == res_dtype ||
-           mkldnn::memory::s32 == res_dtype ||
-           mkldnn::memory::s16 == res_dtype ||
-           mkldnn::memory::s8 == res_dtype ||
-           mkldnn::memory::u8 == res_dtype );
+    data_type_t res_dtype = oprd1_mdarr->get_data_type();
+    assert(data_type_t::f32 == res_dtype ||
+           data_type_t::s32 == res_dtype ||
+           data_type_t::s16 == res_dtype ||
+           data_type_t::s8 == res_dtype ||
+           data_type_t::u8 == res_dtype );
     assert(mmult == mult_or_div ||
            mdiv == mult_or_div);
-    if (mkldnn::memory::f32 == res_dtype) {
+    if (data_type_t::f32 == res_dtype) {
       switch (mult_or_div) {
       case mmult:
-        vsMul(oprd1_mdarr->size(),
-              reinterpret_cast<const float *>(oprd1_mdarr->data()),
+        vsMul(oprd1_mdarr->get_size(),
+              reinterpret_cast<const float *>(oprd1_mdarr->get_data_handle()),
               reinterpret_cast<const float *>(oprd2_internal_m.get_data_handle()),
-              reinterpret_cast<float *>(res_mdarr->data()));
+              reinterpret_cast<float *>(res_mdarr->get_data_handle()));
         break;
 
       case mdiv:
-        plain_div(reinterpret_cast<const float *>(oprd1_mdarr->data()),
+        plain_div(reinterpret_cast<const float *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const float *>(oprd2_internal_m.get_data_handle()),
-                  reinterpret_cast<float *>(res_mdarr->data()),
-                  static_cast<int>(oprd1_mdarr->size()));
+                  reinterpret_cast<float *>(res_mdarr->get_data_handle()),
+                  static_cast<int>(oprd1_mdarr->get_size()));
         break;
       }
-    } else if (mkldnn::memory::s32 == res_dtype) {
+    } else if (data_type_t::s32 == res_dtype) {
       switch (mult_or_div) {
       case mmult:
-        plain_mult(reinterpret_cast<const int *>(oprd1_mdarr->data()),
+        plain_mult(reinterpret_cast<const int *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const int *>(oprd2_internal_m.get_data_handle()),
-                   reinterpret_cast<int *>(res_mdarr->data()),
-                   static_cast<int>(oprd1_mdarr->size()));
+                   reinterpret_cast<int *>(res_mdarr->get_data_handle()),
+                   static_cast<int>(oprd1_mdarr->get_size()));
         break;
 
       case mdiv:
-        plain_div(reinterpret_cast<const int *>(oprd1_mdarr->data()),
+        plain_div(reinterpret_cast<const int *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const int *>(oprd2_internal_m.get_data_handle()),
-                  reinterpret_cast<int *>(res_mdarr->data()),
-                  static_cast<int>(oprd1_mdarr->size()));
+                  reinterpret_cast<int *>(res_mdarr->get_data_handle()),
+                  static_cast<int>(oprd1_mdarr->get_size()));
         break;
       }
-    } else if (mkldnn::memory::s16 == res_dtype) {
+    } else if (data_type_t::s16 == res_dtype) {
       switch (mult_or_div) {
       case mmult:
-        plain_mult(reinterpret_cast<const int16_t *>(oprd1_mdarr->data()),
+        plain_mult(reinterpret_cast<const int16_t *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const int16_t *>(oprd2_internal_m.get_data_handle()),
-                   reinterpret_cast<int16_t *>(res_mdarr->data()),
-                   static_cast<int>(oprd1_mdarr->size()));
+                   reinterpret_cast<int16_t *>(res_mdarr->get_data_handle()),
+                   static_cast<int>(oprd1_mdarr->get_size()));
         break;
 
       case mdiv:
-        plain_div(reinterpret_cast<const int16_t *>(oprd1_mdarr->data()),
+        plain_div(reinterpret_cast<const int16_t *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const int16_t *>(oprd2_internal_m.get_data_handle()),
-                  reinterpret_cast<int16_t *>(res_mdarr->data()),
-                  static_cast<int>(oprd1_mdarr->size()));
+                  reinterpret_cast<int16_t *>(res_mdarr->get_data_handle()),
+                  static_cast<int>(oprd1_mdarr->get_size()));
         break;
       }
-    } else if (mkldnn::memory::s8 == res_dtype) {
+    } else if (data_type_t::s8 == res_dtype) {
       switch (mult_or_div) {
       case mmult:
-        plain_mult(reinterpret_cast<const int8_t *>(oprd1_mdarr->data()),
+        plain_mult(reinterpret_cast<const int8_t *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const int8_t *>(oprd2_internal_m.get_data_handle()),
-                   reinterpret_cast<int8_t *>(res_mdarr->data()),
-                   static_cast<int>(oprd1_mdarr->size()));
+                   reinterpret_cast<int8_t *>(res_mdarr->get_data_handle()),
+                   static_cast<int>(oprd1_mdarr->get_size()));
         break;
 
       case mdiv:
-        plain_div(reinterpret_cast<const int8_t *>(oprd1_mdarr->data()),
+        plain_div(reinterpret_cast<const int8_t *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const int8_t *>(oprd2_internal_m.get_data_handle()),
-                  reinterpret_cast<int8_t *>(res_mdarr->data()),
-                  static_cast<int>(oprd1_mdarr->size()));
+                  reinterpret_cast<int8_t *>(res_mdarr->get_data_handle()),
+                  static_cast<int>(oprd1_mdarr->get_size()));
         break;
       }
-    } else if (mkldnn::memory::u8 == res_dtype) {
+    } else if (data_type_t::u8 == res_dtype) {
       switch (mult_or_div) {
       case mmult:
-        plain_mult(reinterpret_cast<const uint8_t *>(oprd1_mdarr->data()),
+        plain_mult(reinterpret_cast<const uint8_t *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const uint8_t *>(oprd2_internal_m.get_data_handle()),
-                   reinterpret_cast<uint8_t *>(res_mdarr->data()),
-                   static_cast<int>(oprd1_mdarr->size()));
+                   reinterpret_cast<uint8_t *>(res_mdarr->get_data_handle()),
+                   static_cast<int>(oprd1_mdarr->get_size()));
         break;
 
       case mdiv:
-        plain_div(reinterpret_cast<const uint8_t *>(oprd1_mdarr->data()),
+        plain_div(reinterpret_cast<const uint8_t *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const uint8_t *>(oprd2_internal_m.get_data_handle()),
-                  reinterpret_cast<uint8_t *>(res_mdarr->data()),
-                  static_cast<int>(oprd1_mdarr->size()));
+                  reinterpret_cast<uint8_t *>(res_mdarr->get_data_handle()),
+                  static_cast<int>(oprd1_mdarr->get_size()));
         break;
       }
     }
@@ -685,7 +682,7 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     return -1;
   }
 
-  Reorderer *rb;
+  reorderer *rb;
   int res = SWIG_ConvertPtr(rbobj, reinterpret_cast<void **>(&rb), nullptr, 0);
 
   if (!SWIG_IsOK(res)) {
@@ -694,7 +691,7 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   }
 
   if (rb->non_trivial())
-    rb->fire(this->tensor());
+    rb->fire(*this);
 
   if (build_view(view, flags, *rb)) {
     PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
@@ -707,19 +704,14 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
 
   // reset self mdarray's tensor, keep buffer consistency.
   if (rb->non_trivial()) {
-    mdarray *src_mdarray = get_mdarray_from_PyObject(self);
-    if (!src_mdarray) {
-      PyErr_SetString(PyExc_RuntimeError, "Can't get src mdarray from python object!");
+    auto m = get_mdarray_from_PyObject(self);
+    if (!m) {
+      PyErr_SetString(PyExc_RuntimeError,
+          "Can't get src mdarray from python object!");
       return -1;
     }
 
-    Tensor *src_tensor = src_mdarray->tensor();
-    mkldnn::memory::dims src_dims = (mkldnn::memory::dims)src_tensor->dims();
-    mkldnn_memory_format_t dst_fmt = public_format(src_tensor->format());
-
-    Tensor *dst_tensor = new Tensor(src_dims.size(), src_dims, rb->data_,
-                                    dst_fmt, src_tensor->type());
-    src_mdarray->reset_tensor(dst_tensor);
+    m->init(m->get_descriptor(), rb->data_);
   }
   return 0;
 }
@@ -794,7 +786,7 @@ int mdarray::mp_ass_subscript(PyObject *self, PyObject *ind, PyObject *op) {
     ret = PyObject_SetItem(surrogate, ind, op);
 
   if (sync_reorder_ && sync_reorder_->non_trivial()) {
-    sync_reorder_->sync(this->tensor());
+    sync_reorder_->sync(*this);
   }
 
   Py_DECREF(surrogate);
@@ -804,23 +796,23 @@ int mdarray::mp_ass_subscript(PyObject *self, PyObject *ind, PyObject *op) {
 }
 
 PyObject *mdarray::flat() {
-  long int dims[1] = {static_cast<long int>(this->size())};
+  long int dims[1] = {static_cast<long int>(this->get_size())};
 
   int typenum = NPY_NOTYPE;
-  switch(static_cast<mkldnn::memory::data_type>(this->mkldnn_memory().get_primitive_desc().desc().data.data_type)) {
-    case mkldnn::memory::f32:
+  switch(get_data_type()) {
+    case data_type_t::f32:
       typenum = NPY_FLOAT32;
       break;
-    case mkldnn::memory::s32:
+    case data_type_t::s32:
       typenum = NPY_INT;
       break;
-    case mkldnn::memory::s16:
+    case data_type_t::s16:
       typenum = NPY_INT16;
       break;
-    case mkldnn::memory::s8:
+    case data_type_t::s8:
       typenum = NPY_INT8;
       break;
-    case mkldnn::memory::u8:
+    case data_type_t::u8:
       typenum = NPY_UINT8;
       break;
     default:
@@ -829,14 +821,14 @@ PyObject *mdarray::flat() {
   }
 
   PyObject *plain_arr = nullptr;
-  plain_arr = PyArray_SimpleNewFromData(1, dims, typenum, this->data());
+  plain_arr = PyArray_SimpleNewFromData(1, dims, typenum, this->get_data_handle());
   if (!plain_arr)
     PyErr_SetString(PyExc_ValueError, "Can't create plain array with format from mdarray");
 
   return plain_arr;
 }
 
-PyObject *mdarray::reshape(py_handle *self, vector<int> dims)
+PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
 {
     if (dims.size() != 4 && dims.size() != 2) {
         PyErr_SetString(PyExc_ValueError,"Only support reshape to 2 dimension");
@@ -857,29 +849,26 @@ PyObject *mdarray::reshape(py_handle *self, vector<int> dims)
         }
     }
     if (idx_unknown == -1) {
-        if (size != this->size()) {
+        if (size != this->get_size()) {
             PyErr_SetString(PyExc_ValueError,"Wrong dimension to reshape");
             return nullptr;
         }
-    } else if (this->size() % size) {
+    } else if (this->get_size() % size) {
         PyErr_SetString(PyExc_ValueError,"Wrong dimension to reshape");
         return nullptr;
     } else {
-        dims[idx_unknown] = this->size() / size;
+        dims[idx_unknown] = this->get_size() / size;
     }
-    Tensor *tensor = tensor_->reshape(dims);
-    if (tensor == nullptr) {
-        PyErr_SetString(PyExc_ValueError,"The dimension is not valid in reshape");
-        return nullptr;
-    } else {
-        //mdarray *new_array = new ::mdarray(tensor);
-        py_handle *output = new py_handle(new mdarray(tensor));
-        PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr
-                , SWIG_as_voidptr(output), SwigTy_mdarray, SWIG_POINTER_OWN |  0 );
-        return resultobj;
-    }
+
+    // FIXME: A new tensor for reshape ?
+    tensor::reshape(dims);
+    py_handle *output = new py_handle(new mdarray(*this));
+    PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr,
+        SWIG_as_voidptr(output), SwigTy_mdarray, SWIG_POINTER_OWN | 0);
+    return resultobj;
 }
 
+#if 0
 PyObject *mdarray::sum(vector<int> axis, bool keepdims)
 {
     auto tensor = tensor_->sum(axis);
@@ -906,6 +895,7 @@ PyObject *mdarray::sum(vector<int> axis, bool keepdims)
         return nullptr;
     }
 }
+#endif
 
 bool mdarray::is_mdarray(PyObject *o)
 {

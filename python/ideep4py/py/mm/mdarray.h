@@ -36,17 +36,10 @@
 #include <memory>
 #include <forward_list>
 #include <stdexcept>
-#include <mkldnn.hpp>
 #include <type_traits>
 #include <swigpyrun.h>
-#include "mem.h"
-#include "tensor.h"
+#include "ideep.hpp"
 #include "reorder.h"
-
-// FIXME
-// use global engine to init mdarray
-using namespace mkldnn;
-extern engine cpu_engine;
 
 namespace implementation {
   class mdarray;
@@ -144,89 +137,72 @@ namespace implementation {
     return m_ ## method ## _map_impl(self, o1, o2); \
   } \
 
-
-//class mdarray : public Tensor {
-class mdarray {
+class mdarray : public ideep::tensor {
 public:
   // It is exposed to python
   //
   static constexpr int MAX_NDIM = 12; //XXX: For now
 
-  class Reorder_buffer : Reorderer {
-  public:
-    Reorder_buffer(const py_handle in)
-        :Reorderer(in.get()->tensor()) {}
-  };
+  // class Reorder_buffer : Reorderer {
+  // public:
+  //   Reorder_buffer(const py_handle in)
+  //       :Reorderer(in.get()->tensor()) {}
+  // };
 
 public:
+  using tensor = ideep::tensor;
+  using descriptor = ideep::tensor::descriptor;
+  using data_type_t = mkldnn::memory::data_type;
+  using dims_t = mkldnn::memory::dims;
+  using error = mkldnn::error;
+
   typedef size_t size_type;
-  // Generated on demand
-  //FIXME 
-  //yli135: add default constructor so that we can pass vector<mdarray> form native
+
   mdarray();
   virtual ~mdarray() = default;
 
-  mdarray(Tensor *tensor) : tensor_(tensor) {}
-  mdarray(const tensor &tensor)
-      : tensor_(new Tensor(tensor)) {}
+  mdarray(const mdarray &m) : tensor(m) {}
 
-  mdarray(mkldnn::memory::dims &dims
-      , mkldnn::memory::data_type dt
-      , mkldnn::memory::format format
-      , const mkldnn::engine &engine)
-    : tensor_(new Tensor(dims, dt, format, engine)) {}
+  mdarray(const tensor &t) : tensor(t) {}
 
-  mdarray(mkldnn::memory::primitive_desc pd)
-    : tensor_(new Tensor(pd)) {}
+  mdarray(dims_t &dims, data_type_t dt) : tensor(descriptor(dims, dt)) {}
 
-#if 0
-  mdarray(int ndims, vector<int> dims, void *data,
-          mkldnn_memory_format_t mm_fmt, data_type_t type=FLOAT32)
-    : tensor_(new Tensor(ndims, dims, data, mm_fmt, type)) {}
-#endif
+  inline dims_t get_dims_from_view(Py_buffer *view) {
+    return dims_t(view->shape, view->shape + view->ndim);
+  };
 
-  mdarray(Py_buffer *view, char input_type='d') {// input_type : 'd'-->data, 'w'-->weight
+  inline data_type_t get_dtype_from_view(Py_buffer *view) {
     data_type_t dt;
     std::string format(view->format);
     if (std::string::npos != format.find_last_of('f')) {
-      dt = FLOAT32;
+      dt = data_type_t::f32;
     } else if (std::string::npos != format.find_last_of('i')) {
-      dt = SINT32;
+      dt = data_type_t::s32;
     } else if (std::string::npos != format.find_last_of('h')) {
-      dt = SINT16;
+      dt = data_type_t::s16;
     } else if (std::string::npos != format.find_last_of('b')) {
-      dt = SINT8;
+      dt = data_type_t::s8;
     } else if (std::string::npos != format.find_last_of('B')) {
-      dt = UINT8;
+      dt = data_type_t::u8;
     } else {
-      throw mkldnn::error(mkldnn_invalid_arguments
-          , std::string("MKLDNN does not support data type: ")
-          + format);
+      throw error(mkldnn_invalid_arguments,
+          std::string("mdarray does not support data type: ") +
+          format);
     }
-    vector<int> dims(view->shape, view->shape + view->ndim);
-    //std::unique_ptr<Tensor> tensor(new Tensor(view->ndim, dims, view->buf, dt)); 
-    tensor_.reset(new Tensor(view->ndim, dims, view->buf, dt, input_type)); 
+    return dt;
+  };
 
-    PyBuffer_Release(view);
-
-#if 0
-    ndims_ = view->ndim;
-    dims_.assign(view->shape, view->shape + view->ndim);
-    size_ = view->len / view->itemsize;
-    type_ = dt;
-    data_ = std::shared_ptr<avx::byte>(new avx::byte [view->len]
-                    , [] (avx::byte *p) {delete [] p;});
-    memcpy(data_.get(), view->buf, view->len);
-    mm_fmt_ = ndims2format(ndims_);
-    memory::data_type type = to_mkldnn_type();
-    mem_.reset(new mkldnn::memory(
-                { { { dims_ }, type, static_cast<memory::format>(mm_fmt_) }
-                , cpu_engine }, data_.get()));
-#endif
+  inline void *get_buff_from_view(Py_buffer *view) {
+    // TODO: re-alignment
+    return view->buf;
   }
 
+  mdarray(Py_buffer *view, char input_type='d') :
+      tensor({ get_dims_from_view(view), get_dtype_from_view(view) },
+             get_buff_from_view(view)) { /* TODO: input_type */ }
+
   static bool is_mdarray(PyObject *o);
-  
+
   //FIXME
   inline void unpickled_data(void *pdata) {
     //data_.reset(reinterpret_cast<avx::byte *>(pdata));
@@ -235,8 +211,8 @@ public:
   }
 
   // PEP 3118 interface
-  int build_view(Py_buffer *view, int flags, const Reorderer &reorder) {
-      view->buf = reorder.data_.get();
+  int build_view(Py_buffer *view, int flags, const reorderer &reorder) {
+      view->buf = reorder.data_;
       view->itemsize = reorder.itemsize_;
       view->readonly = 0;
       view->internal = nullptr;
@@ -267,30 +243,9 @@ public:
       return 0;
   }
 
-#if 0
-  // Array protocol
-  PyArrayInterface *build_array_struct(void) {
-      auto arrstr = new PyArrayInterface();
+  // PyObject *__getstate__(void) const;
 
-      arrstr->two = 2;
-      arrstr->nd = ndims_;
-      arrstr->typekind = *((char *)format_);
-      arrstr->itemsize = itemsize_;
-      arrstr->flags = NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_NOTSWAPPED |
-          NPY_ARRAY_ALIGNED | NPY_ARRAY_WRITEABLE;
-      arrstr->flags &= ~(NPY_ARRAY_UPDATEIFCOPY | NPY_ARRAY_OWNDATA);
-      arrstr->shape = shape_;
-      arrstr->strides = strides_;
-      arrstr->data = data_.get();
-      arrstr->descr = nullptr;
-
-      return arrstr;
-  }
-#endif
-
-  PyObject *__getstate__(void) const;
-
-  void __setstate__(PyObject *state);
+  // void __setstate__(PyObject *state);
 
   PyObject *py_mdarray_from(PyObject *o) const;
 
@@ -307,11 +262,11 @@ public:
 
   PyObject *flat(void);
 
-  PyObject *reshape(py_handle *self, vector<int> dims);
+  PyObject *reshape(py_handle *self, std::vector<int> dims);
 
   PyObject *m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool inplace);
 
-  PyObject *sum(std::vector<int> axis, bool keepdims);
+  // PyObject *sum(std::vector<int> axis, bool keepdims);
 
   // PEP: 3118 Buffer Protocol Producer
   virtual int getbuffer(PyObject *obj, Py_buffer *view, int flags);
@@ -373,33 +328,11 @@ public:
   PyObject *mp_subscript(PyObject *self, PyObject *op);
   int mp_ass_subscript(PyObject *self, PyObject *ind, PyObject *op);
 
-  inline Tensor* tensor() {
-      return tensor_.get();
-  }
-  inline Tensor &tensor2() {
-      return *(tensor_.get());
-  }
-  inline int ndims() const {
-      return tensor_->ndims();
-  }
-  inline memory::desc desc() const {
-      return memory::desc(*tensor_->get_mkldnn_memory_desc_t());
-  }
-  inline size_type size() const {
-      return tensor_->get_size();
-  }
-  inline void *data() const {
-      return tensor_->get_data_handle();
-  }
-  inline mkldnn::engine get_engine() const {
-      return tensor_->get_engine();
-  }
-  inline mkldnn::memory mkldnn_memory() const {
-      return tensor_->mkldnn_memory();
-  }
-  inline void reset_tensor(Tensor *dst) {
-    tensor_.reset(dst);
-  }
+  inline tensor &get_tensor() { return *this; }
+
+  inline void reset_tensor(tensor &dst) {
+      init(dst.get_descriptor(), dst.get_data_handle()); }
+
 private:
   struct WeDontManageIt {
     void operator() (const Py_buffer *view) {
@@ -411,87 +344,36 @@ private:
   std::unique_ptr<const Py_buffer, WeDontManageIt> view_;
 
 protected:
-  std::unique_ptr<Tensor> tensor_;
-  Reorderer *sync_reorder_;
-
-#if 0
-private:
-  static mkldnn::memory::desc _d_from_view(const Py_buffer *view
-      , mkldnn::memory::format order) {
-    mkldnn::memory::dims dims (view->ndim);
-
-    for( int i=0; i < view->ndim; i++)
-      dims[i] = view->shape[i];
-
-    std::string format(view->format);
-    mkldnn::memory::data_type dt;
-
-    if (view->itemsize == 4) {
-      if (std::string::npos != format.find_last_of('f')) {
-        dt = mkldnn::memory::f32;
-      } else if (std::string::npos != format.find_last_of('i')) {
-        dt = mkldnn::memory::s32;
-      } else
-        throw mkldnn::error(mkldnn_invalid_arguments
-            , std::string("MKLDNN does not support data type: ")
-            + format);
-    } else
-      throw mkldnn::error(mkldnn_invalid_arguments
-          , "MKLDNN does not support itemsize other than 4");
-
-    return mkldnn::memory::desc(dims, dt, order);
-  }
-#endif
+  reorderer *sync_reorder_;
 };
-
 }
 
-//
-// Actual interface for python
-// DO NOT add field
-//
 class mdarray : public py_handle {
 public:
-  //FIXME 
-  //yli135: add default constructor so that we can pass vector<mdarray> form native
+  using tensor = ideep::tensor;
+
   mdarray() {};
 
-  mdarray(Tensor *tensor)
-    : py_handle(std::make_shared<implementation::mdarray>(tensor)) {}
+  mdarray(tensor &tensor) :
+      py_handle(std::make_shared<implementation::mdarray>(tensor)) {}
 
-  mdarray(tensor &tensor)
-    : py_handle(std::make_shared<implementation::mdarray>(tensor)) {}
+  mdarray(mkldnn::memory::dims &dims, mkldnn::memory::data_type dt) :
+      py_handle(std::make_shared<implementation::mdarray>(dims, dt)) {}
 
-  mdarray(mkldnn::memory::dims &dims
-      , mkldnn::memory::data_type dt
-      , mkldnn::memory::format format
-      , mkldnn::engine &engine)
-    : py_handle(std::make_shared<implementation::mdarray>
-        (dims, dt, format, engine)) {}
+  mdarray(Py_buffer *view, char input_type='d') :
+      py_handle(std::make_shared<implementation::mdarray>(view, input_type)) {}
 
-  mdarray(mkldnn::memory::primitive_desc pd)
-    : py_handle(std::make_shared<implementation::mdarray>(pd)) {}
-
-  mdarray(Py_buffer *view, char input_type='d')
-    : py_handle(std::make_shared<implementation::mdarray>(view, input_type)) {}
-
-#if 0
-  mdarray(int ndims, vector<int> dims, void *data,
-          mkldnn_memory_format_t mm_fmt, data_type_t type=FLOAT32)
-    : py_handle(std::make_shared<implementation::mdarray>(ndims, dims, data, mm_fmt, type)) {}
-#endif
-
-  static PyObject *mdarray_shape_get(mdarray *arg) {
-    implementation::mdarray *self = arg->get();
-    int ndim = self->ndims();
-    PyObject *intTuple = PyTuple_New(ndim);
-    auto data = self->desc().data;
+  static PyObject *mdarray_shape_get(mdarray *self) {
+    implementation::mdarray *m = self->get();
+    auto dims = m->get_dims();
+    auto ndims = m->ndims();
+    PyObject *intTuple = PyTuple_New(ndims);
 
     if (!intTuple)
       goto fail;
 
-    for (int i = 0; i<ndim; i++) {
-      PyObject *o = PyLong_FromLong(data.dims[i]);
+    for (int i = 0; i < ndims; i++) {
+      PyObject *o = PyLong_FromLong(dims[i]);
 
       if (!o) {
         Py_DECREF(intTuple);
@@ -502,15 +384,16 @@ public:
       PyTuple_SET_ITEM(intTuple, i, o);
     }
 
-  fail:
-    return intTuple;
+    fail:
+      return intTuple;
   }
 
   static PyObject *mdarray_dtype_get(mdarray *self) {
     implementation::mdarray *m = self->get();
     PyArray_Descr *pd;
+
     // Translate our data_type to numpy one
-    switch (static_cast<mkldnn::memory::data_type>(m->desc().data.data_type)) {
+    switch (m->get_data_type()) {
       case mkldnn::memory::f32:
         pd = PyArray_DescrFromType(NPY_FLOAT);
         break;
@@ -535,11 +418,11 @@ public:
   }
 
   static long mdarray_size_get(mdarray *self) {
-    return self->get()->size();
+    return self->get()->get_size();
   }
 
   static long mdarray_ndim_get(mdarray *self) {
-    return self->get()->desc().data.ndims;
+    return self->get()->ndims();
   }
 
   static bool mdarray_is_mdarray_get(mdarray *self) {
@@ -547,6 +430,6 @@ public:
   }
 };
 
-using reorder_buffer = implementation::mdarray::Reorder_buffer;
+// using reorder_buffer = implementation::mdarray::Reorder_buffer;
 
 #endif // _MDARRAY_H_

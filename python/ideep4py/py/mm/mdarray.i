@@ -104,7 +104,7 @@
 
 /* mdarray::reshape */
 %extend mdarray {
-  %typemap(in) (...)(vector<int> args) {
+  %typemap(in) (...)(std::vector<int> args) {
      int i;
      int argc;
      argc = PySequence_Size(varargs);
@@ -175,16 +175,17 @@
   PyObject *reshape(...) {
     va_list vl;
     va_start(vl, self);
-    vector<int> *dims = va_arg(vl, vector<int>*);
+    std::vector<int> *dims = va_arg(vl, std::vector<int>*);
     va_end(vl);
     return (*self)->reshape(self, *dims);
   }
 }
 
 /* mdarray::sum */
+/*
 %extend mdarray {
   %feature ("kwargs") sum;
-  %typemap(in) vector<int> axis {
+  %typemap(in) std::vector<int> axis {
     $1.clear();
     if (PyTuple_Check(obj1)) {
       for (int i = 0; i < PyTuple_Size(obj1); i++) {
@@ -224,7 +225,7 @@
     }
   }
 
-  %typemap(argout) (vector<int> axis) {
+  %typemap(argout) (std::vector<int> axis) {
     if (!$result) {
       auto *surrogate = reinterpret_cast<PyArrayObject *>(PyArray_FromAny(
                             $self, nullptr, 0, 0, NPY_ARRAY_ELEMENTSTRIDES, nullptr));
@@ -236,7 +237,7 @@
           $1.push_back(i);
       }
 
-      vector<long> expected_shape;
+      std::vector<long> expected_shape;
       long *shape = PyArray_DIMS(surrogate);
       if (arg5) {
         for (int v = 0; v < PyArray_NDIM(surrogate); v++)
@@ -276,11 +277,12 @@
     }
   }
 
-  PyObject *sum(vector<int> axis=vector<int>(), int dtype=0,
+  PyObject *sum(std::vector<int> axis=std::vector<int>(), int dtype=0,
                 PyObject *out=nullptr, bool keepdims=false) {
     return (*self)->sum(axis, keepdims);
   }
 }
+*/
 
 /*
 %extend mdarray {
@@ -327,7 +329,7 @@ class mdarray: public py_handle {
 public:
   // It is deliberately NOT matching prototypes!
   // FIXME
-  // add default constructor so that native can pass vector<mdarray> to python
+  // add default constructor so that native can pass std::vector<mdarray> to python
   mdarray();
   mdarray(Py_buffer *view, char input_type = 'd');
   virtual ~mdarray();
@@ -343,9 +345,11 @@ public:
     $1 = (reinterpret_cast<mdarray *>(that));
 };
 
+/*
 class reorder_buffer {
 public:
   reorder_buffer(mdarray in);
 };
+*/
 
-%include "basic.i"
+/* %include "basic.i" */

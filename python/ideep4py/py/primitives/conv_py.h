@@ -29,122 +29,99 @@
 #include <memory>
 #include "op_param.h"
 #include "mdarray.h"
-#include "conv.h"
 #include "ideep.hpp"
 
-using tensor = ideep::tensor;
-
-template <typename T>
-class Convolution2D_Py
+class Convolution2D
 {
 public:
-    /*
-     * Python Convolution Forward
-     * Y = W*X + b
-     * params:
-     * src: input, x
-     * weight: weights, w
-     * dst: output, y
-     * bias: bias, b
-     * cp: convolution parameters
-     */
-    static mdarray Forward(mdarray *src,
-                           mdarray *weights,
-                           mdarray *bias,
-                           conv_param_t *cp) {
-        tensor *src_ = reinterpret_cast<tensor *>(src->get()->tensor());
-        tensor *weights_ = reinterpret_cast<tensor *>(weights->get()->tensor());
+  using tensor = ideep::tensor;
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using convolution_forward = ideep::convolution_forward;
+  using convolution_backward_data = ideep::convolution_backward_data;
+  using convolution_backward_weights = ideep::convolution_backward_weights;
 
-        // TODO
-        // allocate buffer by user
-        tensor dst({cp->out_dims, src_->get_data_type()});
 
-        if (bias) {
-            tensor *bias_ = reinterpret_cast<tensor *>(bias->get()->tensor());
+  static mdarray Forward(mdarray *src,
+                       mdarray *weights,
+                       mdarray *bias,
+                       conv_param_t *cp) {
+    auto dst = bias ?
+               convolution_forward::compute<scratch_allocator>(
+                   *(src->get()->tensor()),
+                   *(weights->get()->tensor()),
+                   *(bias->get()->tensor()),
+                   cp->out_dims,
+                   tensor::dims {cp->sy, cp->sx},
+                   tensor::dims {cp->dilate_y, cp->dilate_x},
+                   tensor::dims {cp->pad_lh, cp->pad_lw},
+                   tensor::dims {cp->pad_rh, cp->pad_rw}) :
+               convolution_forward::compute<scratch_allocator>(
+                   *(src->get()->tensor()),
+                   *(weights->get()->tensor()),
+                   cp->out_dims,
+                   tensor::dims {cp->sy, cp->sx},
+                   tensor::dims {cp->dilate_y, cp->dilate_x},
+                   tensor::dims {cp->pad_lh, cp->pad_lw},
+                   tensor::dims {cp->pad_rh, cp->pad_rw});
 
-            dst = ideep::convolution_forward::compute(
-                    *src_, *weights_, *bias_,
-                    cp->out_dims, dst.get_data_handle(),
-                    tensor::dims {cp->sy, cp->sx},
-                    tensor::dims {cp->dilate_y, cp->dilate_x},
-                    tensor::dims {cp->pad_lh, cp->pad_lw},
-                    tensor::dims {cp->pad_rh, cp->pad_rw});
-        } else {
-            dst = ideep::convolution_forward::compute(
-                    *src_, *weights_,
-                    cp->out_dims, dst.get_data_handle(),
-                    tensor::dims {cp->sy, cp->sx},
-                    tensor::dims {cp->dilate_y, cp->dilate_x},
-                    tensor::dims {cp->pad_lh, cp->pad_lw},
-                    tensor::dims {cp->pad_rh, cp->pad_rw});
-        }
+    auto out = mdarray(dst);
+    return out;
+  }
 
-        return mdarray(dst);
-    }
 
-    /*
-     * Python Convolution backward weights
-     * gW = gy*x
-     * params:
-     * src: input, x
-     * diff_dst: diff dst, gy
-     * cp: convolution parameters
-     */
-    static mdarray BackwardWeights(mdarray *src,
-                                   mdarray *diff_dst,
-                                   conv_param_t *cp) {
-        auto tensor = Convolution2D<T>::BackwardWeights(
-                          (src->get()->tensor()),
-                          (diff_dst->get()->tensor()), cp);
+  static mdarray BackwardWeights(mdarray *src,
+                                 mdarray *grady,
+                                 conv_param_t *cp) {
+    auto gW = convolution_backward_weights::compute<scratch_allocator>(
+                   *(src->get()->tensor()),
+                   *(grady->get()->tensor()),
+                   cp->out_dims,
+                   tensor::dims {cp->sy, cp->sx},
+                   tensor::dims {cp->dilate_y, cp->dilate_x},
+                   tensor::dims {cp->pad_lh, cp->pad_lw},
+                   tensor::dims {cp->pad_rh, cp->pad_rw});
 
-        auto out = mdarray(tensor);
-        return out;
-    }
+      auto out = mdarray(gW);
+      return out;
+  }
 
-    /*
-     * Python Convolution backward weights & bias
-     * gW = gy*x
-     * params:
-     * src: input, x
-     * diff_dst: diff dst, gy
-     * cp: convolution parameters
-     */
-    static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
-                                                    mdarray *diff_dst,
-                                                    conv_param_t *cp) {
-        std::vector<mdarray> outs;
-        auto tensors = Convolution2D<T>::BackwardWeightsBias(
-                           (src->get()->tensor()),
-                           (diff_dst->get()->tensor()), cp);
 
-        for (int i = 0; i < tensors.size(); i++)
-            outs.push_back(mdarray(tensors[i]));
+  static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
+                                                  mdarray *grady,
+                                                  conv_param_t *cp) {
+    auto gWb = convolution_backward_weights::compute<scratch_allocator>(
+                   *(src->get()->tensor()),
+                   *(grady->get()->tensor()),
+                   cp->out_dims, true,
+                   tensor::dims {cp->sy, cp->sx},
+                   tensor::dims {cp->dilate_y, cp->dilate_x},
+                   tensor::dims {cp->pad_lh, cp->pad_lw},
+                   tensor::dims {cp->pad_rh, cp->pad_rw});
 
-        return outs;
-    }
+      std::vector<mdarray> outs;
+      outs.push_back(mdarray(gWb.first));
+      outs.push_back(mdarray(gWb.second));
 
-    /*
-     * Python Convolution backward data
-     * gx = gy*w
-     * param:
-     * weights: weights, w
-     * diff_dst: diff dst, gy
-     * cp: convolution parameters
-     */
-    static mdarray BackwardData(mdarray *weights,
-                                mdarray *diff_dst,
-                                conv_param_t *cp) {
-        auto tensor = Convolution2D<T>::BackwardData(
-                          (weights->get()->tensor()),
-                          (diff_dst->get()->tensor()), cp);
+      return outs;
+  }
 
-        auto out = mdarray(tensor);
-        return out;
-    }
+
+  static mdarray BackwardData(mdarray *weights,
+                              mdarray *diff_dst,
+                              conv_param_t *cp) {
+    auto gx = convolution_backward_data::compute<scratch_allocator>(
+                   *(weights->get()->tensor()),
+                   *(diff_dst->get()->tensor()),
+                   cp->out_dims,
+                   tensor::dims {cp->sy, cp->sx},
+                   tensor::dims {cp->dilate_y, cp->dilate_x},
+                   tensor::dims {cp->pad_lh, cp->pad_lw},
+                   tensor::dims {cp->pad_rh, cp->pad_rw});
+
+      auto out = mdarray(gx);
+      return out;
+  }
 
 };
 
 #endif // _CONV_PY_H_
-
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

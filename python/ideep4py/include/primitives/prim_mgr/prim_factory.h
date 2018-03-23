@@ -26,9 +26,6 @@
 #define _PRIM_FACTORY_
 
 #include "reorder_factory.h"
-#include "conv_fwd_factory.h"
-#include "conv_bwd_data_factory.h"
-#include "conv_bwd_weights_factory.h"
 #include "pooling_fwd_factory.h"
 #include "pooling_bwd_factory.h"
 #include "eltwise_fwd_factory.h"

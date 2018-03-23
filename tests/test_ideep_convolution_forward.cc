@@ -157,6 +157,34 @@ TEST_P(convolution_test, TestCompute) {
   compare_tensor<float>(ref_dst, dst);
 }
 
+TEST_P(convolution_test, TestCompute2) {
+  test_convolution_params_t p =
+    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
+  test_convolution_sizes_t cd = p.sizes;
+
+  tensor dst;
+
+  auto test = [&]() {
+    dst = with_bias_ ?
+      convolution_forward::compute(src_, weights_, bias_, dst_dims_,
+          tensor::dims {cd.strh, cd.strw }, tensor::dims {cd.dilh, cd.dilw},
+          tensor::dims {cd.padh, cd.padw }, padR_) :
+      convolution_forward::compute(src_, weights_, dst_dims_,
+          tensor::dims {cd.strh, cd.strw }, tensor::dims {cd.dilh, cd.dilw},
+          tensor::dims {cd.padh, cd.padw }, padR_);
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
+
+  tensor ref_dst(dst.get_descriptor());
+  test_convolution_attr_t attr = p.attr;
+  attr.mkldnn_attr_recreate();
+  compute_ref_conv_fwd<float, float, float, float>(
+      cd, attr, src_, weights_, bias_, ref_dst);
+
+  compare_tensor<float>(ref_dst, dst);
+}
 #define FP32
 #define DIRECTION_FORWARD
 #include "convolution_common.h"

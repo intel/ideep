@@ -90,6 +90,40 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
   }
 }
 
+TEST_P(inner_product_test_float, TestBackwardWeights2) {
+  auto p =
+    ::testing::TestWithParam<inprod_test_bwd_weights_params>::GetParam();
+  auto ipd = p.test_ipd;
+  fill_tensor(src_);
+  fill_tensor(grady_);
+
+  bool with_bias =
+    p.diff_bias_format != mkldnn::memory::format::format_undef;
+
+  tensor gradw;
+  std::pair<tensor, tensor> gradwb;
+  auto test = [&] () {
+    if (with_bias) {
+      gradwb = inner_product_backward_weights::compute(
+          src_, grady_, true);
+      gradw = gradwb.first;
+    } else
+      gradw = inner_product_backward_weights::compute(
+          src_, grady_);
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
+
+  compute_ref_inner_product_bwd_weights<float>(ipd, src_, grady_, gradw_ref_);
+  compare_tensor<float>(gradw_ref_, gradw);
+
+  if (with_bias) {
+    compute_ref_inner_product_bwd_bias<float>(ipd, grady_, gradb_ref_);
+    compare_tensor<float>(gradb_ref_, gradwb.second);
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(TestInnerProductBackwardWeightsNoBias,
     inner_product_test_float,
   ::testing::Values(

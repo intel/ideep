@@ -44,7 +44,7 @@ protected:
 
 using inner_product_test_float = inner_product_test_bwd_data<float>;
 
-TEST_P(inner_product_test_float, TestsForward) {
+TEST_P(inner_product_test_float, TestsBackwardData) {
   auto p = ::testing::TestWithParam<inprod_test_bwd_data_params>::GetParam();
   auto ipd = p.test_ipd;
   fill_tensor(grady_);
@@ -58,6 +58,29 @@ TEST_P(inner_product_test_float, TestsForward) {
   auto test = [&] () {
     gradx = inner_product_backward_data::compute(grady_, weights_, gradx_dims,
         raw_gradx_.get());
+  };
+
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
+
+  compute_ref_inner_product_bwd_data<float>(
+      p.test_ipd, grady_, weights_, gradx_ref_);
+  compare_tensor<float>(gradx_ref_, gradx);
+}
+
+TEST_P(inner_product_test_float, TestsBackwardData2) {
+  auto p = ::testing::TestWithParam<inprod_test_bwd_data_params>::GetParam();
+  auto ipd = p.test_ipd;
+  fill_tensor(grady_);
+  fill_tensor(weights_);
+
+  tensor gradx;
+  auto gradx_dims = ipd.kh > 1 && ipd.kw > 1 ?
+    tensor::dims {ipd.mb, ipd.ic, ipd.kh, ipd.kw} :
+    tensor::dims {ipd.mb, ipd.ic};
+
+  auto test = [&] () {
+    gradx = inner_product_backward_data::compute(grady_, weights_, gradx_dims);
   };
 
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))

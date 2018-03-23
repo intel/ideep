@@ -1355,7 +1355,7 @@ public:
     }
 
     tensor gradx;
-    gradx.init<alloc, convolution_forward>(comp.expected_gradx_descriptor());
+    gradx.init<alloc, convolution_backward_data>(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
     return gradx;
   }
@@ -1671,7 +1671,7 @@ public:
     }
 
     tensor gradw;
-    gradw.init<alloc, convolution_forward>(comp.expected_gradw_descriptor());
+    gradw.init<alloc, convolution_backward_weights>(comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
     return gradw;
   }
@@ -1712,8 +1712,8 @@ public:
 
     tensor gradw;
     tensor gbias;
-    gradw.init<alloc, convolution_forward>(comp.expected_gradw_descriptor());
-    gbias.init<alloc, convolution_forward>(comp.expected_gradb_descriptor());
+    gradw.init<alloc, convolution_backward_weights>(comp.expected_gradw_descriptor());
+    gbias.init<alloc, convolution_backward_weights>(comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gbias);
     return std::make_pair(gradw, gbias);
   }
@@ -3140,6 +3140,40 @@ public:
     comp.execute(grady_in, weights_in, gradx);
     return gradx;
   }
+
+  template<class alloc = utils::allocator>
+  static tensor compute( const tensor& grady, const tensor& weights,
+      tensor::dims gradx_dims) {
+    tensor::descriptor gradx_desc(gradx_dims, grady.get_data_type());
+
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        weights.get_dims(), gradx_dims);
+
+    auto comp = fetch_or_create_m(key, gradx_desc,
+        weights.get_descriptor(), grady.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto grady_in = grady;
+    auto weights_in = weights;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init<alloc, inner_product_backward_data>(
+          comp.expected_grady_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init<alloc, inner_product_backward_data>(
+          comp.expected_weights_descriptor());
+      reorder::compute(weights, weights_in);
+    }
+
+    tensor gradx;
+    gradx.init<alloc, inner_product_backward_data>(comp.expected_gradx_descriptor());
+    comp.execute(grady_in, weights_in, gradx);
+    return gradx;
+  }
 };
 
 struct inner_product_backward_weights : public computation,
@@ -3286,6 +3320,81 @@ public:
 
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
+    comp.execute(x_in, grady_in, gradw, gradb);
+    return std::make_pair(gradw, gradb);
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor& x, const tensor& grady) {
+    auto gradw_dims = x.get_dims();
+    gradw_dims[0] = grady.get_dim(1);
+    tensor::descriptor gradw_desc(gradw_dims, grady.get_data_type());
+
+    auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
+        grady.get_dims());
+
+    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc,
+        grady.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto x_in = x;
+    auto grady_in = grady;
+    if (x.get_descriptor() != comp.expected_src_descriptor()) {
+      x_in.init<alloc, inner_product_backward_weights>(comp.expected_src_descriptor());
+      reorder::compute(x, x_in);
+    }
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init<alloc, inner_product_backward_weights>(
+          comp.expected_grady_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    tensor gradw;
+    gradw.init<alloc, inner_product_backward_weights>(comp.expected_gradw_descriptor());
+    comp.execute(x_in, grady_in, gradw);
+    return gradw;
+  }
+
+  template<class alloc = utils::allocator>
+  static std::pair<tensor, tensor> compute(const tensor& x, const tensor& grady,
+          bool with_bias) {
+    auto gradw_dims = x.get_dims();
+    gradw_dims[0] = grady.get_dim(1);
+
+    tensor::dims gradb_dims = {grady.get_dim(1)};
+    tensor::descriptor gradw_desc(gradw_dims, x.get_data_type());
+    tensor::descriptor gradb_desc(gradb_dims, x.get_data_type());
+
+    auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
+        gradb_dims, grady.get_dims());
+
+    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc, gradb_desc,
+        grady.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    auto x_in = x;
+    auto grady_in = grady;
+    if (x.get_descriptor() != comp.expected_src_descriptor()) {
+      x_in.init<alloc, inner_product_backward_weights>(
+          comp.expected_src_descriptor());
+      reorder::compute(x, x_in);
+    }
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init<alloc, inner_product_backward_weights>(
+          comp.expected_grady_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    tensor gradw;
+    tensor gradb;
+    gradw.init<alloc, inner_product_backward_weights>(comp.expected_gradw_descriptor());
+    gradb.init<alloc, inner_product_backward_weights>(comp.expected_gradb_descriptor());
     comp.execute(x_in, grady_in, gradw, gradb);
     return std::make_pair(gradw, gradb);
   }

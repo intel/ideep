@@ -631,6 +631,10 @@ struct computation : public primitive_group {
     }
   }
 
+  void connect_reorder_for(int, const descriptor_group&) {
+    // dummy, do nothing
+  }
+
   template <typename... Ts>
   void connect_reorder_for(int index, const descriptor_group &adesc,
       const tensor::descriptor& first, const Ts&... rest) {
@@ -2229,33 +2233,13 @@ public:
   }
 
 public:
-  void init(const tensor::descriptor& src_desc, const tensor::descriptor& scale,
-      const tensor::descriptor& shift, float epsilon) {
-    assert(scale.ndims() == 1 && shift.ndims() == 1);
-    descriptor batch_norm_forward(
-        src_desc, epsilon, batch_normalization_flag::use_scale_shift,
-        prop_kind::forward_scoring);
-    computation::init(batch_norm_forward, src_desc, weights_.get_descriptor());
-  }
-
-  void init(const tensor::descriptor& src_desc, const tensor::descriptor& mean,
-      const tensor::descriptor& variance, const tensor::descriptor& scale,
-      const tensor::descriptor& shift, float epsilon) {
-    assert(scale.ndims() == 1 && shift.ndims() == 1);
-    descriptor batch_norm_forward(src_desc, epsilon,
-        batch_normalization_flag::use_global_stats
-        | batch_normalization_flag::use_scale_shift,
-        prop_kind::forward_scoring);
-    computation::init(
-      batch_norm_forward, src_desc, mean, variance, weights_.get_descriptor());
-  }
-
   void init(const tensor::descriptor& src_desc, float epsilon,
       unsigned flag = batch_normalization_flag::use_global_stats |
       batch_normalization_flag::use_scale_shift) {
     descriptor batch_norm_forward(
         src_desc, epsilon, flag, prop_kind::forward_scoring);
-    computation::init(batch_norm_forward, src_desc);
+    weights_.init(batch_norm_forward.expected_weights_descriptor());
+    computation::init(batch_norm_forward);
   }
 
   batch_normalization_forward_inference () = default;
@@ -2357,6 +2341,7 @@ public:
     computation::init(batch_norm_forward, src_desc, weights_.get_descriptor());
 
     // We borrown scale and bias for the shape of mean and variance
+    weights_.init(batch_norm_forward.expected_weights_descriptor());
     sum_.init({momentum, 1.f - momentum}, {scale, shift});
   }
 
@@ -2528,34 +2513,15 @@ public:
     return static_cast<prop_kind>(p_desc->prop_kind);
   }
 
-  template <typename... Ts>
-  void init(float epsilon, unsigned flags, prop_kind aprop_kind,
-      const tensor::descriptor& gradx_desc, const tensor::descriptor& src_desc,
-      const Ts&... input_descs) {
-    descriptor batch_norm_backward(gradx_desc, src_desc, epsilon,
-        flags, aprop_kind);
-    init(batch_norm_backward, src_desc, input_descs...);
-  }
-
-  void init(const tensor::descriptor& gradx_desc,
-      const tensor::descriptor& src_desc, const tensor::descriptor& mean_desc,
-      const tensor::descriptor& variance_desc, const tensor::descriptor& grady_desc,
-      float epsilon, unsigned flags = batch_normalization_flag::use_scale_shift,
-      prop_kind aprop_kind=prop_kind::backward) {
-    descriptor batch_norm_backward(gradx_desc, src_desc, epsilon,
-        flags, aprop_kind);
-    auto weights_desc = batch_norm_backward.expected_weights_descriptor();
-    computation::init(batch_norm_backward, src_desc, mean_desc, variance_desc,
-        grady_desc, weights_desc);
-  }
-
   void init(const tensor::descriptor& gradx_desc,
       const tensor::descriptor& src_desc, float epsilon,
       unsigned flags = batch_normalization_flag::use_scale_shift,
       prop_kind aprop_kind=prop_kind::backward) {
     descriptor batch_norm_backward(gradx_desc, src_desc, epsilon,
         flags, aprop_kind);
-    computation::init(batch_norm_backward, gradx_desc, src_desc);
+    computation::init(batch_norm_backward);
+    weights_.init(batch_norm_backward.expected_weights_descriptor());
+    gradw_.init(batch_norm_backward.expected_gradw_descriptor());
   }
 
   batch_normalization_backward() = default;

@@ -55,6 +55,17 @@ protected:
       return;
 
     check_relu_fwd(p.negative_slope, src_, dst);
+
+
+    auto test2 = [&]() {
+      dst = eltwise_forward::compute(src_,
+          algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
+    };
+
+    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
+      return;
+
+    check_relu_fwd(p.negative_slope, src_, dst);
   }
 
   void Backward() {
@@ -66,6 +77,17 @@ protected:
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+      return;
+
+    check_relu_bwd(p.negative_slope, src_, grady_, gradx);
+
+
+    auto test2 = [&]() {
+      gradx = eltwise_backward::compute(src_, grady_,
+          algorithm::eltwise_relu, p.negative_slope, 0.0);
+    };
+
+    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
       return;
 
     check_relu_bwd(p.negative_slope, src_, grady_, gradx);

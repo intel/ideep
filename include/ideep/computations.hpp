@@ -2201,12 +2201,38 @@ public:
     return dst;
   }
 
+  template<class alloc, typename ...Ts>
+  static tensor compute_impl(const tensor &src, Ts &&...args) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), args...);
+
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+        std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor dst;
+    dst.init<alloc, eltwise_forward>(comp.expected_dst_descriptor());
+    comp.execute(src, dst);
+    return dst;
+  }
+
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src, void *result,
       algorithm aalogorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
     return compute_impl<alloc>(src, result, alpha, beta, aalogorithm, aprop_kind);
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor &src,
+      algorithm aalogorithm = algorithm::eltwise_relu,
+      prop_kind aprop_kind = prop_kind::forward,
+      float alpha = 0.0, float beta = 0.0) {
+    return compute_impl<alloc>(src, alpha, beta, aalogorithm, aprop_kind);
   }
 };
 
@@ -2277,11 +2303,37 @@ public:
     return gradx;
   }
 
+  template<class alloc, typename ...Ts>
+  static tensor compute_impl(const tensor &src, const tensor &grady,
+      Ts &&...args) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), grady.get_internal_format(), args...);
+
+    auto comp = fetch_or_create_m(key, grady.get_descriptor(),
+        src.get_descriptor(), std::forward<Ts>(args)...);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor gradx;
+    gradx.init<alloc, eltwise_forward>(comp.expected_gradx_descriptor());
+    comp.execute(src, grady, gradx);
+    return gradx;
+  }
+
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src, const tensor &grady,
       void *result, algorithm aalogorithm = algorithm::eltwise_relu,
       float alpha = 0.0, float beta = 0.0) {
     return compute_impl<alloc>(src, grady, result, alpha, beta, aalogorithm);
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor &src, const tensor &grady,
+      algorithm aalogorithm = algorithm::eltwise_relu,
+      float alpha = 0.0, float beta = 0.0) {
+    return compute_impl<alloc>(src, grady, alpha, beta, aalogorithm);
   }
 };
 

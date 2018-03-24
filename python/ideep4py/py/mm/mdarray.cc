@@ -247,6 +247,8 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   return resultobj;
 }
 
+// FIXME: explicit instance ?
+template PyObject *mdarray::inplace_axpby<double>(double, PyObject *, double, PyObject *);
 template<class T>
 PyObject *mdarray::inplace_axpby(T a, PyObject *self, T b, PyObject *o) {
   // Resource manager, for GCC do not accept lambda

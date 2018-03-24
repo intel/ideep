@@ -2536,8 +2536,8 @@ public:
         release(key, std::move(comp));
         });
 
-    comp.weights_.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_weights_descriptor());
+    /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
+        comp.expected_weights_descriptor()); */
 
     tensor dst(comp.expected_dst_descriptor(), dst_r);
     comp.execute(src, scale, shift, dst);
@@ -2557,8 +2557,9 @@ public:
         release(key, std::move(comp));
         });
 
-    comp.weights_.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_weights_descriptor());
+    // weights_ is small
+    /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
+        comp.expected_weights_descriptor()); */
 
     tensor dst(comp.expected_dst_descriptor(), dst_r);
     comp.execute(src, mean, variance, scale, shift, dst);
@@ -2663,8 +2664,8 @@ public:
         release(key, std::move(comp));
         });
 
-    comp.weights_.init<alloc, batch_normalization_forward_training>(
-        comp.expected_weights_descriptor());
+    /* comp.weights_.init<alloc, batch_normalization_forward_training>(
+        comp.expected_weights_descriptor()); */
 
     tensor dst(comp.expected_dst_descriptor(), dst_r);
     tensor mean(comp.expected_statistic_descriptor(), mean_r);
@@ -2825,10 +2826,10 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
-    comp.weights_.init<alloc, batch_normalization_backward>(
+    /* comp.weights_.init<alloc, batch_normalization_backward>(
         comp.expected_weights_descriptor());
     comp.gradw_.init<alloc, batch_normalization_backward>(
-        comp.expected_gradw_descriptor());
+        comp.expected_gradw_descriptor()); */
 
     tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
     tensor grad_scale(mean.get_descriptor(), grad_scale_r);

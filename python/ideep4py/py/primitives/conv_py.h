@@ -47,18 +47,14 @@ public:
                          conv_param_t *cp) {
     auto dst = bias ?
                convolution_forward::compute<scratch_allocator>(
-                   *(src->get()->tensor()),
-                   *(weights->get()->tensor()),
-                   *(bias->get()->tensor()),
-                   cp->out_dims,
+                   *(src->get()), *(weights->get()),
+                   *(bias->get()), cp->out_dims,
                    tensor::dims {cp->sy, cp->sx},
                    tensor::dims {cp->dilate_y, cp->dilate_x},
                    tensor::dims {cp->pad_lh, cp->pad_lw},
                    tensor::dims {cp->pad_rh, cp->pad_rw}) :
                convolution_forward::compute<scratch_allocator>(
-                   *(src->get()->tensor()),
-                   *(weights->get()->tensor()),
-                   cp->out_dims,
+                   *(src->get()), *(weights->get()), cp->out_dims,
                    tensor::dims {cp->sy, cp->sx},
                    tensor::dims {cp->dilate_y, cp->dilate_x},
                    tensor::dims {cp->pad_lh, cp->pad_lw},
@@ -73,9 +69,7 @@ public:
                                  mdarray *grady,
                                  conv_param_t *cp) {
     auto gW = convolution_backward_weights::compute<scratch_allocator>(
-                   *(src->get()->tensor()),
-                   *(grady->get()->tensor()),
-                   cp->out_dims,
+                   *(src->get()), *(grady->get()), cp->out_dims,
                    tensor::dims {cp->sy, cp->sx},
                    tensor::dims {cp->dilate_y, cp->dilate_x},
                    tensor::dims {cp->pad_lh, cp->pad_lw},
@@ -90,9 +84,7 @@ public:
                                                   mdarray *grady,
                                                   conv_param_t *cp) {
     auto gWb = convolution_backward_weights::compute<scratch_allocator>(
-                   *(src->get()->tensor()),
-                   *(grady->get()->tensor()),
-                   cp->out_dims, true,
+                   *(src->get()), *(grady->get()), cp->out_dims, true,
                    tensor::dims {cp->sy, cp->sx},
                    tensor::dims {cp->dilate_y, cp->dilate_x},
                    tensor::dims {cp->pad_lh, cp->pad_lw},
@@ -110,9 +102,7 @@ public:
                               mdarray *diff_dst,
                               conv_param_t *cp) {
     auto gx = convolution_backward_data::compute<scratch_allocator>(
-                   *(weights->get()->tensor()),
-                   *(diff_dst->get()->tensor()),
-                   cp->out_dims,
+                   *(weights->get()), *(diff_dst->get()), cp->out_dims,
                    tensor::dims {cp->sy, cp->sx},
                    tensor::dims {cp->dilate_y, cp->dilate_x},
                    tensor::dims {cp->pad_lh, cp->pad_lw},

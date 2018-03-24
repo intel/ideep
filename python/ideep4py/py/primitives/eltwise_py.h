@@ -22,71 +22,64 @@
  */
 
 
-#pragma once
+#ifndef _ELTWISE_PY_H_
+#define _ELTWISE_PY_H_
 
 #include <vector>
 #include <memory>
 #include "mdarray.h"
-#include "eltwise.h"
+#include "ideep.hpp"
 
-template <typename T>
-class Relu_Py
+class Relu
 {
 public:
-    static mdarray Forward(mdarray &src) {
-        // Shoule be removed in future????
-        implementation::mdarray *src_internal = src.get();
-        Tensor *dst_tensor = Eltwise<T, float>::Forward(
-                src_internal->tensor(), ELTWISE_RELU, 0.0 , 0.0);
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using tensor = ideep::tensor;
+  using eltwise_forward = ideep::eltwise_forward;
+  using eltwise_backward = ideep::eltwise_backward;
 
-        mdarray dst_mdarray = mdarray(dst_tensor);
-        return dst_mdarray;
-    }
+  static mdarray Forward(mdarray &src) {
+    auto dst = eltwise_forward::compute<scratch_allocator>(
+                  *(src.get()), 0.0, 0.0);
 
-    static mdarray Backward(mdarray& src, mdarray& diff_dst) {
-        //FIXME
-        //Should be removed in future
-        Tensor *src_tensor = src.get()->tensor();
-        Tensor *diff_dst_tensor = diff_dst.get()->tensor();
+    auto out = mdarray(dst);
+    return out;
+  }
 
-        Tensor *diff_src_tensor = Eltwise<T, float>::Backward(src_tensor, diff_dst_tensor, ELTWISE_RELU, 0.0, 0.0);
+  static mdarray Backward(mdarray &src, mdarray &grady) {
+    auto gradx = eltwise_backward::compute<scratch_allocator>(
+                  *(src.get()), *(grady.get()), 0.0, 0.0);
 
-        // FIXME
-        // In future, mdarray will have a Tensor member, no need to create a new one
-        mdarray diff_src_mdarray = mdarray(diff_src_tensor);
-        return diff_src_mdarray;
-    }
-
+    auto out = mdarray(gradx);
+    return out;
+  }
 };
 
-template <typename T>
-class Tanh_Py
+
+class Tanh
 {
 public:
-    static mdarray Forward(mdarray &src) {
-        // Shoule be removed in future????
-        implementation::mdarray *src_internal = src.get();
-        Tensor *dst_tensor = Eltwise<T, float>::Forward(
-                src_internal->tensor(), ELTWISE_TANH, 0.0 , 0.0); 
-        
-        mdarray dst_mdarray = mdarray(dst_tensor);
-        return dst_mdarray;
-    }
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using tensor = ideep::tensor;
+  using eltwise_forward = ideep::eltwise_forward;
+  using eltwise_backward = ideep::eltwise_backward;
+  using eltwise_tanh = ideep::algorithm::eltwise_tanh;
 
-    static mdarray Backward(mdarray& src, mdarray& diff_dst) {
-        //FIXME
-        //Should be removed in future
-        Tensor *src_tensor = src.get()->tensor();
-        Tensor *diff_dst_tensor = diff_dst.get()->tensor();
+  static mdarray Forward(mdarray &src) {
+    auto dst = eltwise_forward::compute<scratch_allocator>(
+                  *(src.get()), 0.0, 0.0, eltwise_tanh);
 
-        Tensor *diff_src_tensor = Eltwise<T, float>::Backward(src_tensor, diff_dst_tensor, ELTWISE_TANH, 0.0, 0.0);
+    auto out = mdarray(dst);
+    return out;
+  }
 
-        // FIXME
-        // In future, mdarray will have a Tensor member, no need to create a new one
-        mdarray diff_src_mdarray = mdarray(diff_src_tensor);
-        return diff_src_mdarray;
-    }
+  static mdarray Backward(mdarray &src, mdarray &grady) {
+    auto gradx = eltwise_backward::compute<scratch_allocator>(
+                  *(src.get()), *(grady.get()), 0.0, 0.0, eltwise_tanh);
 
+    auto out = mdarray(gradx);
+    return out;
+  }
 };
 
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s
+#endif

@@ -2229,9 +2229,9 @@ public:
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src,
+      float alpha = 0.0, float beta = 0.0,
       algorithm aalogorithm = algorithm::eltwise_relu,
-      prop_kind aprop_kind = prop_kind::forward,
-      float alpha = 0.0, float beta = 0.0) {
+      prop_kind aprop_kind = prop_kind::forward) {
     return compute_impl<alloc>(src, alpha, beta, aalogorithm, aprop_kind);
   }
 };
@@ -2317,7 +2317,7 @@ public:
         });
 
     tensor gradx;
-    gradx.init<alloc, eltwise_forward>(comp.expected_gradx_descriptor());
+    gradx.init<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
     comp.execute(src, grady, gradx);
     return gradx;
   }
@@ -2331,8 +2331,8 @@ public:
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src, const tensor &grady,
-      algorithm aalogorithm = algorithm::eltwise_relu,
-      float alpha = 0.0, float beta = 0.0) {
+      float alpha = 0.0, float beta = 0.0,
+      algorithm aalogorithm = algorithm::eltwise_relu) {
     return compute_impl<alloc>(src, grady, alpha, beta, aalogorithm);
   }
 };

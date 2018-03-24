@@ -28,8 +28,6 @@
 #include "reorder_factory.h"
 #include "pooling_fwd_factory.h"
 #include "pooling_bwd_factory.h"
-#include "eltwise_fwd_factory.h"
-#include "eltwise_bwd_factory.h"
 #include "bn_fwd_factory.h"
 #include "bn_bwd_factory.h"
 #include "concat_fwd_factory.h"

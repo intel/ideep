@@ -76,7 +76,7 @@ public:
   static mdarray BackwardData(mdarray *weights,
                               mdarray *grady) {
     // auto gx = inner_product_backward_data::compute<scratch_allocator>(
-    //               *(weights->get()->tensor()), *(grady->get()->tensor()),
+    //               *(weights->get()), *(grady->get()),
     //               tensor::dims {grady->get_dims()[0], weights->get_dims()[1]});
 
     // auto out = mdarray(gx);

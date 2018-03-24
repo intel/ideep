@@ -58,8 +58,8 @@ protected:
 
 
     auto test2 = [&]() {
-      dst = eltwise_forward::compute(src_,
-          algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
+      dst = eltwise_forward::compute(src_, p.negative_slope, 0.0,
+          algorithm::eltwise_relu, prop_kind::forward);
     };
 
     if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
@@ -84,7 +84,7 @@ protected:
 
     auto test2 = [&]() {
       gradx = eltwise_backward::compute(src_, grady_,
-          algorithm::eltwise_relu, p.negative_slope, 0.0);
+          p.negative_slope, 0.0, algorithm::eltwise_relu);
     };
 
     if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))

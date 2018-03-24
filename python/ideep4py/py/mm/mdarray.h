@@ -139,15 +139,13 @@ namespace implementation {
 
 class mdarray : public ideep::tensor {
 public:
-  // It is exposed to python
-  //
   static constexpr int MAX_NDIM = 12; //XXX: For now
 
-  // class Reorder_buffer : Reorderer {
-  // public:
-  //   Reorder_buffer(const py_handle in)
-  //       :Reorderer(in.get()->tensor()) {}
-  // };
+  class reorder_buffer : reorderer {
+  public:
+    reorder_buffer(const py_handle in) :
+        reorderer(*in.get()) {}
+  };
 
 public:
   using tensor = ideep::tensor;
@@ -431,6 +429,6 @@ public:
   }
 };
 
-// using reorder_buffer = implementation::mdarray::Reorder_buffer;
+using reorder_buffer = implementation::mdarray::reorder_buffer;
 
 #endif // _MDARRAY_H_

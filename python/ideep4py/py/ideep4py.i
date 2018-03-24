@@ -33,7 +33,7 @@
 /* %include "eltwise.i" */
 /* %include "conv.i" */
 /* %include "pooling.i" */
-/* %include "linear.i" */
+%include "linear.i"
 /* %include "bn.i" */
 /* %include "concat.i" */
 /* %include "lrn.i" */

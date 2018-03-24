@@ -26,10 +26,10 @@
   #include "basic.h"
 %}
 
-%typemap(in) (vector<mdarray *> arrays) {
+%typemap(in) (std::vector<mdarray *> arrays) {
     int i;
     int argc;
-    vector<mdarray *> varr;
+    std::vector<mdarray *> varr;
     if (!PyTuple_Check($input)) {
         PyErr_SetString(PyExc_ValueError,"Expected a tuple");
         return nullptr;
@@ -62,6 +62,6 @@ class basic {
 public:
     static PyObject *copyto(mdarray *dst, mdarray *src);
     static PyObject *copyto(mdarray *dst, Py_buffer *view);
-    static mdarray acc_sum(vector<mdarray *> arrays);
+    static mdarray acc_sum(std::vector<mdarray *> arrays);
 };
 

@@ -45,10 +45,9 @@ public:
                          mdarray *bias) {
     auto dst = bias ?
                inner_product_forward::compute<scratch_allocator>(
-                   *src->get()->tensor(), *weights->get()->tensor(),
-                   *bias->get()->tensor()) :
+                   *src->get(), *weights->get(), *bias->get()) :
                inner_product_forward::compute<scratch_allocator>(
-                   *src->get()->tensor(), *weights->get()->tensor());
+                   *src->get(), *weights->get());
 
     auto out = mdarray(dst);
     return out;
@@ -57,7 +56,7 @@ public:
   static mdarray BackwardWeights(mdarray *src,
                                  mdarray *grady) {
     auto gW = inner_product_backward_weights::compute<scratch_allocator>(
-                  *(src->get()->tensor()), *(grady->get()->tensor()));
+                  *(src->get()), *(grady->get()));
 
     auto out = mdarray(gW);
     return out;
@@ -66,7 +65,7 @@ public:
   static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
                                                   mdarray *grady) {
     auto gWb = inner_product_backward_weights::compute<scratch_allocator>(
-                  *(src->get()->tensor()), *(grady->get()->tensor()), true);
+                  *(src->get()), *(grady->get()), true);
 
     std::vector<mdarray> outs;
     outs.push_back(mdarray(gWb.first));

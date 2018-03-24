@@ -174,6 +174,28 @@ protected:
       return;
 
     check_pool_fwd<data_t>(p, src, dst, ws);
+
+    auto test2 = [&]() {
+      dst = pooling_forward::compute(src,
+          {pd.mb, pd.c, pd.oh, pd.ow}, {pd.strh, pd.strw},
+          {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
+          p.aprop_kind, padding_kind::zero);
+
+      bool with_workspace = true
+          && p.aprop_kind == mkldnn::prop_kind::forward_training
+          && p.aalgorithm == mkldnn::pooling_max;
+
+      if (with_workspace)
+        ws = *dst.get_extra();
+      else
+        ws.init(tensor::descriptor({}, data_type,
+            static_cast<format>(p.dst_format)));
+    };
+
+    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
+      return;
+
+    check_pool_fwd<data_t>(p, src, dst, ws);
   }
 };
 

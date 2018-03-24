@@ -2024,6 +2024,43 @@ public:
     comp.execute(src, dst);
     return dst;
   }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor &src,
+      const tensor::dims dst_dims,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), dst_dims, strides, kernel, padding_l,
+        padding_r, aalgorithm, aprop_kind, apadding_kind);
+
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+        dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
+        aprop_kind, apadding_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    bool with_workspace = true
+        && aprop_kind == prop_kind::forward_training
+        && aalgorithm == mkldnn::pooling_max;
+
+    // TODO: reorder
+    tensor dst;
+    if (with_workspace) {
+      dst.init_extra(comp.expected_workspace_descriptor());
+      dst.init<alloc, pooling_forward>(comp.expected_dst_descriptor());
+    } else {
+      dst.init<alloc, pooling_forward>(comp.expected_dst_descriptor());
+    }
+
+    comp.execute(src, dst);
+    return dst;
+  }
 };
 
 struct pooling_backward : public computation,
@@ -2127,6 +2164,46 @@ public:
     return gradx;
   }
 
+  template<class alloc>
+  static tensor compute_impl(const tensor &grady, const tensor &y,
+      const tensor::dims gradx_dims, const tensor::descriptor *gradx_desc,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
+    bool gradx_format_inquiring = false;
+    const tensor::descriptor *_gradx_desc;
+    if (gradx_desc) {
+      assert(gradx_dims == gradx_desc->get_dims());
+      _gradx_desc = gradx_desc;
+    } else {
+      auto d = tensor::descriptor(gradx_dims,
+          grady.get_data_type(), format::any);
+      _gradx_desc = &d;
+      gradx_format_inquiring = true;
+    }
+
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        grady.get_internal_format(), gradx_dims,
+        static_cast<format>(_gradx_desc->get_mkldnn_memory_desc_t()->format),
+        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+
+    auto comp = fetch_or_create_m(key, *_gradx_desc, grady.get_descriptor(),
+        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    // TODO: reorder
+    tensor gradx;
+    gradx.init<alloc, pooling_backward>(gradx_format_inquiring?
+         comp.expected_gradx_descriptor() : *gradx_desc);
+
+    comp.execute(grady, y, gradx);
+
+    return gradx;
+  }
+
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &grady, const tensor &y,
       const tensor::dims gradx_dims,
@@ -2135,6 +2212,17 @@ public:
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     return compute_impl<alloc>(grady, y, gradx_dims, gradx_r, gradx_desc,
+        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor &grady, const tensor &y,
+      const tensor::dims gradx_dims,
+      const tensor::descriptor *gradx_desc,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
+    return compute_impl<alloc>(grady, y, gradx_dims, gradx_desc,
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };

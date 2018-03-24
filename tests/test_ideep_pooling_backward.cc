@@ -206,6 +206,7 @@ private:
   std::shared_ptr<tensor::descriptor> src_desc_;
   std::shared_ptr<tensor::descriptor> dst_desc_;
   std::shared_ptr<tensor> dst_;
+  std::shared_ptr<tensor> dst2_;
   pool_bwd_test_params p;
   mkldnn::memory::dims padR;
   mkldnn::memory::data_type data_type;
@@ -233,6 +234,9 @@ protected:
 
     Forward();
     Backward();
+
+    Forward2();
+    Backward2();
   }
 
   void Forward()
@@ -296,6 +300,63 @@ protected:
       ws.init(ws_desc);
     } else {
       ws = *dst_->get_extra();
+    }
+    check_pool_bwd<data_t>(p, diff_src, diff_dst, ws);
+  }
+
+  void Forward2()
+  {
+    tensor src;
+    test_pool_bwd_desc_t pd = p.test_pd;
+
+    auto test = [&]() {
+      src.init(*src_desc_);
+      fill_data<data_t>(src.get_size()/ sizeof(data_t),
+              (data_t *)src.get_data_handle());
+
+      auto dst_tmp = pooling_forward::compute(src,
+          {pd.mb, pd.c, pd.oh, pd.ow}, {pd.strh, pd.strw},
+          {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
+          prop_kind::forward_training, padding_kind::zero);
+      dst2_.reset(new tensor(dst_tmp));
+
+    };
+
+    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+        return;
+
+    check_pool_fwd<data_t>(p, src, *(dst2_.get()));
+  }
+
+  void Backward2()
+  {
+    tensor diff_src;
+    tensor diff_dst;
+    test_pool_bwd_desc_t pd = p.test_pd;
+
+    auto test = [&]() {
+      diff_dst.init(*dst_desc_);
+      fill_data<data_t>(diff_dst.get_size() / sizeof(data_t),
+              (data_t *)diff_dst.get_data_handle());
+
+      diff_src = pooling_backward::compute(diff_dst, *(dst2_.get()),
+          {pd.mb, pd.c, pd.ih, pd.iw}, src_desc_.get(),
+          {pd.strh, pd.strw}, {pd.kh, pd.kw},
+          {pd.padt, pd.padl}, padR, p.aalgorithm,
+          padding_kind::zero);
+    };
+
+    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+      return;
+
+    tensor ws;
+    bool with_workspace = p.aalgorithm == mkldnn::pooling_max;
+    if (!with_workspace) {
+      auto ws_desc = tensor::descriptor({}, data_type,
+          static_cast<format>(p.diff_dst_format));
+      ws.init(ws_desc);
+    } else {
+      ws = *dst2_->get_extra();
     }
     check_pool_bwd<data_t>(p, diff_src, diff_dst, ws);
   }

@@ -36,6 +36,7 @@ class linear
 public:
   using scratch_allocator = ideep::utils::scratch_allocator;
   using tensor = ideep::tensor;
+  using dims_t = mkldnn::memory::dims;
   using inner_product_forward = ideep::inner_product_forward;
   using inner_product_backward_data = ideep::inner_product_backward_data;
   using inner_product_backward_weights = ideep::inner_product_backward_weights;
@@ -55,17 +56,17 @@ public:
 
   static mdarray BackwardWeights(mdarray *src,
                                  mdarray *grady) {
-    auto gW = inner_product_backward_weights::compute<scratch_allocator>(
-                  *(src->get()), *(grady->get()));
+    auto gWb = inner_product_backward_weights::compute<scratch_allocator>(
+               *src->get(), *grady->get());
 
-    auto out = mdarray(gW);
+    auto out = mdarray(gWb.first);
     return out;
   }
 
   static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
                                                   mdarray *grady) {
     auto gWb = inner_product_backward_weights::compute<scratch_allocator>(
-                  *(src->get()), *(grady->get()), true);
+               *src->get(), *grady->get());
 
     std::vector<mdarray> outs;
     outs.push_back(mdarray(gWb.first));
@@ -75,12 +76,14 @@ public:
 
   static mdarray BackwardData(mdarray *weights,
                               mdarray *grady) {
-    // auto gx = inner_product_backward_data::compute<scratch_allocator>(
-    //               *(weights->get()), *(grady->get()),
-    //               tensor::dims {grady->get_dims()[0], weights->get_dims()[1]});
+    // TODO: only 2-D supported
+    dims_t gradx_dims = {grady->get()->get_dims()[0],
+                         weights->get()->get_dims()[1]};
+    auto gx = inner_product_backward_data::compute<scratch_allocator>(
+              *grady->get(), *weights->get(), gradx_dims);
 
-    // auto out = mdarray(gx);
-    // return out;
+    auto out = mdarray(gx);
+    return out;
   }
 };
 

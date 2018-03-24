@@ -3469,42 +3469,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& x, const tensor& grady) {
-    auto gradw_dims = x.get_dims();
-    gradw_dims[0] = grady.get_dim(1);
-    tensor::descriptor gradw_desc(gradw_dims, grady.get_data_type());
-
-    auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
-        grady.get_dims());
-
-    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc,
-        grady.get_descriptor());
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
-    auto x_in = x;
-    auto grady_in = grady;
-    if (x.get_descriptor() != comp.expected_src_descriptor()) {
-      x_in.init<alloc, inner_product_backward_weights>(comp.expected_src_descriptor());
-      reorder::compute(x, x_in);
-    }
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<alloc, inner_product_backward_weights>(
-          comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
-    tensor gradw;
-    gradw.init<alloc, inner_product_backward_weights>(comp.expected_gradw_descriptor());
-    comp.execute(x_in, grady_in, gradw);
-    return gradw;
-  }
-
-  template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor& x, const tensor& grady,
-          bool with_bias) {
+  static std::pair<tensor, tensor> compute(const tensor& x, const tensor& grady) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
 

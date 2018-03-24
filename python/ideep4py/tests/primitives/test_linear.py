@@ -22,7 +22,12 @@ y = linear.Forward(x, w, b)
 print("================")
 y = linear.Forward(x, w, b)
 
+print("fwd no bias")
+y = linear.Forward(x, w, None)
+
 print("bwd data")
+print("w.dim", w.shape)
+print("y.dim", y.shape)
 x = linear.BackwardData(w, y)
 print("================")
 x = linear.BackwardData(w, y)

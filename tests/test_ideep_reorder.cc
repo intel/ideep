@@ -1,4 +1,5 @@
 #include <numeric>
+#include <immintrin.h>
 #include <mkldnn_test_common.hpp>
 #include <gtest/gtest.h>
 
@@ -47,8 +48,16 @@ protected:
     /* initialize input data, TODO: expand fill_tensor for it */
     auto mkldnn_mpd_i = mpd_i_.get_mkldnn_memory_desc_t();
     auto *src_data = src_data_.get();
-    for (size_t i = 0; i < nelems_i; ++i)
+    for (size_t i = 0; i < nelems_i; ++i) {
       src_data[map_index(mkldnn_mpd_i, i)] = data_i_t(i);
+    }
+
+    auto *dst_data = dst_data_.get();
+    // Invalidate all cache line for testing
+    for (size_t i = 0; i < nelems_i; ++i) {
+      _mm_clflush(&src_data[i]);
+      _mm_clflush(&dst_data[i]);
+    }
   }
 
   void test_reorder() {

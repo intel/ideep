@@ -2054,6 +2054,9 @@ public:
     if (with_workspace) {
       dst.init_extra(comp.expected_workspace_descriptor());
       dst.init<alloc, pooling_forward>(comp.expected_dst_descriptor());
+      // init workspace tensor
+      (*dst.get_extra()).init<alloc, pooling_forward>(
+          comp.expected_workspace_descriptor());
     } else {
       dst.init<alloc, pooling_forward>(comp.expected_dst_descriptor());
     }

@@ -61,7 +61,6 @@ class TestLinearPyF32(unittest.TestCase):
         gy = ideep4py.mdarray(gy)
         gx_act = linear.BackwardData(W, gy)
         gx_act = numpy.array(gx_act, dtype=self.W_dtype)
-        gx_expect = gy.dot(W).astype(gy.dtype, copy=False)
         numpy.testing.assert_allclose(
             gx_expect, gx_act, **self.check_backward_options)
 

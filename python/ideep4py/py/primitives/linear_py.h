@@ -79,10 +79,16 @@ public:
     // TODO: only 2-D supported
     dims_t gradx_dims = {grady->get()->get_dims()[0],
                          weights->get()->get_dims()[1]};
-    auto gx = inner_product_backward_data::compute<scratch_allocator>(
-              *grady->get(), *weights->get(), gradx_dims);
+    tensor::descriptor gradx_desc(gradx_dims,
+        grady->get()->get_data_type(), ideep::format::nc);
+    tensor gradx_tensor;
+    gradx_tensor.init<scratch_allocator, inner_product_backward_data>(
+        gradx_desc);
+    gradx_tensor = inner_product_backward_data::compute<scratch_allocator>(
+              *grady->get(), *weights->get(), gradx_dims,
+              gradx_tensor.get_data_handle());
 
-    auto out = mdarray(gx);
+    auto out = mdarray(gradx_tensor);
     return out;
   }
 };

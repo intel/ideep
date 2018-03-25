@@ -231,12 +231,6 @@ protected:
     if ((pd.ih + pd.padt + padR[0] - pd.kh)/pd.strh + 1 < pd.oh) ++padR[0];
     if ((pd.iw + pd.padl + padR[1] - pd.kw)/pd.strw + 1 < pd.ow) ++padR[1];
     }
-
-    Forward();
-    Backward();
-
-    Forward2();
-    Backward2();
   }
 
   void Forward()
@@ -334,12 +328,16 @@ protected:
     tensor diff_dst;
     test_pool_bwd_desc_t pd = p.test_pd;
 
+    // dst2_ == NULL ??
+    bool with_workspace = (p.aalgorithm == mkldnn::pooling_max)
+                          && dst2_;
     auto test = [&]() {
       diff_dst.init(*dst_desc_);
       fill_data<data_t>(diff_dst.get_size() / sizeof(data_t),
               (data_t *)diff_dst.get_data_handle());
 
-      diff_src = pooling_backward::compute(diff_dst, *(dst2_.get()),
+      diff_src = pooling_backward::compute(diff_dst,
+          with_workspace ? dst2_->get_extra() : NULL,
           {pd.mb, pd.c, pd.ih, pd.iw}, src_desc_.get(),
           {pd.strh, pd.strw}, {pd.kh, pd.kw},
           {pd.padt, pd.padl}, padR, p.aalgorithm,
@@ -350,7 +348,6 @@ protected:
       return;
 
     tensor ws;
-    bool with_workspace = p.aalgorithm == mkldnn::pooling_max;
     if (!with_workspace) {
       auto ws_desc = tensor::descriptor({}, data_type,
           static_cast<format>(p.diff_dst_format));
@@ -358,6 +355,7 @@ protected:
     } else {
       ws = *dst2_->get_extra();
     }
+
     check_pool_bwd<data_t>(p, diff_src, diff_dst, ws);
   }
 };
@@ -367,6 +365,16 @@ using pool_bwd_test_params_float = pool_bwd_test_params;
 
 TEST_P(pooling_bwd_test_float, TestsPoolingBackward)
 {
+    Forward();
+    Backward();
+
+}
+
+TEST_P(pooling_bwd_test_float, TestsPoolingBackward2)
+{
+    Forward2();
+    Backward2();
+
 }
 
 namespace mkldnn {

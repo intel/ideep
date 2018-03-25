@@ -2128,6 +2128,13 @@ public:
       computation::execute(grady, *y.get_extra(), gradx);
   }
 
+  void execute(const tensor &grady, const tensor *ws, const tensor &gradx) {
+    if (num_of_inputs() == 1)
+      computation::execute(grady, gradx);
+    else
+      computation::execute(grady, *ws, gradx);
+  }
+
   template<class alloc>
   static tensor compute_impl(const tensor &grady, const tensor &y,
       const tensor::dims gradx_dims, void *gradx_r,
@@ -2168,7 +2175,7 @@ public:
   }
 
   template<class alloc>
-  static tensor compute_impl(const tensor &grady, const tensor &y,
+  static tensor compute_impl(const tensor &grady, const tensor *ws,
       const tensor::dims gradx_dims, const tensor::descriptor *gradx_desc,
       const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -2202,7 +2209,7 @@ public:
     gradx.init<alloc, pooling_backward>(gradx_format_inquiring?
          comp.expected_gradx_descriptor() : *gradx_desc);
 
-    comp.execute(grady, y, gradx);
+    comp.execute(grady, ws, gradx);
 
     return gradx;
   }
@@ -2219,13 +2226,13 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &grady, const tensor &y,
+  static tensor compute(const tensor &grady, const tensor *ws,
       const tensor::dims gradx_dims,
       const tensor::descriptor *gradx_desc,
       const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    return compute_impl<alloc>(grady, y, gradx_dims, gradx_desc,
+    return compute_impl<alloc>(grady, ws, gradx_dims, gradx_desc,
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };

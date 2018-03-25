@@ -29,76 +29,55 @@
 #include <memory>
 #include "op_param.h"
 #include "mdarray.h"
-#include "pooling.h"
+#include "utils.h"
+#include "ideep.hpp"
 
-template <typename T>
-class Pooling2D_Py
+class Pooling2D
 {
 public:
-    /*
-     * Python Pooling Forward
-     * params:
-     * src: input, x
-     * pp: pooling parameters
-     */
-    static std::vector<mdarray> Forward(mdarray *src, 
-                                        pooling_param_t *pp) {
-        std::vector<mdarray> outputs;
+  using tensor = ideep::tensor;
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using pooling_forward = ideep::pooling_forward;
+  using pooling_backward = ideep::pooling_backward;
+  using prop_kind = ideep::prop_kind;
 
-        // Shoule be removed in future????
-        implementation::mdarray *src_internal = src->get();
-        
-        std::vector<Tensor *> outputs_tensor = Pooling2D<T>::Forward(
-                                                    (src_internal->tensor()),
-                                                    pp);
-        // FIXME
-        //FIXME
-        for (int i = 0; i < outputs_tensor.size(); i++) {
-            outputs.push_back( mdarray(outputs_tensor[i]) );
-        }
+  static std::vector<mdarray> Forward(mdarray *src,
+                                      pooling_param_t *pp) {
+    auto dst = pooling_forward::compute<scratch_allocator>(
+                  *(src->get()), pp->out_dims,
+                  tensor::dims {pp->sy, pp->sx},
+                  tensor::dims {pp->kh, pp->kw},
+                  tensor::dims {pp->pad_lh, pp->pad_lw},
+                  tensor::dims {pp->pad_rh, pp->pad_rw},
+                  pooling_algo_convert(pp->algo_kind),
+                  prop_kind::forward_training);
 
-        return outputs;
-    }
+    std::vector<mdarray> outs;
+    outs.push_back(mdarray(dst));
 
-    /*
-     * Python Pooling backward
-     * param:
-     * diff_dst: diff dst, gy
-     * ws: workspace
-     * pp: pooling parameters
-     */
-    static mdarray Backward(mdarray *diff_dst,
-                            mdarray *ws,
-                            pooling_param_t *pp) {
-        //FIXME
-        //Should be removed in future
-        implementation::mdarray *diff_dst_internal = diff_dst->get();
-        implementation::mdarray *ws_internal;
-        if ( pp->algo_kind == pooling_param_t::algorithm::pooling_max)
-            ws_internal = ws->get();
-        
-        Tensor *diff_src_tensor;
-        if ( pp->algo_kind == pooling_param_t::algorithm::pooling_max) {
-            diff_src_tensor = Pooling2D<T>::Backward(
-                                    (diff_dst_internal->tensor()),
-                                    (ws_internal->tensor()),
-                                    pp);
-        } else {
-            diff_src_tensor = Pooling2D<T>::Backward(
-                                    (diff_dst_internal->tensor()),
-                                    NULL,
-                                    pp);
-        }
+    if (pp->algo_kind == pooling_param_t::algorithm::pooling_max)
+      outs.push_back(mdarray(*dst.get_extra()));
 
-        // FIXME
-        // In future, mdarray will have a Tensor member, no need to create a new one
-        mdarray diff_src_mdarray = mdarray(diff_src_tensor);
-        return diff_src_mdarray;
-    }
+    return outs;
+  }
+
+  static mdarray Backward(mdarray *grady,
+                          mdarray *ws,
+                          pooling_param_t *pp) {
+    auto gx = pooling_backward::compute<scratch_allocator>(
+                  *(grady->get()),
+                  ws ? ws->get() : NULL,
+                  pp->out_dims, NULL,
+                  tensor::dims {pp->sy, pp->sx},
+                  tensor::dims {pp->kh, pp->kw},
+                  tensor::dims {pp->pad_lh, pp->pad_lw},
+                  tensor::dims {pp->pad_rh, pp->pad_rw},
+                  pooling_algo_convert(pp->algo_kind));
+
+    auto out = mdarray(gx);
+    return out;
+  }
 
 };
 
 #endif // _POOLING_PY_H_
-
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

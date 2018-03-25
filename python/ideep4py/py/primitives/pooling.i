@@ -32,15 +32,13 @@
 %include "std_vector.i"
 %include "pooling_py.h"
 
-%template(pooling2D) Pooling2D_Py<float>;
-
 //
 // Python API for Pooling2D
 //
-// std::vector<mdarray*> Pooling2D_Py::Forward(
+// std::vector<mdarray*> Pooling2D::Forward(
 //                        mdarray *src,
 //                        pooling_prarm_t *pp);
-// mdarray* Pooling2D_Py::Backward(
+// mdarray* Pooling2D::Backward(
 //                        mdarray *diff_dst,
 //                        mdarray *ws,
 //                        conv_param_t *pp);

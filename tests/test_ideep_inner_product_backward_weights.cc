@@ -103,13 +103,9 @@ TEST_P(inner_product_test_float, TestBackwardWeights2) {
   tensor gradw;
   std::pair<tensor, tensor> gradwb;
   auto test = [&] () {
-    if (with_bias) {
-      gradwb = inner_product_backward_weights::compute(
-          src_, grady_, true);
-      gradw = gradwb.first;
-    } else
-      gradw = inner_product_backward_weights::compute(
-          src_, grady_);
+    gradwb = inner_product_backward_weights::compute(
+        src_, grady_);
+    gradw = gradwb.first;
   };
 
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))

@@ -205,8 +205,8 @@ class pooling_bwd_test : public ::testing::TestWithParam<pool_bwd_test_params> {
 private:
   std::shared_ptr<tensor::descriptor> src_desc_;
   std::shared_ptr<tensor::descriptor> dst_desc_;
-  std::shared_ptr<tensor> dst_;
-  std::shared_ptr<tensor> dst2_;
+  tensor dst_;
+  tensor dst2_;
   pool_bwd_test_params p;
   mkldnn::memory::dims padR;
   mkldnn::memory::data_type data_type;
@@ -247,18 +247,17 @@ protected:
       size_t dst_sz = pd.mb * pd.c * pd.oh * pd.ow;
       dst_r.reset(new char [dst_sz * sizeof(data_t)]);
 
-      auto dst_tmp = pooling_forward::compute(src,
+      dst_ = pooling_forward::compute(src,
           {pd.mb, pd.c, pd.oh, pd.ow}, dst_r.get(), {pd.strh, pd.strw},
           {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
           prop_kind::forward_training, padding_kind::zero);
-      dst_.reset(new tensor(dst_tmp));
 
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
         return;
 
-    check_pool_fwd<data_t>(p, src, *(dst_.get()));
+    check_pool_fwd<data_t>(p, src, dst_);
   }
 
   void Backward()
@@ -276,7 +275,7 @@ protected:
       size_t diff_src_sz = pd.mb * pd.c * pd.ih * pd.iw;
       diff_src_r.reset(new char [diff_src_sz * sizeof(data_t)]);
 
-      diff_src = pooling_backward::compute(diff_dst, *(dst_.get()),
+      diff_src = pooling_backward::compute(diff_dst, dst_,
           {pd.mb, pd.c, pd.ih, pd.iw}, diff_src_r.get(), src_desc_.get(),
           {pd.strh, pd.strw}, {pd.kh, pd.kw},
           {pd.padt, pd.padl}, padR, p.aalgorithm,
@@ -293,7 +292,7 @@ protected:
           static_cast<format>(p.diff_dst_format));
       ws.init(ws_desc);
     } else {
-      ws = *dst_->get_extra();
+      ws = *dst_.get_extra();
     }
     check_pool_bwd<data_t>(p, diff_src, diff_dst, ws);
   }
@@ -308,18 +307,17 @@ protected:
       fill_data<data_t>(src.get_size()/ sizeof(data_t),
               (data_t *)src.get_data_handle());
 
-      auto dst_tmp = pooling_forward::compute(src,
+      dst2_ = pooling_forward::compute(src,
           {pd.mb, pd.c, pd.oh, pd.ow}, {pd.strh, pd.strw},
           {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
           prop_kind::forward_training, padding_kind::zero);
-      dst2_.reset(new tensor(dst_tmp));
 
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
         return;
 
-    check_pool_fwd<data_t>(p, src, *(dst2_.get()));
+    check_pool_fwd<data_t>(p, src, dst2_);
   }
 
   void Backward2()
@@ -328,16 +326,15 @@ protected:
     tensor diff_dst;
     test_pool_bwd_desc_t pd = p.test_pd;
 
-    // dst2_ == NULL ??
-    bool with_workspace = (p.aalgorithm == mkldnn::pooling_max)
-                          && dst2_;
+    bool with_workspace = p.aalgorithm == mkldnn::pooling_max;
+
     auto test = [&]() {
       diff_dst.init(*dst_desc_);
       fill_data<data_t>(diff_dst.get_size() / sizeof(data_t),
               (data_t *)diff_dst.get_data_handle());
 
       diff_src = pooling_backward::compute(diff_dst,
-          with_workspace ? dst2_->get_extra() : NULL,
+          with_workspace ? dst2_.get_extra() : NULL,
           {pd.mb, pd.c, pd.ih, pd.iw}, src_desc_.get(),
           {pd.strh, pd.strw}, {pd.kh, pd.kw},
           {pd.padt, pd.padl}, padR, p.aalgorithm,
@@ -353,7 +350,7 @@ protected:
           static_cast<format>(p.diff_dst_format));
       ws.init(ws_desc);
     } else {
-      ws = *dst2_->get_extra();
+      ws = *dst2_.get_extra();
     }
 
     check_pool_bwd<data_t>(p, diff_src, diff_dst, ws);

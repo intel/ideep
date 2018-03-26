@@ -26,8 +26,6 @@
 #define _PRIM_FACTORY_
 
 #include "reorder_factory.h"
-#include "bn_fwd_factory.h"
-#include "bn_bwd_factory.h"
 #include "concat_fwd_factory.h"
 #include "concat_bwd_factory.h"
 #include "lrn_fwd_factory.h"

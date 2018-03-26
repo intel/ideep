@@ -27,46 +27,99 @@
 
 #include <vector>
 #include <memory>
+#include <omp.h>
 #include "op_param.h"
 #include "mdarray.h"
-#include "bn.h"
+#include "mkl_vml_functions.h"
+#include "ideep.hpp"
 
-template <typename T>
-class batch_normalization_py {
+class batch_normalization {
 public:
-    static std::vector<mdarray> Forward(mdarray *src,
-        mdarray *w, mdarray *mean, mdarray *var, float eps) {
+  using tensor = ideep::tensor;
+  using alloc = ideep::utils::allocator;
+  using descriptor = ideep::param::descriptor;
+  using batch_normalization_forward_training = ideep::batch_normalization_forward_training;
+  using batch_normalization_forward_inference = ideep::batch_normalization_forward_inference;
+  using batch_normalization_backward = ideep::batch_normalization_backward;
 
-        std::vector<mdarray> outs;
-        auto tensors = batch_normalization<T>::Forward(
-                           (src->get()->tensor()),
-                           (w ? w->get()->tensor() : nullptr),
-                           (mean ? mean->get()->tensor() : nullptr),
-                           (var ? var->get()->tensor() : nullptr), eps);
+  static std::vector<mdarray> Forward(mdarray *src,
+                                      mdarray *weights,
+                                      mdarray *mean,
+                                      mdarray *variance,
+                                      float eps) {
+    std::vector<mdarray> outs;
 
-        for (int i = 0; i < tensors.size(); i++)
-            outs.push_back(mdarray(tensors[i]));
+    if (mean) {
+      auto dst = batch_normalization_forward_inference::compute(*src->get(),
+                     *mean->get(), *variance->get(), *weights->get(), eps);
 
-        return outs;
+      outs.push_back(mdarray(dst));
+    } else {
+      auto tensors = batch_normalization_forward_training::compute(*src->get(),
+                     *weights->get(), eps);
+
+      auto dst = std::get<0>(tensors);
+      auto mean = std::get<1>(tensors);
+      auto variance = std::get<2>(tensors);
+
+      tensor inv;
+      inv.init({variance.get_dims(), src->get()->get_data_type(),
+                descriptor::public_compatible_format(variance.get_descriptor())});
+
+      batch_normalization_inv((float *)variance.get_data_handle(), eps, variance.get_size(),
+                              (float *)inv.get_data_handle());
+
+      outs.push_back(mdarray(dst));
+      outs.push_back(mdarray(mean));
+      outs.push_back(mdarray(variance));
+      outs.push_back(mdarray(inv));
     }
 
-    static std::vector<mdarray> Backward(mdarray *src, mdarray *diff_dst,
-        mdarray *mean, mdarray *var, mdarray *w, float eps) {
+    return outs;
+  }
 
-        std::vector<mdarray> outs;
-        auto tensors = batch_normalization<T>::Backward(
-                           (src->get()->tensor()),
-                           (diff_dst->get()->tensor()),
-                           (mean->get()->tensor()),
-                           (var->get()->tensor()),
-                           (w ? w->get()->tensor() : nullptr),
-                           eps);
+  static std::vector<mdarray> Backward(mdarray *src, mdarray *grady,
+                                       mdarray *mean, mdarray *variance,
+                                       mdarray *weights, float eps) {
+    std::vector<mdarray> outs;
+    auto tensors = batch_normalization_backward::compute(*src->get(),
+                       *mean->get(), *variance->get(), *grady->get(),
+                       *weights->get(), eps);
 
-        for (int i = 0; i < tensors.size(); i++)
-            outs.push_back(mdarray(tensors[i]));
+    outs.push_back(mdarray(tensors.first));
+    outs.push_back(mdarray(tensors.second));
 
-        return outs;
+    return outs;
+  }
+
+private:
+  static void batch_normalization_inv(float *var, float eps, int size, float *inv) {
+    int blk_nthr = omp_get_max_threads(),
+      blk_num = blk_nthr,
+      blk_len = size / blk_num,
+      blk_len_ex = size % blk_num;
+
+    if (!blk_len)
+      blk_nthr = size;
+
+    float *var_eps = reinterpret_cast<float *>(alloc::malloc(size * sizeof(float)));
+
+    # pragma omp parallel num_threads(blk_nthr)
+    {
+      int ithr = omp_get_thread_num();
+      int blen = ithr < blk_len_ex ? blk_len + 1 : blk_len;
+      int bstart = ithr <= blk_len_ex ? (blk_len + 1) * ithr :
+          blk_len_ex * (blk_len + 1) + (ithr - blk_len_ex) * blk_len;
+      int bend = bstart + blen;
+
+      for (int b = bstart; b < bend; b++)
+        var_eps[b] = var[b] + eps;
     }
+
+    vsPowx(size, var_eps, -0.5, inv);
+
+    alloc::free(reinterpret_cast<char *>(var_eps));
+  }
 };
 
 #endif // _BN_PY_H_

@@ -31,5 +31,3 @@
 %include "param.i"
 %include "std_vector.i"
 %include "bn_py.h"
-
-%template(batchNormalization) batch_normalization_py<float>;

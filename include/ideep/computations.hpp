@@ -2846,7 +2846,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  std::tuple<tensor, tensor, tensor> compute(const tensor& src,
+  static std::tuple<tensor, tensor, tensor> compute(const tensor& src,
       const tensor& weights, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);

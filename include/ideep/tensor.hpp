@@ -714,6 +714,12 @@ public:
     return volume_old == volume_new;
   }
 
+  inline bool is_public_format() const {
+    auto desc = get_descriptor();
+    return desc.get_mkldnn_memory_desc_t()->format ==
+           descriptor::public_compatible_format(desc);
+  }
+
 private:
   // mirror descriptor's same information
   format public_format_;

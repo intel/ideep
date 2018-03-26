@@ -40,6 +40,7 @@
 #include <swigpyrun.h>
 #include "ideep.hpp"
 #include "reorder.h"
+#include "utils.h"
 
 namespace implementation {
   class mdarray;
@@ -152,7 +153,10 @@ public:
   using descriptor = ideep::tensor::descriptor;
   using data_type_t = mkldnn::memory::data_type;
   using dims_t = mkldnn::memory::dims;
+  using format_t = ideep::format;
   using error = mkldnn::error;
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using reorder = ideep::reorder;
 
   typedef size_t size_type;
 
@@ -191,13 +195,22 @@ public:
   };
 
   inline void *get_buff_from_view(Py_buffer *view) {
-    // TODO: re-alignment
-    return view->buf;
+    // TODO: zero copy // re-alignment
+    void *buf = view->buf;
+    if ((unsigned long long)buf & (DEFAULT_ALIGNMENT - 1)) {
+      tensor _tmp;
+      _tmp.init<scratch_allocator, reorder>({get_dims_from_view(view),
+          get_dtype_from_view(view)});
+      buf = _tmp.get_data_handle();
+      fast_memcpy((char *)buf, (char *)view->buf, view->len);
+    }
+    return buf;
   }
 
   mdarray(Py_buffer *view, char input_type='d') :
-      tensor({ get_dims_from_view(view), get_dtype_from_view(view) },
-             get_buff_from_view(view)) { /* TODO: input_type */ }
+      tensor({get_dims_from_view(view), get_dtype_from_view(view),
+              ndims2format(view->ndim, input_type)},
+              get_buff_from_view(view)) { /* TODO: input_type */ }
 
   static bool is_mdarray(PyObject *o);
 
@@ -210,35 +223,35 @@ public:
 
   // PEP 3118 interface
   int build_view(Py_buffer *view, int flags, const reorderer &reorder) {
-      view->buf = reorder.data_;
-      view->itemsize = reorder.itemsize_;
-      view->readonly = 0;
-      view->internal = nullptr;
-      view->len = reorder.size_ * reorder.itemsize_;
+    view->buf = reorder.data_;
+    view->itemsize = reorder.itemsize_;
+    view->readonly = 0;
+    view->internal = nullptr;
+    view->len = reorder.size_ * reorder.itemsize_;
 
-      if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
-          view->format = const_cast<char *>(reorder.format_);
-      } else {
-          view->format = nullptr;
-      }
+    if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
+      view->format = const_cast<char *>(reorder.format_);
+    } else {
+      view->format = nullptr;
+    }
 
-      if ((flags & PyBUF_ND) == PyBUF_ND) {
-          view->ndim = reorder.ndims_;
-          view->shape = const_cast<Py_ssize_t *>(reorder.shape_);
-      } else {
-          view->ndim = 0;
-          view->shape = nullptr;
-      }
+    if ((flags & PyBUF_ND) == PyBUF_ND) {
+      view->ndim = reorder.ndims_;
+      view->shape = const_cast<Py_ssize_t *>(reorder.shape_);
+    } else {
+      view->ndim = 0;
+      view->shape = nullptr;
+    }
 
-      if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-          view->strides = const_cast<Py_ssize_t *>(reorder.strides_);
-      } else {
-          view->strides = nullptr;
-      }
+    if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
+      view->strides = const_cast<Py_ssize_t *>(reorder.strides_);
+    } else {
+      view->strides = nullptr;
+    }
 
-      view->suboffsets = nullptr;
+    view->suboffsets = nullptr;
 
-      return 0;
+    return 0;
   }
 
   // PyObject *__getstate__(void) const;
@@ -332,6 +345,23 @@ public:
       init(dst.get_descriptor(), dst.get_data_handle()); }
 
 private:
+  static inline
+  format_t ndims2format(int ndims, char input_type = 'd')
+  {
+    switch (ndims) {
+    case 1:
+      return format_t::x;
+    case 2:
+      return (input_type == 'd') ? format_t::nc : format_t::oi;
+    case 4:
+      return (input_type == 'd') ? format_t::nchw : format_t::oihw;
+    default:
+      throw error(mkldnn_invalid_arguments,
+          "MKLDNN does not support dimensions" + ndims);
+      return format_t::format_undef;
+    }
+  }
+
   struct WeDontManageIt {
     void operator() (const Py_buffer *view) {
       PyBuffer_Release(const_cast<Py_buffer *>(view));
@@ -393,24 +423,24 @@ public:
 
     // Translate our data_type to numpy one
     switch (m->get_data_type()) {
-      case data_type_t::f32:
-        pd = PyArray_DescrFromType(NPY_FLOAT);
-        break;
-      case data_type_t::s32:
-        pd= PyArray_DescrFromType(NPY_INT);
-        break;
-      case data_type_t::s16:
-        pd= PyArray_DescrFromType(NPY_INT16);
-        break;
-      case data_type_t::s8:
-        pd= PyArray_DescrFromType(NPY_INT8);
-        break;
-      case data_type_t::u8:
-        pd= PyArray_DescrFromType(NPY_UINT8);
-        break;
-      default:
-        PyErr_SetString(PyExc_ValueError, "Bad mdarray data_type");
-        return nullptr;
+    case data_type_t::f32:
+      pd = PyArray_DescrFromType(NPY_FLOAT);
+      break;
+    case data_type_t::s32:
+      pd= PyArray_DescrFromType(NPY_INT);
+      break;
+    case data_type_t::s16:
+      pd= PyArray_DescrFromType(NPY_INT16);
+      break;
+    case data_type_t::s8:
+      pd= PyArray_DescrFromType(NPY_INT8);
+      break;
+    case data_type_t::u8:
+      pd= PyArray_DescrFromType(NPY_UINT8);
+      break;
+    default:
+      PyErr_SetString(PyExc_ValueError, "Bad mdarray data_type");
+      return nullptr;
     }
 
     return reinterpret_cast<PyObject *>(pd);

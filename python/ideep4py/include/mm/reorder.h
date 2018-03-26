@@ -32,9 +32,12 @@ static constexpr int MAX_NDIM = 12; //XXX: For now
 class reorderer {
 //protected:
 public:
-  using format = ideep::format;
   using tensor = ideep::tensor;
   using data_type_t = mkldnn::memory::data_type;
+  using format_t = ideep::format;
+  using reorder = ideep::reorder;
+  using descriptor = tensor::descriptor;
+  using scratch_allocator = ideep::utils::scratch_allocator;
 
   bool non_trivial_;
   tensor dst_;
@@ -95,7 +98,11 @@ public:
       non_trivial_(src.need_reorder()),
       dst_([&] () {
         if (non_trivial()) {
-          return tensor({src.get_dims(), src.get_data_type()});
+          tensor dst;
+          dst.init<scratch_allocator, reorder>({src.get_dims(),
+              src.get_data_type(),
+              descriptor::public_compatible_format(src.get_descriptor())});
+          return dst;
         } else {
           return src;
       }} ()),
@@ -111,10 +118,14 @@ public:
 
   void fire(const tensor &src) {
     // TODO : src -> dst
+    if (non_trivial())
+      reorder::compute(src, dst_);
   }
 
   void sync(const tensor &src) {
     // TODO : dst -> src
+    if (non_trivial())
+      reorder::compute(dst_, src);
   }
 
   inline bool non_trivial() const {

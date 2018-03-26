@@ -311,15 +311,12 @@ public:
     inline bool operator !=(const descriptor &other) const {
       return !operator==(other);
     }
-  private:
-    // format that perceived by user
-    format public_format_;
 
-    static inline format public_compatible_format(mkldnn_memory_format_t origin)
+    static inline format public_compatible_format(const descriptor &desc)
     {
       // Support all internal format (nhwc ...)
       format ret;
-      switch(origin) {
+      switch(desc.get_mkldnn_memory_desc_t()->format) {
       case mkldnn_nchw:
       case mkldnn_nhwc:
       case mkldnn_chwn:
@@ -349,6 +346,10 @@ public:
       }
       return ret;
     }
+
+  private:
+    // format that perceived by user
+    format public_format_;
 
     /// Helper function: if aformat is public format, then returns it, else
     /// returns format_undef.

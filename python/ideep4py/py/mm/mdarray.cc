@@ -205,9 +205,21 @@ PyObject *mdarray::py_mdarray_from(PyObject *o) const {
   return o;
 }
 
+using sum = ideep::sum;
+using scratch_allocator = ideep::utils::scratch_allocator;
+
 template<class T>
-void mdarray::axpby(mdarray *dst, T a, mdarray *x, T b, mdarray *y) {
-    ::axpby(dst, a, x, b, y);
+void mdarray::axpby(tensor &dst, T a, const tensor &x, T b, const tensor &y) {
+  // ideep::sum only supports float for now
+  return;
+}
+
+template<> void mdarray::axpby<float>(
+    tensor &dst, float a, const tensor &x, float b, const tensor &y) {
+  auto dst_desc = dst.get_descriptor();
+  auto dst_raw = dst.get_data_handle();
+  sum::compute<scratch_allocator>({a, b}, {x, y}, dst_raw, &dst_desc);
+  return;
 }
 
 template<class T>
@@ -239,7 +251,7 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   py_handle *output = new py_handle(new mdarray(*x));
 
   /// Switch position for format consistency
-  axpby(output->get(), b, x, a, this);
+  axpby(*output->get(), b, *x, a, *this);
 
   PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr
       , SWIG_as_voidptr(output), SwigTy_mdarray, SWIG_POINTER_OWN |  0 );
@@ -275,7 +287,7 @@ PyObject *mdarray::inplace_axpby(T a, PyObject *self, T b, PyObject *o) {
   }
 
   auto y = (reinterpret_cast<py_handle *>(oprd2))->get();
-  axpby(this, a, this, b, y);
+  axpby(*this, a, *this, b, *y);
   Py_INCREF(self);
 
   return self;

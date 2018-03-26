@@ -262,7 +262,7 @@ public:
 
   /// d = a * x + b * y, using x's format
   template<class T>
-  static void axpby(mdarray *dst, T a, mdarray *x, T b, mdarray *y);
+  static void axpby(tensor &dst, T a, const tensor &x, T b, const tensor &y);
 
   /// Interface to directly contact python
   template<class T>

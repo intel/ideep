@@ -717,7 +717,7 @@ public:
   inline bool is_public_format() const {
     auto desc = get_descriptor();
     return desc.get_mkldnn_memory_desc_t()->format ==
-           descriptor::public_compatible_format(desc);
+           convert_to_c(descriptor::public_compatible_format(desc));
   }
 
 private:
@@ -733,6 +733,10 @@ public:
 
   void init_extra(const descriptor &workspace) {
     twin_.reset(new tensor(workspace));
+  }
+
+  void init_extra(tensor &t) {
+    twin_.reset(&t);
   }
 
   void init_extra(const descriptor &workspace, void *handle) {

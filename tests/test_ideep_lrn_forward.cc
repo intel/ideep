@@ -52,6 +52,11 @@ TEST_P (lrn_forward_test_float, TestsLRN) {
       ld.beta, ld.k, p.aalgorithm, p.aprop_kind);
 
   check_lrn_fwd<float>(ld, src_, dst);
+
+  dst = lrn_forward::compute(src_, ld.local_size, ld.alpha,
+      ld.beta, ld.k, p.aalgorithm, p.aprop_kind);
+
+  check_lrn_fwd<float>(ld, src_, dst);
 }
 
 INSTANTIATE_TEST_CASE_P(TestLRNForward, lrn_forward_test_float,

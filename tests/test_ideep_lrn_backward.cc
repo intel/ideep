@@ -57,6 +57,21 @@ TEST_P(lrn_test_float, TestsLRN) {
   }
 }
 
+TEST_P(lrn_test_float, TestsLRN2) {
+  auto p = ::testing::TestWithParam<lrn_test_params>::GetParam();
+  auto ld = p.test_ld;
+
+  auto dst = lrn_forward::compute(src_, ld.local_size, ld.alpha,
+      ld.beta, ld.k, p.aalgorithm, p.aprop_kind);
+  check_lrn_fwd<float>(ld, src_, dst);
+
+  if (p.aprop_kind == prop_kind::forward_training) {
+    auto gradx = lrn_backward::compute(src_, grady_, dst.get_extra(),
+        ld.local_size, ld.alpha, ld.beta, ld.k, p.aalgorithm);
+    check_lrn_bwd<float>(p, src_, grady_, gradx);
+  }
+}
+
 INSTANTIATE_TEST_CASE_P(TestLRN, lrn_test_float,
   ::testing::Values(
     lrn_test_params_float{ prop_kind::forward_training,

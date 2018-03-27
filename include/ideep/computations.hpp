@@ -1859,6 +1859,40 @@ public:
     comp.execute(src, dst);
     return dst;
   }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor& src, int local_size,
+      float alpha, float beta, float k = 1.0,
+      algorithm aalgorithm = algorithm::lrn_across_channels,
+      prop_kind aprop_kind = prop_kind::forward_training) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), local_size, alpha, beta, k,
+        aalgorithm, aprop_kind);
+
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+        local_size, alpha, beta, k, aalgorithm, aprop_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    bool with_workspace = aprop_kind == prop_kind::forward_training;
+
+    // TODO: reorder
+    tensor dst;
+    if (with_workspace) {
+      dst.init_extra(comp.expected_workspace_descriptor());
+      dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
+      // init workspace tensor
+      (*dst.get_extra()).init<alloc, lrn_forward>(
+          comp.expected_workspace_descriptor());
+    } else {
+      dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
+    }
+
+    comp.execute(src, dst);
+    return dst;
+  }
 };
 
 struct lrn_backward : public computation,
@@ -1911,6 +1945,14 @@ public:
       computation::execute(x, grady, *y.get_extra(), gradx);
   }
 
+  void execute(const tensor &x, const tensor &grady, const tensor *ws,
+      const tensor &gradx) {
+    if (num_of_inputs() == 2)
+      computation::execute(x, grady, gradx);
+    else
+      computation::execute(x, grady, *ws, gradx);
+  }
+
   static tensor compute(const tensor& x, const tensor& grady, const tensor& y,
       void* gradx_r, int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
@@ -1926,6 +1968,26 @@ public:
 
     tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
     comp.execute(x, grady, y, gradx);
+    return gradx;
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const tensor &x, const tensor &grady, const tensor *ws,
+      int local_size, float alpha, float beta, float k = 1.0,
+      algorithm aalgorithm = algorithm::lrn_across_channels) {
+    auto key = utils::create_key(x.get_data_type(), x.get_dims(),
+        x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
+
+    auto comp = fetch_or_create_m(key, x.get_descriptor(),
+        grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor gradx;
+    gradx.init<alloc, lrn_backward>(comp.expected_gradx_descriptor());
+    comp.execute(x, grady, ws, gradx);
     return gradx;
   }
 };

@@ -29,25 +29,30 @@
 #include <memory>
 #include "op_param.h"
 #include "mdarray.h"
-#include "dropout.h"
+#include "ideep.hpp"
 
-template <typename T>
-class Dropout_py {
+class Dropout {
 public:
-    static std::vector<mdarray> Forward(mdarray* x, float ratio) {
-        auto tensors = Dropout<T>::Forward(x->get()->tensor(), ratio);
+  using dropout_forward = ideep::dropout_forward;
+  using dropout_backward = ideep::dropout_backward;
 
-        std::vector<mdarray> outs;
-        for (const auto& tensor : tensors) {
-            outs.push_back(mdarray(tensor));
-        }
+  static std::vector<mdarray> Forward(mdarray *src, float ratio) {
+    std::vector<mdarray> outs;
+    auto tensors = dropout_forward::compute(*src->get(), ratio);
 
-        return outs; // [0]: mask, [1]: y
-    }
+    outs.push_back(mdarray(tensors.first));
+    outs.push_back(mdarray(tensors.second));
 
-    static mdarray Backward(mdarray* mask, mdarray* gy) {
-        return mdarray(Dropout<T>::Backward(mask->get()->tensor(), gy->get()->tensor()));
-    }
+    return outs;
+  }
+
+  static mdarray Backward(mdarray *mask, mdarray *grady) {
+    auto gradx = dropout_backward::compute(*mask->get(), *grady->get());
+
+    auto out = mdarray(gradx);
+    return out;
+  }
+
 };
 
 #endif // _DROPOUT_PY_H_

@@ -99,8 +99,7 @@ public:
       dst_([&] () {
         if (non_trivial()) {
           tensor dst;
-          dst.init<scratch_allocator, reorder>({src.get_dims(),
-              src.get_data_type(),
+          dst.init<scratch_allocator, reorder>({src.get_dims(), src.get_data_type(),
               descriptor::public_compatible_format(src.get_descriptor())});
           return dst;
         } else {

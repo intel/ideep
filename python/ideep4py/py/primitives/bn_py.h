@@ -28,7 +28,6 @@
 #include <vector>
 #include <memory>
 #include <omp.h>
-#include "op_param.h"
 #include "mdarray.h"
 #include "mkl_vml_functions.h"
 #include "ideep.hpp"

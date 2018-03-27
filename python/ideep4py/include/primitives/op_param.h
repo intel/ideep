@@ -61,6 +61,3 @@ struct lrn_param_t {
     } algo_kind;
 };
 #endif // _OP_PARAM_H_
-
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

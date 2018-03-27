@@ -245,9 +245,6 @@ if system() == 'Linux':
            # 'ideep4py/primitives/ops/concat_fwd.cc',
            # 'ideep4py/primitives/ops/concat_bwd.cc',
            # 'ideep4py/primitives/concat.cc',
-           # 'ideep4py/primitives/ops/lrn_fwd.cc',
-           # 'ideep4py/primitives/ops/lrn_bwd.cc',
-           # 'ideep4py/primitives/lrn.cc',
            # 'ideep4py/primitives/dropout.cc',
            ]
 else:

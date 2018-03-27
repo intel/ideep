@@ -27,7 +27,7 @@
 
 #include <vector>
 #include <memory>
-#include "op_param.h"
+#include "utils.h"
 #include "mdarray.h"
 #include "ideep.hpp"
 

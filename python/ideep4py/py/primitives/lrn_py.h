@@ -27,69 +27,40 @@
 
 #include <vector>
 #include <memory>
-#include "op_param.h"
+#include "utils.h"
 #include "mdarray.h"
-#include "lrn.h"
+#include "ideep.hpp"
 
-template <typename T>
-class LocalResponseNormalization_Py
+class LocalResponseNormalization
 {
 public:
-    /*
-     * Python Lrn Forward
-     * params:
-     * src: input, x
-     * pp: lrn parameters
-     */
-    static std::vector<mdarray> Forward(mdarray *src,
-                                        lrn_param_t *pp) {
-        std::vector<mdarray> outputs;
+  using tensor = ideep::tensor;
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using lrn_forward = ideep::lrn_forward;
+  using lrn_backward = ideep::lrn_backward;
+  using algorithm = ideep::algorithm;
 
-        // Shoule be removed in future????
-        implementation::mdarray *src_internal = src->get();
+  static std::vector<mdarray> Forward(mdarray *src, lrn_param_t *pp) {
+    std::vector<mdarray> outs;
 
-        std::vector<Tensor *> outputs_tensor = LocalResponseNormalization<T>::Forward(
-                                                    (src_internal->tensor()),
-                                                    pp);
-        //FIXME
-        for (int i = 0; i < outputs_tensor.size(); i++) {
-            outputs.push_back( mdarray(outputs_tensor[i]) );
-        }
+    auto dst = lrn_forward::compute<scratch_allocator>(*src->get(), pp->n,
+                   pp->alpha, pp->beta, pp->k, lrn_algo_convert(pp->algo_kind));
 
-        return outputs;
-    }
+    outs.push_back(mdarray(dst));
+    outs.push_back(mdarray(*dst.get_extra()));
 
-    /*
-     * Python Lrn backward
-     * param:
-     * src: x
-     * diff_dst: diff dst, gy
-     * ws: workspace
-     * pp: lrn parameters
-     */
-    static mdarray Backward(mdarray *src, mdarray *diff_dst, mdarray *ws, lrn_param_t *pp) {
-        //FIXME
-        //Should be removed in future
-        implementation::mdarray *diff_dst_internal = diff_dst->get();
-        implementation::mdarray *src_internal = src->get();
-        implementation::mdarray *ws_internal = ws->get();
-        
-        Tensor *diff_src_tensor = LocalResponseNormalization<T>::Backward(
-            (src_internal->tensor()),
-            (diff_dst_internal->tensor()),
-            (ws_internal->tensor()),
-            pp);
-      
+    return outs;
+  }
 
-        // FIXME
-        // In future, mdarray will have a Tensor member, no need to create a new one
-        mdarray diff_src_mdarray = mdarray(diff_src_tensor);
-        return diff_src_mdarray;
-    }
+  static mdarray Backward(mdarray *src, mdarray *grady, mdarray *ws, lrn_param_t *pp) {
+    auto gradx = lrn_backward::compute<scratch_allocator>(*src->get(), *grady->get(),
+                    ws->get(), pp->n, pp->alpha, pp->beta, pp->k,
+                    lrn_algo_convert(pp->algo_kind));
+
+    auto out = mdarray(gradx);
+    return out;
+  }
 
 };
 
 #endif // _LRN_PY_H_
-
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

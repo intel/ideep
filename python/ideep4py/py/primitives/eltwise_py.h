@@ -63,11 +63,11 @@ public:
   using tensor = ideep::tensor;
   using eltwise_forward = ideep::eltwise_forward;
   using eltwise_backward = ideep::eltwise_backward;
-  using eltwise_tanh = ideep::algorithm::eltwise_tanh;
+  using algorithm = ideep::algorithm;
 
   static mdarray Forward(mdarray &src) {
     auto dst = eltwise_forward::compute<scratch_allocator>(
-                  *(src.get()), 0.0, 0.0, eltwise_tanh);
+                  *(src.get()), 0.0, 0.0, algorithm::eltwise_tanh);
 
     auto out = mdarray(dst);
     return out;
@@ -75,7 +75,8 @@ public:
 
   static mdarray Backward(mdarray &src, mdarray &grady) {
     auto gradx = eltwise_backward::compute<scratch_allocator>(
-                  *(src.get()), *(grady.get()), 0.0, 0.0, eltwise_tanh);
+                  *(src.get()), *(grady.get()), 0.0, 0.0,
+                  algorithm::eltwise_tanh);
 
     auto out = mdarray(gradx);
     return out;

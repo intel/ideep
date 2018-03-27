@@ -95,7 +95,7 @@ public:
 
 public:
   reorderer(const tensor &src) :
-      non_trivial_(src.is_public_format()),
+      non_trivial_(!src.is_public_format()),
       dst_([&] () {
         if (non_trivial()) {
           tensor dst;

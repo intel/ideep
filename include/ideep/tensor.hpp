@@ -543,6 +543,10 @@ public:
     return *this;
   }
 
+  param &_reshape(dims new_dims) {
+    return reshape(new_dims);
+  }
+
   /// Returns the internal structure of primitive descriptor.
   const_mkldnn_primitive_desc_t get_mkldnn_primitive_desc_t() const {
     const_mkldnn_primitive_desc_t cdesc;

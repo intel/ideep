@@ -447,7 +447,7 @@ public:
   }
 
   static long mdarray_size_get(mdarray *self) {
-    return self->get()->get_size();
+    return self->get()->get_nelems();
   }
 
   static long mdarray_ndim_get(mdarray *self) {

@@ -63,7 +63,7 @@ static inline bool is_mdarray_supported(PyObject *self, PyObject *o) {
     // if size not equal, mean array broadcast
     if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type) {
         if ((size_t)PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o))
-                != self_mdarray->get_size() ||
+                != self_mdarray->get_nelems() ||
                 !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o))) {
             return false;
         }
@@ -79,7 +79,7 @@ static inline bool is_mdarray_supported(PyObject *self, PyObject *o) {
             return false;
 
         // not support different size's mdarray's operations
-        if (o_mdarray->get_size() != self_mdarray->get_size())
+        if (o_mdarray->get_nelems() != self_mdarray->get_nelems())
             return false;
 
         return true;
@@ -428,7 +428,7 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
     auto oprd1_mdarr = this;
     auto oprd2_mdarr = (reinterpret_cast<py_handle *>(oprd2))->get();
 
-    if (oprd1_mdarr->get_size() != oprd2_mdarr->get_size()) {
+    if (oprd1_mdarr->get_nelems() != oprd2_mdarr->get_nelems()) {
       PyErr_SetString(PyExc_SystemError, "Abnormal matrix size %matrix element multiply");
       break;
     }
@@ -467,7 +467,7 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
     if (data_type_t::f32 == res_dtype) {
       switch (mult_or_div) {
       case mmult:
-        vsMul(oprd1_mdarr->get_size(),
+        vsMul(oprd1_mdarr->get_nelems(),
               reinterpret_cast<const float *>(oprd1_mdarr->get_data_handle()),
               reinterpret_cast<const float *>(oprd2_internal_m.get_data_handle()),
               reinterpret_cast<float *>(res_mdarr->get_data_handle()));
@@ -477,7 +477,7 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
         plain_div(reinterpret_cast<const float *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const float *>(oprd2_internal_m.get_data_handle()),
                   reinterpret_cast<float *>(res_mdarr->get_data_handle()),
-                  static_cast<int>(oprd1_mdarr->get_size()));
+                  static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
       }
     } else if (data_type_t::s32 == res_dtype) {
@@ -486,14 +486,14 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
         plain_mult(reinterpret_cast<const int *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const int *>(oprd2_internal_m.get_data_handle()),
                    reinterpret_cast<int *>(res_mdarr->get_data_handle()),
-                   static_cast<int>(oprd1_mdarr->get_size()));
+                   static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
 
       case mdiv:
         plain_div(reinterpret_cast<const int *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const int *>(oprd2_internal_m.get_data_handle()),
                   reinterpret_cast<int *>(res_mdarr->get_data_handle()),
-                  static_cast<int>(oprd1_mdarr->get_size()));
+                  static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
       }
     } else if (data_type_t::s16 == res_dtype) {
@@ -502,14 +502,14 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
         plain_mult(reinterpret_cast<const int16_t *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const int16_t *>(oprd2_internal_m.get_data_handle()),
                    reinterpret_cast<int16_t *>(res_mdarr->get_data_handle()),
-                   static_cast<int>(oprd1_mdarr->get_size()));
+                   static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
 
       case mdiv:
         plain_div(reinterpret_cast<const int16_t *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const int16_t *>(oprd2_internal_m.get_data_handle()),
                   reinterpret_cast<int16_t *>(res_mdarr->get_data_handle()),
-                  static_cast<int>(oprd1_mdarr->get_size()));
+                  static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
       }
     } else if (data_type_t::s8 == res_dtype) {
@@ -518,14 +518,14 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
         plain_mult(reinterpret_cast<const int8_t *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const int8_t *>(oprd2_internal_m.get_data_handle()),
                    reinterpret_cast<int8_t *>(res_mdarr->get_data_handle()),
-                   static_cast<int>(oprd1_mdarr->get_size()));
+                   static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
 
       case mdiv:
         plain_div(reinterpret_cast<const int8_t *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const int8_t *>(oprd2_internal_m.get_data_handle()),
                   reinterpret_cast<int8_t *>(res_mdarr->get_data_handle()),
-                  static_cast<int>(oprd1_mdarr->get_size()));
+                  static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
       }
     } else if (data_type_t::u8 == res_dtype) {
@@ -534,14 +534,14 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
         plain_mult(reinterpret_cast<const uint8_t *>(oprd1_mdarr->get_data_handle()),
                    reinterpret_cast<const uint8_t *>(oprd2_internal_m.get_data_handle()),
                    reinterpret_cast<uint8_t *>(res_mdarr->get_data_handle()),
-                   static_cast<int>(oprd1_mdarr->get_size()));
+                   static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
 
       case mdiv:
         plain_div(reinterpret_cast<const uint8_t *>(oprd1_mdarr->get_data_handle()),
                   reinterpret_cast<const uint8_t *>(oprd2_internal_m.get_data_handle()),
                   reinterpret_cast<uint8_t *>(res_mdarr->get_data_handle()),
-                  static_cast<int>(oprd1_mdarr->get_size()));
+                  static_cast<int>(oprd1_mdarr->get_nelems()));
         break;
       }
     }
@@ -810,7 +810,7 @@ int mdarray::mp_ass_subscript(PyObject *self, PyObject *ind, PyObject *op) {
 }
 
 PyObject *mdarray::flat() {
-  long int dims[1] = {static_cast<long int>(this->get_size())};
+  long int dims[1] = {static_cast<long int>(this->get_nelems())};
 
   int typenum = NPY_NOTYPE;
   switch(get_data_type()) {
@@ -863,19 +863,19 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
         }
     }
     if (idx_unknown == -1) {
-        if (size != this->get_size()) {
+        if (size != this->get_nelems()) {
             PyErr_SetString(PyExc_ValueError,"Wrong dimension to reshape");
             return nullptr;
         }
-    } else if (this->get_size() % size) {
+    } else if (this->get_nelems() % size) {
         PyErr_SetString(PyExc_ValueError,"Wrong dimension to reshape");
         return nullptr;
     } else {
-        dims[idx_unknown] = this->get_size() / size;
+        dims[idx_unknown] = this->get_nelems() / size;
     }
 
     // FIXME: A new tensor for reshape ?
-    tensor::reshape(dims);
+    this->_reshape(dims);
     py_handle *output = new py_handle(new mdarray(*this));
     PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr,
         SWIG_as_voidptr(output), SwigTy_mdarray, SWIG_POINTER_OWN | 0);

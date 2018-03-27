@@ -198,10 +198,7 @@ public:
     // TODO: zero copy // re-alignment
     void *buf = view->buf;
     if ((unsigned long long)buf & (DEFAULT_ALIGNMENT - 1)) {
-      tensor _tmp;
-      _tmp.init<scratch_allocator, reorder>({get_dims_from_view(view),
-          get_dtype_from_view(view)});
-      buf = _tmp.get_data_handle();
+      buf = (void *)scratch_allocator::malloc<reorder>(view->len);
       fast_memcpy((char *)buf, (char *)view->buf, view->len);
     }
     return buf;

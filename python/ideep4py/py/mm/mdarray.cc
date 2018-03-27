@@ -207,6 +207,7 @@ PyObject *mdarray::py_mdarray_from(PyObject *o) const {
 
 using sum = ideep::sum;
 using scratch_allocator = ideep::utils::scratch_allocator;
+using descriptor = ideep::tensor::descriptor;
 
 template<class T>
 void mdarray::axpby(tensor &dst, T a, const tensor &x, T b, const tensor &y) {
@@ -717,16 +718,10 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   sync_reorder_ = rb;
 
   // reset self mdarray's tensor, keep buffer consistency.
-  if (rb->non_trivial()) {
-    auto m = get_mdarray_from_PyObject(self);
-    if (!m) {
-      PyErr_SetString(PyExc_RuntimeError,
-          "Can't get src mdarray from python object!");
-      return -1;
-    }
+  if (rb->non_trivial())
+    init({get_dims(), get_data_type(),
+        descriptor::public_compatible_format(get_descriptor())}, rb->data_);
 
-    m->init(m->get_descriptor(), rb->data_);
-  }
   return 0;
 }
 

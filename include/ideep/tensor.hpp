@@ -312,11 +312,22 @@ public:
       return !operator==(other);
     }
 
+    // oi, nc, oihw, nchw
+    // TODO: other public compatible format, eg. iohw, nhwc.
     static inline format public_compatible_format(const descriptor &desc)
     {
-      // Support all internal format (nhwc ...)
       format ret;
       switch(desc.get_mkldnn_memory_desc_t()->format) {
+      case mkldnn_x:
+        ret = format::x;
+        break;
+      case mkldnn_oi:
+      case mkldnn_io:
+        ret = format::oi;
+        break;
+      case mkldnn_nc:
+        ret = format::nc;
+        break;
       case mkldnn_nchw:
       case mkldnn_nhwc:
       case mkldnn_chwn:

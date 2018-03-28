@@ -1020,4 +1020,54 @@ void check_relu_bwd(data_t negative_slope, const tensor &src, const tensor &grad
     EXPECT_NEAR(gradx_data[map_index(gradx_d, i)], ref_gx, 1.e-7);
   }
 }
+
+struct concat_test_params {
+  const engine::kind engine_kind;
+  size_t concat_dimension;
+  std::vector<mkldnn::memory::format> srcs_format;
+  mkldnn::memory::format dst_format;
+  std::vector<mkldnn::memory::dims> srcs_cds;
+  mkldnn::memory::dims dst_cds;
+};
+
+template <typename data_t>
+void check_data(const std::vector<tensor> &srcs, const tensor &dst,
+      int concat_dim) {
+  const data_t *dst_data = (const data_t *)dst.get_data_handle();
+  const auto &dst_d = dst.get_mkldnn_memory_desc_t();
+  const auto dst_dims = dst.get_dims();
+
+  int acc_concat_dim = 0;
+
+  for (size_t num = 0; num < srcs.size(); num++) {
+    const data_t *src_data = (const data_t *)srcs[num].get_data_handle();
+    const auto &src_d = srcs[num].get_mkldnn_memory_desc_t();
+    const std::vector<int> src_dims = srcs[num].get_dims();
+    for (auto n = 0; n < src_dims[0]; n++)
+    for (auto c = 0; c < src_dims[1]; c++)
+    for (auto h = 0; h < src_dims[2]; h++)
+    for (auto w = 0; w < src_dims[3]; w++) {
+      auto src_idx = w
+        + src_dims[3]*h
+        + src_dims[2]*src_dims[3]*c
+        + src_dims[1]*src_dims[2]*src_dims[3]*n;
+
+      auto adj_dst_dim = [&](int dim, int dim_sz) {
+        if (concat_dim == dim) return dim_sz + acc_concat_dim;
+        return dim_sz;
+      };
+      auto dst_idx = adj_dst_dim(3, w)
+        + dst_dims[3]*adj_dst_dim(2, h)
+        + dst_dims[2]*dst_dims[3]*adj_dst_dim(1, c)
+        + dst_dims[1]*dst_dims[2]*dst_dims[3]*adj_dst_dim(0, n);
+
+      EXPECT_NEAR(src_data[map_index(src_d, src_idx)],
+                dst_data[map_index(dst_d, dst_idx)],
+                1e-7);
+    }
+
+    acc_concat_dim += src_dims[concat_dim];
+  }
+}
+
 }

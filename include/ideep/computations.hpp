@@ -2562,7 +2562,8 @@ public:
   }
 };
 
-struct concat : public computation {
+struct concat : public computation,
+  public utils::computation_cache<concat> {
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension,
         const std::vector<tensor::descriptor> &inputs) {
@@ -2586,8 +2587,54 @@ public:
     computation::init(forward_descriptor, inputs);
   }
 
+  concat() = default;
+
+  concat(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
+    init(concat_dimension, inputs);
+  }
+
   void execute(const std::vector<tensor> &inputs, const tensor &output) {
     computation::execute(inputs, output);
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(std::vector<tensor> &inputs, int axis) {
+    std::vector<tensor::descriptor> tdesc;
+    std::vector<tensor::data_type> inputs_dt;
+    std::vector<tensor::dims> inputs_dims;
+    std::vector<format> inputs_format;
+    for (tensor elems : inputs) {
+      tdesc.push_back(elems.get_descriptor());
+      inputs_dt.push_back(elems.get_data_type());
+      inputs_dims.push_back(elems.get_dims());
+      inputs_format.push_back(elems.get_internal_format());
+    }
+
+    auto key = utils::create_key(inputs_dt, inputs_dims, inputs_format, axis);
+
+    // FIXME
+    // currently align all inputs format with first one
+    for (int i = 1; i <tdesc.size(); i++) {
+      if (inputs_format[i] != inputs_format[0]) {
+        auto src_in = inputs[i];
+        src_in.init<alloc, concat>({inputs_dims[i], inputs_dt[i], inputs_format[0]});
+        reorder::compute(inputs[i], src_in);
+        inputs[i] = std::move(src_in);
+        tdesc[i] = inputs[i].get_descriptor();
+      }
+    }
+
+    auto comp = fetch_or_create_m(key, axis, tdesc);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor dst;
+    dst.init<alloc, concat>(comp.expected_dst_descriptor());
+
+    comp.execute(inputs, dst);
+    return dst;
   }
 };
 

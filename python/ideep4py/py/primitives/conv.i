@@ -30,17 +30,3 @@
 
 %include "param.i"
 %include "conv_py.h"
-
-//
-// Python API for Convolution2D
-//
-// mdarray Convolution2D::Forward(
-//                        mdarray *src, mdarray *weights,
-//                        mdarray *dst, mdarray *bias,
-//                        conv_param_t *cp);
-// std::vector<mdarray> Convolution2D::BackwardWeights(
-//                        mdarray *src, mdarray *diff_dst,
-//                        con_prarm_t *cp);
-// mdarray Convolution2D::BackwardData(
-//                        mdarray *weights, mdarray *diff_dst,
-//                        conv_param_t *cp);

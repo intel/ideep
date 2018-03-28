@@ -29,6 +29,7 @@ file(GLOB __native_test_src
   test_ideep_inner_product_forward.cc
   test_ideep_inner_product_backward_data.cc
   test_ideep_inner_product_backward_weights.cc
+  test_ideep_concat.cc
   test_ideep_reorder.cc
   test_ideep_allocator.cc
   )

@@ -31,7 +31,7 @@
 #include "mdarray.h"
 #include "ideep.hpp"
 
-class Convolution2D
+class convolution2D
 {
 public:
   using tensor = ideep::tensor;
@@ -102,7 +102,7 @@ public:
                               mdarray *diff_dst,
                               conv_param_t *cp) {
     auto gx = convolution_backward_data::compute<scratch_allocator>(
-                   *(weights->get()), *(diff_dst->get()), cp->out_dims,
+                   *(diff_dst->get()), *(weights->get()), cp->out_dims,
                    tensor::dims {cp->sy, cp->sx},
                    tensor::dims {cp->dilate_y, cp->dilate_x},
                    tensor::dims {cp->pad_lh, cp->pad_lw},

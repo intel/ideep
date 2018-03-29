@@ -595,7 +595,7 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
         "could not execute reorder", &c_api_error_primitive);
   }
 
-  static const void compute(
+  static void compute(
       const tensor& input, const tensor& output,
       const descriptor::attr_t attr = descriptor::attr_t()) {
     auto key = utils::create_key(input.get_dims(), input.get_data_type(),
@@ -611,9 +611,27 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     op(input, output);
   }
 
-  // static void split(const tensor& input, const tensor::view& subregion,
-  //     const tensor output) {
-  // }
+  template <typename alloc = utils::allocator>
+  static tensor compute(
+      const tensor &input, const tensor::dims &volume, const tensor::dims &start) {
+    auto key = utils::create_key(input.get_dims(), input.get_data_type(),
+        input.get_internal_format(), volume, start);
+
+    auto view = input.create_view(volume, start);
+    tensor gx;
+    gx.init<alloc, reorder>(view.expected_dst_descriptor());
+
+    auto op = fetch_or_create_m(key, view, input.get_descriptor(),
+        gx.get_descriptor());
+
+    auto sg = utils::make_guard([&key, &op]() {
+        release(key, std::move(op));
+        });
+
+    op(input, gx);
+    return gx;
+  }
+
 protected:
   param in, out;
 };

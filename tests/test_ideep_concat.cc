@@ -3,19 +3,17 @@
 
 #include <ideep.hpp>
 #include "test_ideep_common.hpp"
-#include "signal.h"
 
 using namespace ideep;
 
 template <typename data_t>
 class concat_test: public ::testing::TestWithParam<concat_test_params> {
+using scratch_allocator = ideep::utils::scratch_allocator;
 
 protected:
   virtual void SetUp() {
     concat_test_params p
         = ::testing::TestWithParam<concat_test_params>::GetParam();
-
-    signal(SIGSTOP, SIG_DFL);
 
     int src_dim_sum = 0;
     for (size_t i = 0; i < p.srcs_cds.size(); i++) {
@@ -47,6 +45,25 @@ protected:
     auto dst = concat::compute(inputs, p.concat_dimension);
 
     check_data<data_t>(inputs, dst, static_cast<int>(p.concat_dimension));
+
+    // test concat backwar
+    std::vector<tensor> gxs;
+    std::vector<int> axis_len;
+    for (size_t i = 0; i < p.srcs_cds.size(); i++) {
+      axis_len.push_back(p.srcs_cds[i][p.concat_dimension]);
+    }
+
+    tensor::dims offset_dims(p.dst_cds.size(), 0);
+    tensor::dims gx_dims(dst.get_dims());
+
+    for (int i = 0; i < p.srcs_cds.size(); i++) {
+      gx_dims[p.concat_dimension] = axis_len[i];
+      auto gx = ideep::reorder::compute<scratch_allocator>(dst, gx_dims, offset_dims);
+      gxs.push_back(gx);
+      offset_dims[p.concat_dimension] += axis_len[i];
+    }
+
+    check_data<data_t>(gxs, dst, static_cast<int>(p.concat_dimension));
   }
 
 };

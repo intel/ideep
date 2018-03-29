@@ -18,18 +18,9 @@ os_name = system()
 MODULE_DESC = 'Intel mkl-dnn'
 PYTHON_ROOT = os.path.split(os.path.realpath(__file__))[0]
 
+WORK_PATH = PYTHON_ROOT + '/..'
 MKLDNN_ROOT = PYTHON_ROOT
-
-# def get_mklml_path():
-#     mklml_pkg_path_leafs = os.listdir(MKLML_PKG_PATH)
-#     mklml_origin_path = None
-#     for leaf in mklml_pkg_path_leafs:
-#         if os.path.isdir('%s/%s' % (MKLML_PKG_PATH, leaf)) and \
-#            'mklml' in leaf:
-#             mklml_origin_path = '%s/%s' % (MKLML_PKG_PATH, leaf)
-#             break
-#     return mklml_origin_path
-
+BUILD_PATH = WORK_PATH + '/build'
 
 def install_mkldnn():
     print('Installing ...')

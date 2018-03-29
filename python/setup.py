@@ -13,78 +13,35 @@ import distutils.command.clean
 ###############################################################################
 # mkl-dnn preparation
 ###############################################################################
+os_name = system()
 
 MODULE_DESC = 'Intel mkl-dnn'
 PYTHON_ROOT = os.path.split(os.path.realpath(__file__))[0]
 
-MKLDNN_WORK_PATH = PYTHON_ROOT + '/../mkl-dnn'
 MKLDNN_ROOT = PYTHON_ROOT
-MKLDNN_LIB_PATH = MKLDNN_ROOT + '/lib'
-MKLDNN_INCLUDE_PATH = MKLDNN_ROOT + '/include'
-MKLDNN_SOURCE_PATH = MKLDNN_WORK_PATH
-MKLDNN_BUILD_PATH = MKLDNN_WORK_PATH + '/build'
-MKLML_PKG_PATH = MKLDNN_WORK_PATH + '/external'
 
-lib_targets = ['libmkldnn.so',
-               'libmkldnn.so.0',
-               'libmklml_gnu.so',
-               'libmklml_intel.so',
-               'libiomp5.so']
-
-
-def get_mklml_path():
-    mklml_pkg_path_leafs = os.listdir(MKLML_PKG_PATH)
-    mklml_origin_path = None
-    for leaf in mklml_pkg_path_leafs:
-        if os.path.isdir('%s/%s' % (MKLML_PKG_PATH, leaf)) and \
-           'mklml' in leaf:
-            mklml_origin_path = '%s/%s' % (MKLML_PKG_PATH, leaf)
-            break
-    return mklml_origin_path
+# def get_mklml_path():
+#     mklml_pkg_path_leafs = os.listdir(MKLML_PKG_PATH)
+#     mklml_origin_path = None
+#     for leaf in mklml_pkg_path_leafs:
+#         if os.path.isdir('%s/%s' % (MKLML_PKG_PATH, leaf)) and \
+#            'mklml' in leaf:
+#             mklml_origin_path = '%s/%s' % (MKLML_PKG_PATH, leaf)
+#             break
+#     return mklml_origin_path
 
 
 def install_mkldnn():
     print('Installing ...')
 
-    os.chdir(MKLDNN_SOURCE_PATH)
+    os.chdir(BUILD_PATH)
     os.system(
-      'cd build && cmake -DCMAKE_INSTALL_PREFIX=%s .. && \
-       make -j && make install' % MKLDNN_ROOT)
-
-    # install mklml
-    mklml_origin_path = get_mklml_path()
-    if mklml_origin_path:
-        os.system('cp %s/lib/* %s' % (mklml_origin_path, MKLDNN_LIB_PATH))
-        os.system('cp %s/include/* %s' %
-                  (mklml_origin_path, MKLDNN_INCLUDE_PATH))
-    else:
-        sys.exit('%s build error... No Intel mklml pkg.' % MODULE_DESC)
-
+      'cmake -DCMAKE_INSTALL_PREFIX=%s --build . \
+              && cmake --build . --target install' % MKLDNN_ROOT)
 
 def prepare_mkldnn():
     print('Intel mkl-dnn preparing ...')
-    mkldnn_installed = True
-
-    if not os.path.exists(MKLDNN_SOURCE_PATH + '/src'):
-        sys.exit('%s prepare error... Please init mkl-dnn submodule first.' % MODULE_DESC)
-    else:
-        mklml_origin_path = get_mklml_path()
-        if not mklml_origin_path:
-            sys.exit('%s prepare error... No Intel mklml pkg.' % MODULE_DESC)
-        include_targets = []
-        include_targets += os.listdir(mklml_origin_path + '/include')
-        include_targets += os.listdir(MKLDNN_SOURCE_PATH + '/include')
-
-        if not os.path.exists(MKLDNN_BUILD_PATH):
-            sys.exit('%s prepare error... Please build for mkl-dnn first.' % MODULE_DESC)
-        elif not all(os.path.exists(MKLDNN_LIB_PATH + '/' + lib)
-                     for lib in lib_targets) or \
-            not all(os.path.exists(MKLDNN_INCLUDE_PATH + '/' + include)
-                    for include in include_targets):
-            mkldnn_installed = False
-
-    if not mkldnn_installed:
-        install_mkldnn()
+    install_mkldnn()
 
     os.chdir(PYTHON_ROOT)
     print('Intel mkl-dnn prepared !')
@@ -99,32 +56,9 @@ EXT_INCLUDE_PATH = PYTHON_ROOT + '/include'
 EXT_SHARE_PATH = PYTHON_ROOT + '/share'
 TARGET_LIB_PATH = PYTHON_ROOT + '/ideep4py/lib'
 
-target_libs = [
-    # 'libdlcomp.so',
-    'libiomp5.so',
-    'libmkldnn.so*',
-]
-
-
 def prepare_ext():
-    if not os.path.exists(EXT_LIB_PATH):
-        os.system('mkdir %s' % EXT_LIB_PATH)
-    if not os.path.exists(EXT_INCLUDE_PATH):
-        os.system('mkdir %s' % EXT_INCLUDE_PATH)
-
-    prepare_mkldnn()
+    install_mkldnn()
     # dlcp.prepare()
-
-    if os.path.exists(TARGET_LIB_PATH):
-        os.system('rm -rf %s' % TARGET_LIB_PATH)
-    os.system('mkdir %s' % TARGET_LIB_PATH)
-    libmklml = os.popen(
-        'ldd lib/libmkldnn.so |\
-        grep libmklml | awk \'{print $1}\'').read()
-    global target_libs
-    target_libs += [libmklml[:-1]]
-    for lib in target_libs:
-        os.system('cp %s/%s %s' % (EXT_LIB_PATH, lib, TARGET_LIB_PATH))
 
 
 def clean_ext():
@@ -201,18 +135,15 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              # '-Iideep4py/py/dlcp',
              '-Iideep4py/include/primitives',
              '-Iideep4py/include/mm',
-             '-I../include',
-             '-I../include/ideep']
+             '-Iinclude']
 
 if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']
 
 ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-mavx']
-link_opts = ['-Wl,-z,now', '-Wl,-z,noexecstack',
-             '-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './lib']
+link_opts = ['-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './lib']
 
 includes = ['ideep4py/include',
-            'ideep4py/include/mkl',
             'ideep4py/common',
             'ideep4py/include/mm',
             'ideep4py/py/mm',
@@ -220,29 +151,25 @@ includes = ['ideep4py/include',
             # 'ideep4py/py/dlcp',
             'ideep4py/include/primitives',
             'ideep4py/include/blas',
-            'include',
-            '../include',
-            '../include/ideep']
+            'include', 'include/mklml', 'include/ideep']
 
-libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
-
-if system() == 'Linux':
+if os_name == 'Linux':
+    libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
     ccxx_opts += ['-fopenmp', '-DOPENMP_AFFINITY']
     libraries += ['m']
-    src = ['ideep4py/py/ideep4py.i',
-           # 'ideep4py/py/dlcp/dlcp_py.cc',
-           # 'ideep4py/mm/tensor.cc',
-           'ideep4py/py/mm/mdarray.cc',
-           'ideep4py/common/cpu_info.cc',
-           'ideep4py/common/utils.cc',
-           # 'ideep4py/common/common.cc',
-           # 'ideep4py/blas/sum.cc',
-           # 'ideep4py/py/mm/basic.cc',
-           ]
+    link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']
 else:
-    # TODO
-    src = ['mkldnn/mdarray.i', 'mkldnn/mdarray.cc']
+    libraries = ['mkldnn', 'mklml']
 
+src = ['ideep4py/py/ideep4py.i',
+       # 'ideep4py/py/dlcp/dlcp_py.cc',
+       # 'ideep4py/mm/mem.cc',
+       # 'ideep4py/mm/tensor.cc',
+       'ideep4py/py/mm/mdarray.cc',
+       # 'ideep4py/common/common.cc',
+       # 'ideep4py/blas/sum.cc',
+       # 'ideep4py/py/mm/basic.cc',
+       ]
 
 ###############################################################################
 # Declare extensions and package
@@ -278,8 +205,7 @@ setup(
     url='https://github.com/intel/ideep',
     license='MIT License',
     packages=packages,
-    package_dir={'ideep4py': 'ideep4py/'},
-    package_data={'ideep4py': ['lib/*', ]},
+    package_data={'' : ['lib/*', ]},
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     zip_safe=False,

@@ -42,13 +42,14 @@
 #include <random>
 #include <atomic>
 #include <chrono>
-
+/*
 #ifdef _WIN32
   #include <process.h>
 #else
   #include <unistd.h>
-#endif
+#endif*/
 
+#include "mkl_vsl.h"
 #include <ideep/abstract_types.hpp>
 #include <ideep/fast_math.hpp>
 #include <ideep/tensor.hpp>
@@ -3714,6 +3715,7 @@ struct dropout_forward {
 public:
   dropout_forward() = default;
 
+  /*
   static uint32_t randomNumberSeed() {
     // from folly/caffe2
     static std::atomic<uint32_t> seed(0);
@@ -3728,19 +3730,47 @@ public:
     const uint32_t kPrime3 = 111857;
     return kPrime0 * (seed++) + kPrime1 * static_cast<uint32_t>(getpid()) +
         kPrime2 * tv_sec + kPrime3 * tv_usec;
+  }*/
+
+
+  static void bernoulli_generate(const long n, const double p, int* r) {
+    std::srand(std::time(0));
+    const int seed = 17 + std::rand() % 4096;
+
+    int nthr = omp_get_max_threads();
+
+    # pragma omp parallel num_threads(nthr)
+    {
+      const int ithr = omp_get_thread_num();
+      const long avg_amount = (n + nthr - 1) / nthr;
+      const long my_offset = ithr * avg_amount;
+      const long my_amount = std::min(my_offset + avg_amount, n) - my_offset;
+
+      if (my_amount > 0) {
+        VSLStreamStatePtr stream;
+        vslNewStream(&stream, VSL_BRNG_MCG31, seed);
+        vslSkipAheadStream(stream, my_offset);
+        viRngBernoulli(VSL_RNG_METHOD_BERNOULLI_ICDF, stream, my_amount, r + my_offset, p);
+        vslDeleteStream(&stream);
+      }
+    }
   }
 
   template<class alloc, class T>
   static std::pair<tensor, tensor> compute_impl(const tensor &src, float ratio) {
     const auto scale = 1.0 / (1.0 - ratio);
-    const auto size = src.get_size();
+    const auto size = src.get_nelems();
     tensor mask(src.get_descriptor());
     tensor dst(src.get_descriptor());
 
+    /*
     // TODO:
     // replace with high-efficiency bernoulli distribution
     std::bernoulli_distribution dist(1. - ratio);
-    std::mt19937 gen(randomNumberSeed());
+    std::mt19937 gen(randomNumberSeed());*/
+
+    std::unique_ptr<int[]> bernouli_nums(new int[size]);
+    bernoulli_generate(size, 1.0 - ratio, bernouli_nums.get());
 
     const auto src_data = static_cast<T *>(src.get_data_handle());
     const auto mask_data = static_cast<T *>(mask.get_data_handle());
@@ -3748,7 +3778,7 @@ public:
 
     # pragma omp parallel for schedule(static)
     for (size_t i = 0; i < size; i++) {
-      mask_data[i] = dist(gen) * scale;
+      mask_data[i] = bernouli_nums[i] * scale;
       dst_data[i] = mask_data[i] * src_data[i];
     }
 
@@ -3780,7 +3810,7 @@ public:
 
   template<class alloc, class T>
   static tensor compute_impl(const tensor &mask, const tensor &gy) {
-    const auto size = mask.get_size();
+    const auto size = mask.get_nelems();
     tensor gx(gy.get_descriptor());
 
     const auto mask_data = static_cast<T *>(mask.get_data_handle());

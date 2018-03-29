@@ -42,7 +42,8 @@ public:
   using batch_normalization_backward = ideep::batch_normalization_backward;
 
   static std::vector<mdarray> Forward(mdarray *src,
-                                      mdarray *weights,
+                                      mdarray *scale,
+                                      mdarray *shift,
                                       mdarray *mean,
                                       mdarray *variance,
                                       float eps) {
@@ -50,12 +51,12 @@ public:
 
     if (mean) {
       auto dst = batch_normalization_forward_inference::compute(*src->get(),
-                     *mean->get(), *variance->get(), *weights->get(), eps);
+                 *mean->get(), *variance->get(), *scale->get(), *shift->get(), eps);
 
       outs.push_back(mdarray(dst));
     } else {
       auto tensors = batch_normalization_forward_training::compute(*src->get(),
-                     *weights->get(), eps);
+                     *scale->get(), *shift->get(), 0, eps);
 
       auto dst = std::get<0>(tensors);
       auto mean = std::get<1>(tensors);
@@ -79,14 +80,15 @@ public:
 
   static std::vector<mdarray> Backward(mdarray *src, mdarray *grady,
                                        mdarray *mean, mdarray *variance,
-                                       mdarray *weights, float eps) {
+                                       mdarray *scale, mdarray *shift, float eps) {
     std::vector<mdarray> outs;
     auto tensors = batch_normalization_backward::compute(*src->get(),
                        *mean->get(), *variance->get(), *grady->get(),
-                       *weights->get(), eps);
+                       *scale->get(), eps);
 
-    outs.push_back(mdarray(tensors.first));
-    outs.push_back(mdarray(tensors.second));
+    outs.push_back(mdarray(std::get<0>(tensors)));
+    outs.push_back(mdarray(std::get<1>(tensors)));
+    outs.push_back(mdarray(std::get<2>(tensors)));
 
     return outs;
   }

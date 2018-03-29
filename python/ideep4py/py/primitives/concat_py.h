@@ -28,55 +28,98 @@
 #include <vector>
 #include <memory>
 #include "mdarray.h"
-#include "concat.h"
+#include "ideep.hpp"
 
-template <typename T>
-class Concat_Py
+class Concat
 {
 public:
-    /*
-     * Python Concat Forward
-     * params:
-     * src: input, xs
-     * axis
-     */
-    static mdarray Forward(std::vector<mdarray> src, int axis) {
-        std::vector<Tensor*> src_tensor;
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using tensor = ideep::tensor;
+  using concat = ideep::concat;
+  using spliter = ideep::spliter;
 
-        for (int i = 0; i < src.size(); i++) {
-            src_tensor.push_back(src[i].get()->tensor());
-        }
-
-        Tensor *dst_tensor = Concat<T>::Forward(src_tensor, axis);
-
-        mdarray dst_mdarray = mdarray(dst_tensor);
-        return dst_mdarray;
+  static mdarray Forward(std::vector<mdarray> inputs, int axis) {
+    std::vector<tensor> inputs_;
+    for (mdarray elems : inputs) {
+      inputs_.push_back(*elems.get());
     }
 
-    /*
-     * Python Concat Backward
-     */
-    static std::vector<mdarray> Backward(mdarray *diff_dst,
-                                         std::vector<int> offsets,
-                                         int axis) {
-        std::vector<mdarray> gxs;
+    auto dst = concat::compute<scratch_allocator>(inputs_, axis);
+    auto out = mdarray(dst);
 
-        std::vector<Tensor *> gxs_tensor = Concat<T>::Backward(
-                                            (diff_dst->get()->tensor()),
-                                            offsets,
-                                            axis);
+    return out;
+  }
 
-        //
-        for (int i = 0; i < gxs_tensor.size(); i++){
-            gxs.push_back(mdarray(gxs_tensor[i]));
-        }
 
-        return gxs;
+  static std::vector<mdarray> Backward(mdarray *grady,
+                                       std::vector<int> offsets,
+                                       int axis) {
+    std::vector<mdarray> gxs;
+    std::vector<int> axis_len;
+    tensor::dims offset_dims(grady->get()->ndims(), 0);
+    tensor::dims grady_dims = grady->get()->get_dims();
+    tensor::dims gradx_dims(grady_dims);
+
+    // FIXME
+    // For split function usage. if not support, fallback to numpy
+    bool ret = is_valid_offsets(grady_dims, offsets, axis_len, axis);
+    if (!ret)
+      return gxs;
+
+    for (int i = 0; i < axis_len.size(); i++) {
+      gradx_dims[axis] = axis_len[i];
+
+      auto gradx = spliter::compute<scratch_allocator>(*grady->get(),
+                   gradx_dims, offset_dims);
+
+      gxs.push_back(mdarray(gradx));
+      offset_dims[axis] += axis_len[i];
     }
 
+    return gxs;
+  }
+
+
+private:
+  static bool is_valid_offsets(tensor::dims grady_dims, std::vector<int> &offsets,
+        std::vector<int> &axis_len, int axis) {
+    int min_value = -1;
+    std::vector<int> valid_offsets;
+    for (int i = 0; i < offsets.size(); i++) {
+      if (offsets[i] < 0)
+          offsets[i] += grady_dims[axis];
+
+      if (offsets[i] == 0) // mkldnn can't handle zero dim
+          return false;
+      else if (offsets[i] > min_value) {
+        min_value = offsets[i];
+
+        // larger than max value in corresponding dims
+        if (offsets[i] >= grady_dims[axis])
+          return false;
+        else
+          valid_offsets.push_back(offsets[i]);
+      } else { // out of order
+        return false;
+      }
+    }
+
+    if (valid_offsets.empty())
+      return false;
+
+    // push dim len along axis
+    for (int i = 0; i < valid_offsets.size(); i++) {
+      if (i == 0)
+        axis_len.push_back(valid_offsets[i]);
+      else
+        axis_len.push_back(valid_offsets[i] - valid_offsets[i - 1]);
+    }
+
+    // push last dim len
+    axis_len.push_back(grady_dims[axis] - valid_offsets.back());
+
+    return true;
+  }
 };
 
 #endif // _CONCAT_PY_H_
-
-
-// vim: et ts=4 sw=4 cindent cino^=l0,\:0,N-s

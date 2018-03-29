@@ -220,8 +220,6 @@ includes = ['ideep4py/include',
             # 'ideep4py/py/dlcp',
             'ideep4py/include/primitives',
             'ideep4py/include/blas',
-            'ideep4py/include/primitives/ops',
-            'ideep4py/include/primitives/prim_mgr',
             'include',
             '../include',
             '../include/ideep']
@@ -241,10 +239,6 @@ if system() == 'Linux':
            # 'ideep4py/common/common.cc',
            # 'ideep4py/blas/sum.cc',
            # 'ideep4py/py/mm/basic.cc',
-           # 'ideep4py/primitives/ops/reorder_op.cc',
-           # 'ideep4py/primitives/ops/concat_fwd.cc',
-           # 'ideep4py/primitives/ops/concat_bwd.cc',
-           # 'ideep4py/primitives/concat.cc',
            ]
 else:
     # TODO

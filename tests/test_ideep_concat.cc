@@ -46,7 +46,7 @@ protected:
 
     check_data<data_t>(inputs, dst, static_cast<int>(p.concat_dimension));
 
-    // test concat backwar
+    // test concat backward
     std::vector<tensor> gxs;
     std::vector<int> axis_len;
     for (size_t i = 0; i < p.srcs_cds.size(); i++) {

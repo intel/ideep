@@ -32,15 +32,13 @@
 %include "std_vector.i"
 %include "lrn_py.h"
 
-%template(localResponseNormalization) LocalResponseNormalization_Py<float>;
-
 //
 // Python API for LocalResponseNormalization
 //
-// std::vector<mdarray*> LocalResponseNormalization_Py::Forward(
+// std::vector<mdarray*> LocalResponseNormalization::Forward(
 //                        mdarray *src,
 //                        lrn_prarm_t *pp);
-// mdarray* LocalResponseNormalization_Py::Backward(
+// mdarray* LocalResponseNormalization::Backward(
 //                        mdarray *src,
 //                        mdarray *diff_dst,
 //                        mdarray *ws,

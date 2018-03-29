@@ -30,7 +30,7 @@
 #include <sstream>
 #include <cassert>
 #include "logging.h"
-#include "op_param.h"
+#include "param.h"
 #include "omp.h"
 using namespace mkldnn;
 

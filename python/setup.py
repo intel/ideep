@@ -117,7 +117,6 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep4py/py/primitives',
              '-Iideep4py/py/swig_utils',
              # '-Iideep4py/py/dlcp',
-             '-Iideep4py/include/primitives',
              '-Iideep4py/include/mm',
              '-Iinclude']
 
@@ -133,7 +132,6 @@ includes = ['ideep4py/include',
             'ideep4py/py/mm',
             'ideep4py/py/primitives',
             # 'ideep4py/py/dlcp',
-            'ideep4py/include/primitives',
             'ideep4py/include/blas',
             'include', 'include/mklml', 'include/ideep']
 
@@ -150,7 +148,7 @@ src = ['ideep4py/py/ideep4py.i',
        # 'ideep4py/mm/mem.cc',
        # 'ideep4py/mm/tensor.cc',
        'ideep4py/py/mm/mdarray.cc',
-       # 'ideep4py/common/common.cc',
+       'ideep4py/common/common.cc',
        # 'ideep4py/blas/sum.cc',
        # 'ideep4py/py/mm/basic.cc',
        ]

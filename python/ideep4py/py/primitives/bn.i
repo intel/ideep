@@ -25,7 +25,7 @@
 %{
     #define SWIG_FILE_WITH_INIT
     #include "bn_py.h"
-    #include "op_param.h"
+    #include "param.h"
 %}
 
 %include "param.i"

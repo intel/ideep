@@ -25,18 +25,11 @@ BUILD_PATH = WORK_PATH + '/build'
 def install_mkldnn():
     print('Installing ...')
 
-    os.chdir(BUILD_PATH)
+#    os.chdir(BUILD_PATH)
     os.system(
-      'cmake -DCMAKE_INSTALL_PREFIX=%s --build . \
-              && cmake --build . --target install' % MKLDNN_ROOT)
-
-def prepare_mkldnn():
-    print('Intel mkl-dnn preparing ...')
-    install_mkldnn()
-
-    os.chdir(PYTHON_ROOT)
-    print('Intel mkl-dnn prepared !')
-
+      'cmake -DCMAKE_INSTALL_PREFIX=%s --build %s \
+              && cmake --build %s --target install' % (MKLDNN_ROOT, BUILD_PATH, BUILD_PATH))
+#    os.chdir(PYTHON_ROOT)
 
 ###############################################################################
 # External preparation

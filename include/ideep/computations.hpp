@@ -2846,9 +2846,10 @@ public:
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor& src, const tensor& mean,
-      const tensor& variance, const tensor& weights, float epsilon) {
+      const tensor& variance, const tensor& scale,
+      const tensor& shift, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), 4, epsilon);
+        src.get_internal_format(), 5, epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
 
@@ -2861,7 +2862,7 @@ public:
         comp.expected_weights_descriptor()); */
 
     tensor dst(comp.expected_dst_descriptor());
-    comp.execute(src, mean, variance, weights, dst);
+    comp.execute(src, mean, variance, scale, shift, dst);
     return dst;
   }
 private:
@@ -2887,7 +2888,7 @@ public:
     assert(scale.ndims() == 1 && shift.ndims() == 1);
     descriptor batch_norm_forward(src_desc, epsilon, flags,
         prop_kind::forward_training);
-    computation::init(batch_norm_forward, src_desc, weights_.get_descriptor());
+    computation::init(batch_norm_forward, src_desc);
 
     // We borrown scale and bias for the shape of mean and variance
     weights_.init(batch_norm_forward.expected_weights_descriptor());
@@ -2975,12 +2976,12 @@ public:
 
   template<class alloc = utils::allocator>
   static std::tuple<tensor, tensor, tensor> compute(const tensor& src,
-      const tensor& weights, float epsilon) {
+      const tensor& scale, const tensor& shift, float momentum, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        weights.get_descriptor(), epsilon);
+        scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
@@ -2993,7 +2994,7 @@ public:
     tensor mean(comp.expected_statistic_descriptor());
     tensor variance(comp.expected_statistic_descriptor());
 
-    comp.execute(src, weights, dst, mean, variance);
+    comp.execute(src, scale, shift, dst, mean, variance);
     return std::make_tuple(dst, mean, variance);
   }
 
@@ -3163,9 +3164,9 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor& src,
+  static std::tuple<tensor, tensor, tensor> compute(const tensor& src,
         const tensor& mean, const tensor& variance, const tensor& grady,
-        const tensor& weights, float epsilon) {
+        const tensor& scale, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
@@ -3178,11 +3179,12 @@ public:
         comp.expected_gradw_descriptor()); */
 
     tensor gradx(comp.expected_gradx_descriptor());
-    tensor gradw(comp.expected_gradw_descriptor());
+    tensor grad_scale(mean.get_descriptor());
+    tensor grad_shift(mean.get_descriptor());
     comp.execute(
-        src, mean, variance, grady, weights, gradx, gradw);
+        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
 
-    return std::make_pair(gradx, gradw);
+    return std::make_tuple(gradx, grad_scale, grad_shift);
   }
 
 private:

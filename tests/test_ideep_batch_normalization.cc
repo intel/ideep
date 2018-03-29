@@ -95,6 +95,53 @@ protected:
         prop_kind::backward);
   }
 
+  void test_forward_inference2() {
+    auto p = ::testing::TestWithParam<test_bnrm_params_t>::GetParam();
+    fill_tensor(src_);
+    fill_tensor(mean_);
+    fill_tensor(variance_);
+    fill_tensor(scale_);
+    fill_tensor(shift_);
+
+    auto dst = batch_normalization_forward_inference::compute(
+        src_, mean_, variance_, scale_, shift_, p.eps);
+
+    check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
+        batch_normalization_flag::use_scale_shift |
+        batch_normalization_flag::use_global_stats,
+        prop_kind::forward_inference);
+  }
+
+  void test_forward_training2() {
+    auto p = ::testing::TestWithParam<test_bnrm_params_t>::GetParam();
+    fill_tensor(src_);
+    fill_tensor(scale_);
+    fill_tensor(shift_);
+
+    auto dst = batch_normalization_forward_training::compute(
+        src_, scale_, shift_, 0.9f, p.eps);
+
+    check_bnrm_fwd<data_t>(p, src_, std::get<1>(dst), std::get<2>(dst), scale_, shift_, std::get<0>(dst),
+        batch_normalization_flag::use_scale_shift,
+        prop_kind::forward_training);
+  }
+
+  void test_backward2() {
+    auto p = ::testing::TestWithParam<test_bnrm_params_t>::GetParam();
+    fill_tensor(src_);
+    fill_tensor(mean_);
+    fill_tensor(variance_);
+    fill_tensor(grady_);
+    fill_tensor(scale_);
+
+    auto gs = batch_normalization_backward::compute(src_, mean_,
+        variance_, grady_, scale_, p.eps);
+
+    check_bnrm_bwd<data_t>(p, src_, grady_, mean_, variance_, scale_,
+        std::get<0>(gs), std::get<1>(gs), std::get<2>(gs),
+        batch_normalization_flag::use_scale_shift, prop_kind::backward);
+  }
+
   tensor::descriptor statistic_desc_;
   tensor src_, grady_, mean_, variance_, scale_, shift_;
   std::unique_ptr<char []> raw_dst_, raw_gradx_, raw_mean_;
@@ -106,14 +153,17 @@ using bnrm_test_float = batch_normalization_test<float>;
 
 TEST_P(bnrm_test_float, TestsInference) {
   test_forward_inference();
+  test_forward_inference2();
 }
 
 TEST_P(bnrm_test_float, TestsForward) {
   test_forward_training();
+  test_forward_training2();
 }
 
 TEST_P(bnrm_test_float, TestsBackward) {
   test_backward();
+  test_backward2();
 }
 
 #define EXPAND_ARGS(args) args

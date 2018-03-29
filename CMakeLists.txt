@@ -9,11 +9,11 @@ set(IDEEP_VERSION
   "${IDEEP_VERSION_MAJOR}.${IDEEP_VERSION_MINOR}.${IDEEP_VERSION_PATCH}")
 
 set(USE_MKLDNN_INTERNAL 1)
+include(cmake/mkl.cmake)
 include(cmake/mkldnn.cmake)
 include(cmake/settings.cmake)
 
-include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include
-  ${CMAKE_CURRENT_SOURCE_DIR}/python/ideep4py/include/mkl)
+include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 install(DIRECTORY include/ DESTINATION include)

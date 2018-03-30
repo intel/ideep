@@ -105,7 +105,7 @@ function(detect_mkl LIBNAME)
     endif()
 
     get_filename_component(MKLLIBPATH "${MKLLIB}" PATH)
-    string(FIND "${MKLLIBPATH}" ${CMAKE_CURRENT_SOURCE_DIR}/external __idx)
+    string(FIND "${MKLLIBPATH}" ${CMAKE_CURRENT_SOURCE_DIR}/mkl-dnn/external __idx)
     if(${__idx} EQUAL 0)
         if(WIN32)
             install(PROGRAMS ${MKLDLL} DESTINATION lib)

@@ -3,6 +3,7 @@ from platform import system
 
 import sys
 import os
+import shutil
 
 import setuptools.command.install
 import setuptools.command.build_ext
@@ -16,29 +17,24 @@ import distutils.command.clean
 os_name = system()
 
 MODULE_DESC = 'Intel mkl-dnn'
-PYTHON_ROOT = os.path.split(os.path.realpath(__file__))[0]
+cwd = os.path.split(os.path.realpath(__file__))[0]
 
-WORK_PATH = PYTHON_ROOT + '/..'
-MKLDNN_ROOT = PYTHON_ROOT
-BUILD_PATH = WORK_PATH + '/build'
+ideep4py_dir = cwd + '/ideep4py'
+ideep_build_dir = cwd + '/../build'
 
 def install_mkldnn():
     print('Installing ...')
-
-#    os.chdir(BUILD_PATH)
     os.system(
       'cmake -DCMAKE_INSTALL_PREFIX=%s --build %s \
-              && cmake --build %s --target install' % (MKLDNN_ROOT, BUILD_PATH, BUILD_PATH))
-#    os.chdir(PYTHON_ROOT)
+              && cmake --build %s --target install' % (ideep4py_dir, ideep_build_dir, ideep_build_dir))
 
 ###############################################################################
 # External preparation
 ###############################################################################
 
-EXT_LIB_PATH = PYTHON_ROOT + '/lib'
-EXT_INCLUDE_PATH = PYTHON_ROOT + '/include'
-EXT_SHARE_PATH = PYTHON_ROOT + '/share'
-TARGET_LIB_PATH = PYTHON_ROOT + '/ideep4py/lib'
+libdir = ideep4py_dir + '/lib'
+includedir = ideep4py_dir + '/include'
+sharedir = ideep4py_dir + '/share'
 
 def prepare_ext():
     install_mkldnn()
@@ -46,15 +42,12 @@ def prepare_ext():
 
 
 def clean_ext():
-    if os.path.exists(TARGET_LIB_PATH):
-        os.system('rm -rf %s' % TARGET_LIB_PATH)
-    if os.path.exists(EXT_LIB_PATH):
-        os.system('rm -rf %s' % EXT_LIB_PATH)
-    if os.path.exists(EXT_INCLUDE_PATH):
-        os.system('rm -rf %s' % EXT_INCLUDE_PATH)
-    if os.path.exists(EXT_SHARE_PATH):
-        os.system('rm -rf %s' % EXT_SHARE_PATH)
-
+    if os.path.exists(libdir):
+        shutil.rmtree(libdir)
+    if os.path.exists(includedir):
+        shutil.rmtree(includedir)
+    if os.path.exists(sharedir):
+        shutil.rmtree(sharedir)
 
 ###############################################################################
 # Custom build commands
@@ -127,6 +120,7 @@ ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-mavx']
 link_opts = ['-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './lib']
 
 includes = ['ideep4py/include',
+            'ideep4py/include/mklml',
             'ideep4py/common',
             'ideep4py/include/mm',
             'ideep4py/py/mm',
@@ -187,7 +181,7 @@ setup(
     url='https://github.com/intel/ideep',
     license='MIT License',
     packages=packages,
-    package_data={'' : ['lib/*', ]},
+    package_data={'ideep4py' : ['lib/*']},
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     zip_safe=False,

@@ -23,7 +23,6 @@
 
 
 #pragma once
-#include "reorder.h"
 #include "ideep.hpp"
 
 using tensor = ideep::tensor;

@@ -59,15 +59,15 @@
   $1 = PyObject_CheckBuffer($input);
 }
 
-%typemap(in) (VIEW) (int res, Py_buffer view
+%typemap(in) (VIEW) (int res, Py_buffer *view = nullptr
   , int flags = PyBUF_C_CONTIGUOUS | PyBUF_RECORDS) {
-  /* view = new Py_buffer;*/
-  res = PyObject_GetBuffer($input, &view, flags);
+  view = new Py_buffer;
+  res = PyObject_GetBuffer($input, view, flags);
   if (res != 0) {
     $1 = NULL;
     goto fail;
   } else {
-    $1 = ($1_ltype) &view;
+    $1 = ($1_ltype) view;
   }
   // TODO: IF WE CONFRONT A F_CONTINGUOUS ONE???
 }

@@ -249,7 +249,8 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   }
 
   auto x = (reinterpret_cast<py_handle *>(oprd2))->get();
-  py_handle *output = new py_handle(new mdarray(*x));
+  py_handle *output = new py_handle(new mdarray(
+      x->get_dims(), x->get_data_type()));
 
   /// Switch position for format consistency
   axpby(*output->get(), b, *x, a, *this);
@@ -452,7 +453,8 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
 
     mdarray *res_mdarr;
     if (!inplace) {
-      res_mdarr = new mdarray(*oprd1_mdarr);
+      res_mdarr = new mdarray(
+          oprd1_mdarr->get_dims(), oprd1_mdarr->get_data_type());
     } else {
       res_mdarr = oprd1_mdarr;
     }
@@ -666,6 +668,38 @@ PyObject *mdarray::m_InPlaceDivide(PyObject *self, PyObject *o) {
   }
 }
 
+int mdarray::build_view(Py_buffer *view, int flags, const reorderer &reorder) {
+  view->buf = reorder.data();
+  view->itemsize = reorder.itemsize_;
+  view->readonly = 0;
+  view->internal = nullptr;
+  view->len = reorder.size_ * reorder.itemsize_;
+
+  if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
+    view->format = const_cast<char *>(reorder.format_);
+  } else {
+    view->format = nullptr;
+  }
+
+  if ((flags & PyBUF_ND) == PyBUF_ND) {
+    view->ndim = reorder.ndims_;
+    view->shape = const_cast<Py_ssize_t *>(reorder.shape_);
+  } else {
+    view->ndim = 0;
+    view->shape = nullptr;
+  }
+
+  if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
+    view->strides = const_cast<Py_ssize_t *>(reorder.strides_);
+  } else {
+    view->strides = nullptr;
+  }
+
+  view->suboffsets = nullptr;
+
+  return 0;
+}
+
 int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS) {
     PyErr_SetString(PyExc_ValueError, "carray is not Fortran contiguous");
@@ -705,8 +739,16 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     return -1;
   }
 
-  if (rb->non_trivial())
+  if (rb->non_trivial()) {
     rb->fire(*this);
+
+    buff_.reset(rb->data_.get());
+    init({get_dims(), get_data_type(),
+        descriptor::public_compatible_format(get_descriptor())},
+        reinterpret_cast<void *>(rb->data()));
+
+    view_.reset();
+  }
 
   if (build_view(view, flags, *rb)) {
     PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
@@ -716,11 +758,6 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   // Stolen reference
   view->obj = rbobj;
   sync_reorder_ = rb;
-
-  // reset self mdarray's tensor, keep buffer consistency.
-  if (rb->non_trivial())
-    init({get_dims(), get_data_type(),
-        descriptor::public_compatible_format(get_descriptor())}, rb->data_);
 
   return 0;
 }
@@ -871,7 +908,7 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
 
     // FIXME: A new tensor for reshape ?
     this->_reshape(dims);
-    py_handle *output = new py_handle(new mdarray(*this));
+    py_handle *output = new py_handle(new mdarray(get_dims(), get_data_type()));
     PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr,
         SWIG_as_voidptr(output), SwigTy_mdarray, SWIG_POINTER_OWN | 0);
     return resultobj;

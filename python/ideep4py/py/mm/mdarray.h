@@ -39,12 +39,13 @@
 #include <type_traits>
 #include <swigpyrun.h>
 #include "ideep.hpp"
-#include "reorder.h"
 #include "utils.h"
 
 namespace implementation {
   class mdarray;
 }
+
+class reorderer;
 
 using py_handle = std::shared_ptr<implementation::mdarray>;
 
@@ -140,15 +141,6 @@ namespace implementation {
 
 class mdarray : public ideep::tensor {
 public:
-  static constexpr int MAX_NDIM = 12; //XXX: For now
-
-  class reorder_buffer : reorderer {
-  public:
-    reorder_buffer(const py_handle in) :
-        reorderer(*in.get()) {}
-  };
-
-public:
   using tensor = ideep::tensor;
   using descriptor = ideep::tensor::descriptor;
   using data_type_t = mkldnn::memory::data_type;
@@ -160,54 +152,88 @@ public:
 
   typedef size_t size_type;
 
-  mdarray();
+  mdarray() = default;
   virtual ~mdarray() = default;
 
-  mdarray(const mdarray &m) : tensor(m) {}
+  mdarray(const tensor &t) :
+      tensor(t),
+      buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
+          reinterpret_cast<scratch_allocator::byte<tensor> *>(
+          get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
+      view_(nullptr) {}
 
-  mdarray(const tensor &t) : tensor(t) {}
+  // FIXME: get_data_handle --> get_shared_buff
+  mdarray(const mdarray &m) :
+      tensor(m),
+      buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
+          reinterpret_cast<scratch_allocator::byte<tensor> *>(
+          get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
+      view_(nullptr) {}
 
-  mdarray(dims_t &dims, data_type_t dt) : tensor(descriptor(dims, dt)) {}
-
-  inline dims_t get_dims_from_view(Py_buffer *view) {
-    return dims_t(view->shape, view->shape + view->ndim);
-  };
-
-  inline data_type_t get_dtype_from_view(Py_buffer *view) {
-    data_type_t dt;
-    std::string format(view->format);
-    if (std::string::npos != format.find_last_of('f')) {
-      dt = data_type_t::f32;
-    } else if (std::string::npos != format.find_last_of('i')) {
-      dt = data_type_t::s32;
-    } else if (std::string::npos != format.find_last_of('h')) {
-      dt = data_type_t::s16;
-    } else if (std::string::npos != format.find_last_of('b')) {
-      dt = data_type_t::s8;
-    } else if (std::string::npos != format.find_last_of('B')) {
-      dt = data_type_t::u8;
-    } else {
-      throw error(mkldnn_invalid_arguments,
-          std::string("mdarray does not support data type: ") +
-          format);
-    }
-    return dt;
-  };
-
-  inline void *get_buff_from_view(Py_buffer *view) {
-    // TODO: zero copy // re-alignment
-    void *buf = view->buf;
-    if ((unsigned long long)buf & (DEFAULT_ALIGNMENT - 1)) {
-      buf = (void *)scratch_allocator::malloc<reorder>(view->len);
-      fast_memcpy((char *)buf, (char *)view->buf, view->len);
-    }
-    return buf;
-  }
+  mdarray(dims_t dims, data_type_t dt) :
+      tensor({dims, dt, [dims]() {
+            return ndims2format(dims.size());
+          } ()}, [&]() {
+            return reinterpret_cast<void *>(
+                new scratch_allocator::byte<tensor>[dims2size(dims, dt)]);
+          } ()),
+      buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
+          reinterpret_cast<scratch_allocator::byte<tensor> *>(
+          get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
+      view_(nullptr) {}
 
   mdarray(Py_buffer *view, char input_type='d') :
-      tensor({get_dims_from_view(view), get_dtype_from_view(view),
-              ndims2format(view->ndim, input_type)},
-              get_buff_from_view(view)) { /* TODO: input_type */ }
+      tensor({[&]() {
+            return dims_t(view->shape, view->shape + view->ndim);
+          } (), [&]() {
+            data_type_t dt;
+            std::string format(view->format);
+            if (std::string::npos != format.find_last_of('f')) {
+              dt = data_type_t::f32;
+            } else if (std::string::npos != format.find_last_of('i')) {
+              dt = data_type_t::s32;
+            } else if (std::string::npos != format.find_last_of('h')) {
+              dt = data_type_t::s16;
+            } else if (std::string::npos != format.find_last_of('b')) {
+              dt = data_type_t::s8;
+            } else if (std::string::npos != format.find_last_of('B')) {
+              dt = data_type_t::u8;
+            } else {
+              throw error(mkldnn_invalid_arguments,
+                  std::string("mdarray does not support data type: ") + format);
+            }
+            return dt;
+          } (), [&]() {
+            return ndims2format(view->ndim, input_type);
+          } ()}, [&]() {
+            char *buf = (char *)view->buf;
+            // FIXME: 32 byte
+            if ((unsigned long long)buf & (SYS_MEMORY_ALIGNMENT - 1)) {
+              buf = reinterpret_cast<char *>(
+                  new scratch_allocator::byte<tensor>[view->len]);
+              // > 4k + 1thread
+              fast_memcpy(buf, (char *)view->buf, view->len);
+            }
+            return (void *)buf;
+          } ()),
+      buff_([&] () {
+            if (get_data_handle() != view->buf) {
+              return std::shared_ptr<scratch_allocator::byte<tensor>>(
+                  reinterpret_cast<scratch_allocator::byte<tensor> *>(
+                  get_data_handle()),
+                  [] (scratch_allocator::byte<tensor> *p) { delete [] p; });
+            } else {
+              // FIXME: iDeep integration
+              return std::shared_ptr<scratch_allocator::byte<tensor>>(
+                  reinterpret_cast<scratch_allocator::byte<tensor> *>(
+                  view->buf), [] (scratch_allocator::byte<tensor> *p) {});
+            }
+          } ()), view_(view) {
+    /* TODO: input_type */
+    if (get_data_handle() != view->buf) {
+      view_.reset();
+    }
+  }
 
   static bool is_mdarray(PyObject *o);
 
@@ -219,37 +245,7 @@ public:
   }
 
   // PEP 3118 interface
-  int build_view(Py_buffer *view, int flags, const reorderer &reorder) {
-    view->buf = reorder.data_;
-    view->itemsize = reorder.itemsize_;
-    view->readonly = 0;
-    view->internal = nullptr;
-    view->len = reorder.size_ * reorder.itemsize_;
-
-    if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
-      view->format = const_cast<char *>(reorder.format_);
-    } else {
-      view->format = nullptr;
-    }
-
-    if ((flags & PyBUF_ND) == PyBUF_ND) {
-      view->ndim = reorder.ndims_;
-      view->shape = const_cast<Py_ssize_t *>(reorder.shape_);
-    } else {
-      view->ndim = 0;
-      view->shape = nullptr;
-    }
-
-    if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-      view->strides = const_cast<Py_ssize_t *>(reorder.strides_);
-    } else {
-      view->strides = nullptr;
-    }
-
-    view->suboffsets = nullptr;
-
-    return 0;
-  }
+  int build_view(Py_buffer *view, int flags, const reorderer &reorder);
 
   // PyObject *__getstate__(void) const;
 
@@ -341,7 +337,36 @@ public:
   inline void reset_tensor(tensor &dst) {
       init(dst.get_descriptor(), dst.get_data_handle()); }
 
+  inline std::shared_ptr<scratch_allocator::byte<tensor>>
+  get_shared_buff() const { return buff_; }
+
 private:
+  static inline size_t dims2size(dims_t &dims, data_type_t dt) {
+    size_t itemsize;
+    switch(dt) {
+    case data_type_t::f32:
+    case data_type_t::s32:
+      itemsize = 4;
+      break;
+    case data_type_t::s16:
+      itemsize = 2;
+      break;
+    case data_type_t::u8:
+    case data_type_t::s8:
+      itemsize = 1;
+      break;
+    default:
+      throw error(mkldnn_invalid_arguments, std::string(
+          "mdarray does not support data type: ") + std::to_string(dt));
+    }
+
+    size_t nelems = 1;
+    for (int d = 0; d < dims.size(); d++)
+      nelems *= dims[d];
+
+    return nelems * itemsize;
+  }
+
   static inline
   format_t ndims2format(int ndims, char input_type = 'd')
   {
@@ -353,25 +378,133 @@ private:
     case 4:
       return (input_type == 'd') ? format_t::nchw : format_t::oihw;
     default:
-      throw error(mkldnn_invalid_arguments,
-          "MKLDNN does not support dimensions" + ndims);
+      throw error(mkldnn_invalid_arguments, std::string(
+          "MKLDNN does not support dimensions") + std::to_string(ndims));
       return format_t::format_undef;
     }
   }
 
-  struct WeDontManageIt {
+  struct view_manager {
     void operator() (const Py_buffer *view) {
       PyBuffer_Release(const_cast<Py_buffer *>(view));
       delete view;
     }
   };
 
-  std::unique_ptr<const Py_buffer, WeDontManageIt> view_;
+  std::unique_ptr<const Py_buffer, view_manager> view_;
+  // FIXME: --> char[]
+  std::shared_ptr<scratch_allocator::byte<tensor>> buff_;
 
 protected:
   reorderer *sync_reorder_;
 };
 }
+
+class reorderer {
+public:
+  static constexpr int MAX_NDIM = 12; //XXX: For now
+
+  using tensor = ideep::tensor;
+  using data_type_t = mkldnn::memory::data_type;
+  using format_t = ideep::format;
+  using reorder = ideep::reorder;
+  using descriptor = tensor::descriptor;
+  using scratch_allocator = ideep::utils::scratch_allocator;
+  using mdarray = implementation::mdarray;
+
+  bool non_trivial_;
+  mdarray dst_;
+  std::shared_ptr<scratch_allocator::byte<tensor>> data_;
+
+  int ndims_;
+  int size_;
+  char format_[4];
+  ssize_t itemsize_;
+  ssize_t strides_[MAX_NDIM];
+  ssize_t shape_[MAX_NDIM];
+
+  void _collect_buffer_info() {
+    ndims_ = dst_.ndims();
+
+    switch(dst_.get_data_type()) {
+    case data_type_t::f32:
+      strcpy(format_, "f");
+      itemsize_ = 4;
+      break;
+    case data_type_t::s32:
+      strcpy(format_, "i");
+      itemsize_ = 4;
+      break;
+    case data_type_t::s16:
+      strcpy(format_, "h");
+      itemsize_ = 2;
+      break;
+    case data_type_t::s8:
+      strcpy(format_, "b");
+      itemsize_ = 1;
+      break;
+    case data_type_t::u8:
+      strcpy(format_, "B");
+      itemsize_ = 1;
+      break;
+    default:
+      break;
+    }
+
+    auto _dims = dst_.get_dims();
+    for (int i = 0; i < ndims_; i ++) {
+      shape_[i] = _dims[i];
+    }
+
+    ssize_t sd = itemsize_;
+
+    for (int i = ndims_ - 1; i >= 0; --i) {
+      strides_[i] = sd;
+      sd *= shape_[i];
+    }
+  }
+
+  inline void *data() const { return reinterpret_cast<void *>(data_.get()); }
+
+public:
+  reorderer(const mdarray &src) :
+      non_trivial_(!src.is_public_format()),
+      dst_([&] () {
+        if (non_trivial()) {
+          mdarray dst;
+          dst.init({src.get_dims(), src.get_data_type(),
+              descriptor::public_compatible_format(src.get_descriptor())});
+          return dst;
+        } else {
+          return src;
+      }} ()),
+      size_(src.get_nelems()) {
+    if (non_trivial()) {
+      data_ = std::shared_ptr<scratch_allocator::byte<tensor>>(
+          new scratch_allocator::byte<tensor>[dst_.get_size()],
+          [](scratch_allocator::byte<tensor> *p) { delete [] p; });
+      dst_.set_data_handle(reinterpret_cast<void *>(data_.get()));
+    } else {
+      data_ = src.get_shared_buff();
+    }
+
+    _collect_buffer_info();
+  }
+
+  void fire(const mdarray &src) {
+    if (non_trivial())
+      reorder::compute(src, dst_);
+  }
+
+  void sync(const mdarray &src) {
+    if (non_trivial())
+      reorder::compute(dst_, src);
+  }
+
+  inline bool non_trivial() const {
+    return non_trivial_;
+  }
+};
 
 class mdarray : public py_handle {
 public:
@@ -456,6 +589,10 @@ public:
   }
 };
 
-using reorder_buffer = implementation::mdarray::reorder_buffer;
+class reorder_buffer : reorderer {
+public:
+  reorder_buffer(const py_handle in) :
+    reorderer(*in.get()) {}
+};
 
 #endif // _MDARRAY_H_

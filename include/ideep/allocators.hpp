@@ -31,7 +31,12 @@
 
 namespace ideep {
 
-#define DEFAULT_ALIGNMENT 64
+#ifdef _SYS_MEMORY_ALIGNMENT_
+#define SYS_MEMORY_ALIGNMENT _SYS_MEMORY_ALIGNMENT_
+#else
+#define DFT_MEMORY_ALIGNMENT 64
+#define SYS_MEMORY_ALIGNMENT DFT_MEMORY_ALIGNMENT
+#endif
 
 // struct computation;
 // struct convolution_forward;
@@ -66,10 +71,10 @@ public:
   static char *malloc(size_t size) {
     void *ptr;
 #ifdef _WIN32
-    ptr = _aligned_malloc(size, DEFAULT_ALIGNMENT);
+    ptr = _aligned_malloc(size, SYS_MEMORY_ALIGNMENT);
     int rc = ((ptr)? 0 : errno);
 #else
-    int rc = ::posix_memalign(&ptr, DEFAULT_ALIGNMENT, size);
+    int rc = ::posix_memalign(&ptr, SYS_MEMORY_ALIGNMENT, size);
 #endif /* _WIN32 */
     return (rc == 0) ? (char*)ptr : nullptr;
   }
@@ -82,6 +87,24 @@ public:
     ::free((void*)p);
 #endif /* _WIN32 */
   }
+
+  template<class computation_t = void>
+  struct byte {
+  public:
+    static void *operator new(size_t sz) {
+      return (void *)malloc<computation_t>(sz);
+    }
+
+    static void *operator new[](size_t sz) {
+      return (void *)malloc<computation_t>(sz);
+    }
+
+    static void operator delete(void *p) { free<computation_t>(p); }
+    static void operator delete[](void *p) { free<computation_t>(p); }
+
+  private:
+    char q;
+  };
 };
 
 // Default SA implementation (by computation)
@@ -94,7 +117,7 @@ public:
   class mpool {
   public:
     mpool() : alloc_size_(0), free_size_(0),
-        alignment_(DEFAULT_ALIGNMENT), seq_(0) {}
+        alignment_(SYS_MEMORY_ALIGNMENT), seq_(0) {}
 
     void *malloc(size_t size) {
       std::lock_guard<std::mutex> lock(mutex_);
@@ -138,6 +161,7 @@ public:
       free_hashline_[idx].push_back(head);
       free_size_ += head->size_;
     }
+
   private:
     inline int to_index(size_t size) {
       std::ostringstream os;
@@ -178,6 +202,26 @@ public:
   static void free(void *p) {
     return get_mpool<computation_t>()->free(p);
   }
+
+  template<class computation_t = void>
+  struct byte {
+  public:
+    static void *operator new(size_t sz) {
+      return (void *)malloc<computation_t>(sz);
+    }
+
+    static void *operator new[](size_t sz) {
+      return (void *)malloc<computation_t>(sz);
+    }
+
+    static void operator delete(void *p) { free<computation_t>(p); }
+    static void operator delete[](void *p) {
+      free<computation_t>(p);
+    }
+
+  private:
+    char q;
+  };
 };
 }
 }

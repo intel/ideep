@@ -2391,9 +2391,8 @@ public:
       assert(gradx_dims == gradx_desc->get_dims());
       _gradx_desc = gradx_desc;
     } else {
-      auto d = tensor::descriptor(gradx_dims,
-          grady.get_data_type(), format::any);
-      _gradx_desc = &d;
+      _gradx_desc = new tensor::descriptor(gradx_dims,
+          grady.get_data_type(), engine::default_format(gradx_dims.size()));
       gradx_format_inquiring = true;
     }
 
@@ -2429,9 +2428,8 @@ public:
       assert(gradx_dims == gradx_desc->get_dims());
       _gradx_desc = gradx_desc;
     } else {
-      auto d = tensor::descriptor(gradx_dims,
-          grady.get_data_type(), format::any);
-      _gradx_desc = &d;
+      _gradx_desc =new tensor::descriptor(gradx_dims,
+          grady.get_data_type(), engine::default_format(gradx_dims.size()));
       gradx_format_inquiring = true;
     }
 

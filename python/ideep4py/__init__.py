@@ -7,17 +7,17 @@ from ideep4py._ideep4py import mdarray  # NOQA
 from ideep4py._ideep4py import mdarrayVector  # NOQA
 
 from ideep4py._ideep4py import batchNormalization  # NOQA
-from ideep4py._ideep4py import concat # NOQA
+from ideep4py._ideep4py import concat  # NOQA
 from ideep4py._ideep4py import convolution2D  # NOQA
 from ideep4py._ideep4py import convolution2DParam as conv2DParam  # NOQA
 from ideep4py._ideep4py import dropout  # NOQA
 from ideep4py._ideep4py import linear  # NOQA
 from ideep4py._ideep4py import localResponseNormalization  # NOQA
 from ideep4py._ideep4py import localResponseNormalizationParam as lrnParam  # NOQA
-# from ideep4py._ideep4py import pooling2D  # NOQA
-# from ideep4py._ideep4py import pooling2DParam as pol2DParam  # NOQA
+from ideep4py._ideep4py import pooling2D  # NOQA
+from ideep4py._ideep4py import pooling2DParam as pol2DParam  # NOQA
 from ideep4py._ideep4py import relu  # NOQA
-# 
+
 # from ideep4py._ideep4py import basic_acc_sum  # NOQA
 # from ideep4py._ideep4py import basic_copyto  # NOQA
 # 
@@ -181,8 +181,8 @@ from ideep4py._ideep4py import relu  # NOQA
 #     xs = tuple([array(x) for x in xs])
 #     y = basic_acc_sum(xs)
 #     return y
-# 
-# 
+
+
 def convolution2DParam(out_dims, dy, dx, sy, sx, ph, pw, pd, pr):
     cp = conv2DParam()
     cp.out_dims = intVector()
@@ -193,29 +193,29 @@ def convolution2DParam(out_dims, dy, dx, sy, sx, ph, pw, pd, pr):
     cp.pad_lh, cp.pad_lw = ph, pw
     cp.pad_rh, cp.pad_rw = pd, pr
     return cp
-# 
-# 
-# def pooling2DParam(out_dims, kh, kw, sy, sx, ph, pw, pd, pr, algo):
-#     pp = pol2DParam()
-#     pp.out_dims = intVector()
-#     for d in out_dims:
-#         pp.out_dims.push_back(d)
-#     pp.kh, pp.kw = kh, kw
-#     pp.sy, pp.sx = sy, sx
-#     pp.pad_lh, pp.pad_lw = ph, pw
-#     pp.pad_rh, pp.pad_rw = pd, pr
-#     pp.algo_kind = algo
-#     return pp
-# 
-# 
-# pooling2DParam.pooling_max = pol2DParam.pooling_max
-# pooling2DParam.pooling_avg = pol2DParam.pooling_avg
-# pooling2DParam.pooling_avg_include_padding = \
-#     pol2DParam.pooling_avg_include_padding
-# pooling2DParam.pooling_avg_exclude_padding = \
-#     pol2DParam.pooling_avg_exclude_padding
-# 
-# 
+
+
+def pooling2DParam(out_dims, kh, kw, sy, sx, ph, pw, pd, pr, algo):
+    pp = pol2DParam()
+    pp.out_dims = intVector()
+    for d in out_dims:
+        pp.out_dims.push_back(d)
+    pp.kh, pp.kw = kh, kw
+    pp.sy, pp.sx = sy, sx
+    pp.pad_lh, pp.pad_lw = ph, pw
+    pp.pad_rh, pp.pad_rw = pd, pr
+    pp.algo_kind = algo
+    return pp
+
+
+pooling2DParam.pooling_max = pol2DParam.pooling_max
+pooling2DParam.pooling_avg = pol2DParam.pooling_avg
+pooling2DParam.pooling_avg_include_padding = \
+    pol2DParam.pooling_avg_include_padding
+pooling2DParam.pooling_avg_exclude_padding = \
+    pol2DParam.pooling_avg_exclude_padding
+
+
 def localResponseNormalizationParam(n, k, alpha, beta, algo):
     lp = lrnParam()
     lp.n = n

@@ -31,7 +31,7 @@
 #include "utils.h"
 #include "ideep.hpp"
 
-class Pooling2D
+class pooling2D
 {
 public:
   using tensor = ideep::tensor;

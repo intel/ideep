@@ -32,7 +32,7 @@
 %include "mdarray.i"
 %include "eltwise.i"
 %include "conv.i"
-/* %include "pooling.i" */
+%include "pooling.i"
 %include "linear.i"
 %include "bn.i"
 %include "concat.i"

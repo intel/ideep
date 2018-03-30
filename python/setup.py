@@ -118,7 +118,11 @@ if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']
 
 ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-march=native', '-mtune=native']
-link_opts = ['-Wl,-rpath,ideep4py/lib', '-Lideep4py/lib']
+
+if os_name == 'Darwin':
+    link_opts = ['-Wl,-rpath,@loader_path/lib', '-Lideep4py/lib']
+else:
+    link_opts = ['-Wl,-rapth,$ORIGIN/lib', '-Lideep4py/lib']
 
 includes = ['ideep4py/include',
             'ideep4py/include/mklml',

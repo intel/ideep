@@ -35,7 +35,7 @@ class Concat
 public:
   using scratch_allocator = ideep::utils::scratch_allocator;
   using tensor = ideep::tensor;
-  using concat = ideep::concat;
+  using concat_forward = ideep::concat_forward;
   using spliter = ideep::spliter;
 
   static mdarray Forward(std::vector<mdarray> inputs, int axis) {
@@ -44,7 +44,7 @@ public:
       inputs_.push_back(*elems.get());
     }
 
-    auto dst = concat::compute<scratch_allocator>(inputs_, axis);
+    auto dst = concat_forward::compute<scratch_allocator>(inputs_, axis);
     auto out = mdarray(dst);
 
     return out;

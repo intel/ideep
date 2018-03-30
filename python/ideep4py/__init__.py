@@ -5,9 +5,10 @@ from ideep4py._ideep4py import intVector  # NOQA
 
 from ideep4py._ideep4py import mdarray  # NOQA
 from ideep4py._ideep4py import mdarrayVector  # NOQA
-#
+
 from ideep4py._ideep4py import batchNormalization  # NOQA
-# from ideep4py._ideep4py import concat  # NOQA
+# TODO rename Concat to concat under swig
+from ideep4py._ideep4py import Concat as concat # NOQA
 from ideep4py._ideep4py import convolution2D  # NOQA
 from ideep4py._ideep4py import convolution2DParam as conv2DParam  # NOQA
 from ideep4py._ideep4py import dropout  # NOQA

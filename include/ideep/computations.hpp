@@ -2581,8 +2581,8 @@ public:
   }
 };
 
-struct concat : public computation,
-  public utils::computation_cache<concat> {
+struct concat_forward : public computation,
+  public utils::computation_cache<concat_forward> {
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension,
         const std::vector<tensor::descriptor> &inputs) {
@@ -2606,9 +2606,9 @@ public:
     computation::init(forward_descriptor, inputs);
   }
 
-  concat() = default;
+  concat_forward() = default;
 
-  concat(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
+  concat_forward(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
     init(concat_dimension, inputs);
   }
 
@@ -2636,7 +2636,7 @@ public:
     for (int i = 1; i <tdesc.size(); i++) {
       if (inputs_format[i] != inputs_format[0]) {
         auto src_in = inputs[i];
-        src_in.init<alloc, concat>({inputs_dims[i], inputs_dt[i], inputs_format[0]});
+        src_in.init<alloc, concat_forward>({inputs_dims[i], inputs_dt[i], inputs_format[0]});
         reorder::compute(inputs[i], src_in);
         inputs[i] = std::move(src_in);
         tdesc[i] = inputs[i].get_descriptor();
@@ -2650,7 +2650,7 @@ public:
         });
 
     tensor dst;
-    dst.init<alloc, concat>(comp.expected_dst_descriptor());
+    dst.init<alloc, concat_forward>(comp.expected_dst_descriptor());
 
     comp.execute(inputs, dst);
     return dst;

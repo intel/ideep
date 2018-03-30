@@ -211,7 +211,7 @@ public:
             if ((unsigned long long)buf & (SYS_MEMORY_ALIGNMENT - 1)) {
               buf = reinterpret_cast<char *>(
                   new scratch_allocator::byte<tensor>[view->len]);
-              // > 4k + 1thread
+              // TODO: 4k per thread
               fast_memcpy(buf, (char *)view->buf, view->len);
             }
             return (void *)buf;

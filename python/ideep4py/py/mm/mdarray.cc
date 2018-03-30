@@ -906,11 +906,12 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
         dims[idx_unknown] = this->get_nelems() / size;
     }
 
-    // FIXME: A new tensor for reshape ?
-    this->_reshape(dims);
-    py_handle *output = new py_handle(new mdarray(get_dims(), get_data_type()));
+    // Same bahavior as numpy ndarray
+    // Share memory between src and dst array
+    auto o = new mdarray(*this);
+    o->_reshape(dims);
     PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr,
-        SWIG_as_voidptr(output), SwigTy_mdarray, SWIG_POINTER_OWN | 0);
+        SWIG_as_voidptr(new py_handle(o)), SwigTy_mdarray, SWIG_POINTER_OWN | 0);
     return resultobj;
 }
 

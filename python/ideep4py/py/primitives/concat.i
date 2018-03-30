@@ -28,6 +28,7 @@
 %}
 
 %include "std_vector.i"
+%rename (concat) Concat;
 %include "concat_py.h"
 
 //

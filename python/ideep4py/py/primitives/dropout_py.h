@@ -31,7 +31,7 @@
 #include "mdarray.h"
 #include "ideep.hpp"
 
-class Dropout {
+class dropout {
 public:
   using dropout_forward = ideep::dropout_forward;
   using dropout_backward = ideep::dropout_backward;

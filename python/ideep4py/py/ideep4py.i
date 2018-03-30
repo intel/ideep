@@ -37,5 +37,5 @@
 %include "bn.i"
 /* %include "concat.i" */
 %include "lrn.i"
-/* %include "dropout.i" */
+%include "dropout.i"
 /* %include "dlcp.i" */

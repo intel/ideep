@@ -66,11 +66,11 @@ class TestBatchNormalizationF32(unittest.TestCase):
 
         gamma = gamma[expander]
         beta = beta[expander]
-        W = numpy.concatenate((gamma, beta), axis=0).reshape((2, -1))
 
         y_act, self.mean, self.var, inv_std = batchNormalization.Forward(
             ideep4py.mdarray(x),
-            ideep4py.mdarray(W),
+            ideep4py.mdarray(gamma),
+            ideep4py.mdarray(beta),
             None,
             None,
             self.eps
@@ -104,14 +104,14 @@ class TestBatchNormalizationF32(unittest.TestCase):
 
         gamma = gamma[self.expander]
         beta = numpy.zeros_like(gamma)
-        W = numpy.concatenate((gamma, beta), axis=0).reshape((2, -1))
 
-        gx_act, gW = batchNormalization.Backward(
+        gx_act, ggamma, gbeta = batchNormalization.Backward(
             ideep4py.mdarray(x),
             ideep4py.mdarray(gy),
             ideep4py.mdarray(self.mean),
             ideep4py.mdarray(self.var),
-            ideep4py.mdarray(W),
+            ideep4py.mdarray(gamma),
+            ideep4py.mdarray(beta),
             self.eps
         )
         if expand_dim:

@@ -5,8 +5,8 @@ from ideep4py._ideep4py import intVector  # NOQA
 
 from ideep4py._ideep4py import mdarray  # NOQA
 from ideep4py._ideep4py import mdarrayVector  # NOQA
-# 
-# from ideep4py._ideep4py import batchNormalization  # NOQA
+#
+from ideep4py._ideep4py import batchNormalization  # NOQA
 # from ideep4py._ideep4py import concat  # NOQA
 from ideep4py._ideep4py import convolution2D  # NOQA
 from ideep4py._ideep4py import convolution2DParam as conv2DParam  # NOQA

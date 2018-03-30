@@ -32,7 +32,7 @@
 #include "mkl_vml_functions.h"
 #include "ideep.hpp"
 
-class batch_normalization {
+class batchNormalization {
 public:
   using tensor = ideep::tensor;
   using alloc = ideep::utils::allocator;

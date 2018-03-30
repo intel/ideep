@@ -26,7 +26,8 @@ def install_mkldnn():
     print('Installing ...')
     os.system(
       'cmake -DCMAKE_INSTALL_PREFIX=%s --build %s \
-              && cmake --build %s --target install' % (ideep4py_dir, ideep_build_dir, ideep_build_dir))
+              && cmake --build %s --target install' \
+              % (ideep4py_dir, ideep_build_dir, ideep_build_dir))
 
 ###############################################################################
 # External preparation
@@ -44,8 +45,8 @@ def prepare_ext():
 def clean_ext():
     if os.path.exists(libdir):
         shutil.rmtree(libdir)
-    if os.path.exists(includedir):
-        shutil.rmtree(includedir)
+#    if os.path.exists(includedir):
+#        shutil.rmtree(includedir)
     if os.path.exists(sharedir):
         shutil.rmtree(sharedir)
 
@@ -116,8 +117,8 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
 if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']
 
-ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-mavx']
-link_opts = ['-Wl,-rpath,' + '$ORIGIN/lib', '-L' + './lib']
+ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-march=native', '-mtune=native']
+link_opts = ['-Wl,-rpath,ideep4py/lib', '-Lideep4py/lib']
 
 includes = ['ideep4py/include',
             'ideep4py/include/mklml',
@@ -142,7 +143,6 @@ src = ['ideep4py/py/ideep4py.i',
        # 'ideep4py/mm/mem.cc',
        # 'ideep4py/mm/tensor.cc',
        'ideep4py/py/mm/mdarray.cc',
-       'ideep4py/common/common.cc',
        # 'ideep4py/blas/sum.cc',
        # 'ideep4py/py/mm/basic.cc',
        ]

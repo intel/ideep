@@ -162,11 +162,7 @@ public:
       view_(nullptr) {}
 
   // FIXME: get_data_handle --> get_shared_buff
-  mdarray(const mdarray &m) :
-      tensor(m),
-      buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
-          reinterpret_cast<scratch_allocator::byte<tensor> *>(
-          get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
+  mdarray(const mdarray &m) : tensor(m), buff_(m.get_shared_buff()),
       view_(nullptr) {}
 
   mdarray(dims_t dims, data_type_t dt) :

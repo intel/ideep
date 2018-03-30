@@ -19,3 +19,4 @@ python/ideep4py.egg-info
 python/ideep4py/include
 python/ideep4py/lib
 python/ideep4py/share
+python/ideep4py/py/ideep4py.py

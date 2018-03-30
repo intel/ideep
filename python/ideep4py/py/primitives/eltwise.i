@@ -28,4 +28,5 @@
 %}
 
 %include "std_vector.i"
+%rename (relu) Relu;
 %include "eltwise_py.h"

@@ -142,7 +142,6 @@ namespace implementation {
 class mdarray : public ideep::tensor {
 public:
   using tensor = ideep::tensor;
-  using descriptor = ideep::tensor::descriptor;
   using data_type_t = mkldnn::memory::data_type;
   using dims_t = mkldnn::memory::dims;
   using format_t = ideep::format;
@@ -391,9 +390,9 @@ private:
     }
   };
 
-  std::unique_ptr<const Py_buffer, view_manager> view_;
   // FIXME: --> char[]
   std::shared_ptr<scratch_allocator::byte<tensor>> buff_;
+  std::unique_ptr<const Py_buffer, view_manager> view_;
 
 protected:
   reorderer *sync_reorder_;

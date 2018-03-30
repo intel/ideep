@@ -131,8 +131,8 @@ void g_init() {
 #if defined(OPENMP_AFFINITY)
   // google::SetStderrLogging(1);
   // google::InitGoogleLogging("mkldnn");
-  OpenMpManager::bindOpenMpThreads();
-  OpenMpManager::printVerboseInformation();
+  // OpenMpManager::bindOpenMpThreads();
+  // OpenMpManager::printVerboseInformation();
 #endif
 
   // dlCompression::init();

@@ -31,7 +31,7 @@
 #include "mdarray.h"
 #include "ideep.hpp"
 
-class LocalResponseNormalization
+class localResponseNormalization
 {
 public:
   using tensor = ideep::tensor;

@@ -711,43 +711,61 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     return -1;
   }
 
-  // reorderer type object
-  if (PyType_reorder_buffer == nullptr) {
-    PyErr_SetString(PyExc_NameError, "name 'reorderer' is not defined");
-    return -1;
-  }
-
-  // Wrote some python in C++ :)
-  PyObject *argList = Py_BuildValue("(O)", self);
-  if (argList == nullptr) {
-    return -1;
-  }
-
-  // TODO: Do we need to cache this thing?
-  PyObject *rbobj = PyObject_CallObject(PyType_reorder_buffer, argList);
-  Py_DECREF(argList);
-
-  if (rbobj == nullptr) {
-    return -1;
-  }
-
+  PyObject *rbobj;
   reorderer *rb;
-  int res = SWIG_ConvertPtr(rbobj, reinterpret_cast<void **>(&rb), nullptr, 0);
+  // Check entity or view array
+  if (view_.get()) {
+    // Share view(rb) from view array
+    rbobj = view_->obj;
 
-  if (!SWIG_IsOK(res)) {
-    PyErr_SetString(PyExc_RuntimeError, "Can't get C++ object from python object");
-    return -1;
-  }
+    int res = SWIG_ConvertPtr(rbobj, reinterpret_cast<void **>(&rb), nullptr, 0);
+    if (!SWIG_IsOK(res)) {
+      PyErr_SetString(PyExc_RuntimeError, "Can't get C++ object from python object");
+      return -1;
+    }
 
-  if (rb->non_trivial()) {
-    rb->fire(*this);
+    // Increase reference for new view
+    // cur_view->rbobj ref_cnt = n
+    // new_view->rbobj ref_cnt = n + 1
+    Py_INCREF(rbobj);
+  } else {
+    // Create view(rb) from entity array
+    // reorderer type object
+    if (PyType_reorder_buffer == nullptr) {
+      PyErr_SetString(PyExc_NameError, "name 'reorderer' is not defined");
+      return -1;
+    }
 
-    buff_.reset(rb->data_.get());
-    init({get_dims(), get_data_type(),
-        descriptor::public_compatible_format(get_descriptor())},
-        reinterpret_cast<void *>(rb->data()));
+    PyObject *argList = Py_BuildValue("(O)", self);
+    if (argList == nullptr) {
+      return -1;
+    }
 
-    view_.reset();
+    rbobj = PyObject_CallObject(PyType_reorder_buffer, argList);
+    Py_DECREF(argList);
+
+    if (rbobj == nullptr) {
+      return -1;
+    }
+
+    int res = SWIG_ConvertPtr(rbobj, reinterpret_cast<void **>(&rb), nullptr, 0);
+    if (!SWIG_IsOK(res)) {
+      PyErr_SetString(PyExc_RuntimeError, "Can't get C++ object from python object");
+      return -1;
+    }
+
+    if (rb->non_trivial()) {
+      rb->fire(*this);
+
+      buff_.reset(rb->data_.get());
+      init({get_dims(), get_data_type(),
+          descriptor::public_compatible_format(get_descriptor())},
+          reinterpret_cast<void *>(rb->data()));
+
+      view_.reset();
+    }
+
+    sync_reorder_ = rb;
   }
 
   if (build_view(view, flags, *rb)) {
@@ -756,8 +774,8 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   }
 
   // Stolen reference
+  // PyBuffer_Release helps to decrease its reference
   view->obj = rbobj;
-  sync_reorder_ = rb;
 
   return 0;
 }

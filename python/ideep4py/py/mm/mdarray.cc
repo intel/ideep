@@ -711,17 +711,32 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     return -1;
   }
 
-  PyObject *rbobj;
-  reorderer *rb;
+  if (PyType_reorder_buffer == nullptr) {
+    PyErr_SetString(PyExc_NameError, "name 'reorderer' is not defined");
+    return -1;
+  }
+
+  PyObject *rbobj = nullptr;
+  reorderer *rb = nullptr;
   // Check entity or view array
   if (view_.get()) {
     // Share view(rb) from view array
     rbobj = view_->obj;
 
-    int res = SWIG_ConvertPtr(rbobj, reinterpret_cast<void **>(&rb), nullptr, 0);
-    if (!SWIG_IsOK(res)) {
-      PyErr_SetString(PyExc_RuntimeError, "Can't get C++ object from python object");
+    if (!rbobj) {
+      PyErr_SetString(PyExc_RuntimeError, "No buffer management entity in buffer view");
       return -1;
+    }
+
+    // Check current view from ndarray or mdarray
+    // We don't know what is the exporting object from source array
+    // If the exporting object is dropped out from mdarray, obj is rb
+    if (PyObject_IsInstance(rbobj, PyType_reorder_buffer)) {
+      int res = SWIG_ConvertPtr(rbobj, reinterpret_cast<void **>(&rb), nullptr, 0);
+      if (!SWIG_IsOK(res)) {
+        PyErr_SetString(PyExc_RuntimeError, "Can't get C++ object from python object");
+        return -1;
+      }
     }
 
     // Increase reference for new view
@@ -731,11 +746,6 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   } else {
     // Create view(rb) from entity array
     // reorderer type object
-    if (PyType_reorder_buffer == nullptr) {
-      PyErr_SetString(PyExc_NameError, "name 'reorderer' is not defined");
-      return -1;
-    }
-
     PyObject *argList = Py_BuildValue("(O)", self);
     if (argList == nullptr) {
       return -1;
@@ -768,9 +778,13 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     sync_reorder_ = rb;
   }
 
-  if (build_view(view, flags, *rb)) {
-    PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
-    return -1;
+  if (rb) {
+    if (build_view(view, flags, *rb)) {
+      PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
+      return -1;
+    }
+  } else {
+    memcpy((void *)view, (void *)view_.get(), sizeof(Py_buffer));
   }
 
   // Stolen reference

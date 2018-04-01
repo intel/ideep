@@ -154,6 +154,7 @@ public:
   mdarray() = default;
   virtual ~mdarray() = default;
 
+  // FIXME: memory controled by tensor
   mdarray(const tensor &t) :
       tensor(t),
       buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
@@ -161,9 +162,32 @@ public:
           get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
       view_(nullptr) {}
 
-  // FIXME: get_data_handle --> get_shared_buff
-  mdarray(const mdarray &m) : tensor(m), buff_(m.get_shared_buff()),
-      view_(nullptr) {}
+  // Share from a mdarray
+  // * If src mdarray is a memory entity, this mdarray shares the buffer.
+  // * If src mdarray is a memory view, this mdarray shares the view.
+  // this_mdarray->buff_ (src is entity)
+  // this_mdarray->view->rb(other)->data_ (src is view)
+  mdarray(const mdarray &m) :
+      tensor(m),
+      buff_(m.get_shared_buff()),
+      view_(nullptr) {
+    Py_buffer *view = nullptr;
+    if (m.view_.get()) {
+      // m is view
+      view = new Py_buffer;
+      // FIXME: Some operations break attributes consistence between
+      // mdarray's view and its tensor. e.g. mdarray/tensor->reshape
+      // TODO: To hook reshape like operations to keep array attributes
+      // between view and tensor.
+      // Currently, to make sure what `reshape` like does before using.
+      // Directly copy here under assumption of attributes consistence.
+      memcpy((void *)(view), (void *)(m.view_.get()), sizeof(Py_buffer));
+      Py_INCREF(m.view_->obj);
+    } else {
+      // m is entity
+    }
+    view_.reset(view);
+  }
 
   mdarray(dims_t dims, data_type_t dt) :
       tensor({dims, dt, [dims]() {

@@ -743,7 +743,9 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     // cur_view->rbobj ref_cnt = n
     // new_view->rbobj ref_cnt = n + 1
     Py_INCREF(rbobj);
-  } else {
+  }
+
+  if (!rb) {
     // Create view(rb) from entity array
     // reorderer type object
     PyObject *argList = Py_BuildValue("(O)", self);
@@ -772,19 +774,23 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
           descriptor::public_compatible_format(get_descriptor())},
           reinterpret_cast<void *>(rb->data()));
 
+      // FIXME
       view_.reset();
     }
-
-    sync_reorder_ = rb;
   }
 
   if (rb) {
     if (build_view(view, flags, *rb)) {
       PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
+      Py_DECREF(rbobj);
       return -1;
     }
   } else {
-    memcpy((void *)view, (void *)view_.get(), sizeof(Py_buffer));
+    // FIXED: cannot copy directly
+    // In some case, operations on mdarray just make impacts on tensor,
+    // not the mdarray(view), e.g. `reshape`. So it is necessary to
+    // create a rb to build a new view for consumer.
+    // memcpy((void *)view, (void *)view_.get(), sizeof(Py_buffer));
   }
 
   // Stolen reference
@@ -862,10 +868,6 @@ int mdarray::mp_ass_subscript(PyObject *self, PyObject *ind, PyObject *op) {
     ret = PyObject_DelItem(surrogate, ind);
   else
     ret = PyObject_SetItem(surrogate, ind, op);
-
-  if (sync_reorder_ && sync_reorder_->non_trivial()) {
-    sync_reorder_->sync(*this);
-  }
 
   Py_DECREF(surrogate);
 

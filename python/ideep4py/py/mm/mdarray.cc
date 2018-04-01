@@ -670,27 +670,27 @@ PyObject *mdarray::m_InPlaceDivide(PyObject *self, PyObject *o) {
 
 int mdarray::build_view(Py_buffer *view, int flags, const reorderer &reorder) {
   view->buf = reorder.data();
-  view->itemsize = reorder.itemsize_;
+  view->itemsize = get_view_itemsize();
   view->readonly = 0;
   view->internal = nullptr;
-  view->len = reorder.size_ * reorder.itemsize_;
+  view->len = get_size();
 
   if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
-    view->format = const_cast<char *>(reorder.format_);
+    view->format = const_cast<char *>(get_view_format());
   } else {
     view->format = nullptr;
   }
 
   if ((flags & PyBUF_ND) == PyBUF_ND) {
-    view->ndim = reorder.ndims_;
-    view->shape = const_cast<Py_ssize_t *>(reorder.shape_);
+    view->ndim = ndims();
+    view->shape = const_cast<Py_ssize_t *>(get_view_shape());
   } else {
     view->ndim = 0;
     view->shape = nullptr;
   }
 
   if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
-    view->strides = const_cast<Py_ssize_t *>(reorder.strides_);
+    view->strides = const_cast<Py_ssize_t *>(get_view_strides(view->itemsize));
   } else {
     view->strides = nullptr;
   }

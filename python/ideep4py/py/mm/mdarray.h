@@ -149,6 +149,8 @@ public:
   using scratch_allocator = ideep::utils::scratch_allocator;
   using reorder = ideep::reorder;
 
+  static constexpr int MAX_NDIM = 12; //XXX: For now
+
   typedef size_t size_type;
 
   mdarray() = default;
@@ -403,11 +405,64 @@ private:
     }
   }
 
+  inline ssize_t *get_view_shape() {
+    static ssize_t shape[MAX_NDIM];
+    auto dims = get_dims();
+    for (int d = 0; d < ndims(); d++)
+      shape[d] = dims[d];
+
+    return shape;
+  }
+
+  inline ssize_t *get_view_strides(ssize_t itemsize) {
+    static ssize_t strides[MAX_NDIM];
+    ssize_t sd = itemsize;
+    for (int d = ndims() - 1; d >= 0; --d) {
+      strides[d] = sd;
+      sd *= get_dims()[d];
+    }
+
+    return strides;
+  }
+
+  inline ssize_t get_view_itemsize() {
+    ssize_t itemsize;
+    switch(get_data_type()) {
+    case data_type_t::f32: itemsize = 4; break;
+    case data_type_t::s32: itemsize = 4; break;
+    case data_type_t::s16: itemsize = 2; break;
+    case data_type_t::s8: itemsize = 1; break;
+    case data_type_t::u8: itemsize = 1; break;
+    default:
+      throw error(mkldnn_invalid_arguments,
+          std::string("get_view_itemsize, unsupport data type"));
+      break;
+    }
+    return itemsize;
+  }
+
+  inline char *get_view_format() {
+    static char format[4];
+    switch(get_data_type()) {
+    case data_type_t::f32: strcpy(format, "f"); break;
+    case data_type_t::s32: strcpy(format, "i"); break;
+    case data_type_t::s16: strcpy(format, "h"); break;
+    case data_type_t::s8: strcpy(format, "b"); break;
+    case data_type_t::u8: strcpy(format, "B"); break;
+    default:
+      throw error(mkldnn_invalid_arguments,
+          std::string("get_view_format, unsupport data type"));
+      break;
+    }
+    return format;
+  }
+
   struct view_manager {
     void operator() (const Py_buffer *view) {
       PyBuffer_Release(const_cast<Py_buffer *>(view));
       delete view;
     }
+
   };
 
   // FIXME: --> char[]
@@ -421,8 +476,6 @@ protected:
 
 class reorderer {
 public:
-  static constexpr int MAX_NDIM = 12; //XXX: For now
-
   using tensor = ideep::tensor;
   using data_type_t = mkldnn::memory::data_type;
   using format_t = ideep::format;
@@ -435,55 +488,9 @@ public:
   mdarray dst_;
   std::shared_ptr<scratch_allocator::byte<tensor>> data_;
 
-  int ndims_;
-  int size_;
-  char format_[4];
-  ssize_t itemsize_;
-  ssize_t strides_[MAX_NDIM];
-  ssize_t shape_[MAX_NDIM];
-
-  void _collect_buffer_info() {
-    ndims_ = dst_.ndims();
-
-    switch(dst_.get_data_type()) {
-    case data_type_t::f32:
-      strcpy(format_, "f");
-      itemsize_ = 4;
-      break;
-    case data_type_t::s32:
-      strcpy(format_, "i");
-      itemsize_ = 4;
-      break;
-    case data_type_t::s16:
-      strcpy(format_, "h");
-      itemsize_ = 2;
-      break;
-    case data_type_t::s8:
-      strcpy(format_, "b");
-      itemsize_ = 1;
-      break;
-    case data_type_t::u8:
-      strcpy(format_, "B");
-      itemsize_ = 1;
-      break;
-    default:
-      break;
-    }
-
-    auto _dims = dst_.get_dims();
-    for (int i = 0; i < ndims_; i ++) {
-      shape_[i] = _dims[i];
-    }
-
-    ssize_t sd = itemsize_;
-
-    for (int i = ndims_ - 1; i >= 0; --i) {
-      strides_[i] = sd;
-      sd *= shape_[i];
-    }
+  inline void *data() const {
+    return reinterpret_cast<void *>(data_.get());
   }
-
-  inline void *data() const { return reinterpret_cast<void *>(data_.get()); }
 
 public:
   reorderer(const mdarray &src) :
@@ -496,8 +503,7 @@ public:
           return dst;
         } else {
           return src;
-      }} ()),
-      size_(src.get_nelems()) {
+      }} ()) {
     if (non_trivial()) {
       data_ = std::shared_ptr<scratch_allocator::byte<tensor>>(
           new scratch_allocator::byte<tensor>[dst_.get_size()],
@@ -506,8 +512,6 @@ public:
     } else {
       data_ = src.get_shared_buff();
     }
-
-    _collect_buffer_info();
   }
 
   void fire(const mdarray &src) {

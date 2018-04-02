@@ -177,12 +177,11 @@ public:
     if (m.view_.get()) {
       // m is view
       view = new Py_buffer;
-      // FIXME: Some operations break attributes consistence between
-      // mdarray's view and its tensor. e.g. mdarray/tensor->reshape
-      // TODO: To hook reshape like operations to keep array attributes
-      // between view and tensor.
-      // Currently, to make sure what `reshape` like does before using.
-      // Directly copy here under assumption of attributes consistence.
+      // No need to modify attributes in view to keep consistence
+      // between view and `this`(array). View in consumer(this) is just a
+      // record of its producer. Hold sharing memory entity `view->obj`
+      // only here. When `this` is a producer, a new view will be created
+      // according to current `this`(array). Refer to `getbuffer`.
       memcpy((void *)(view), (void *)(m.view_.get()), sizeof(Py_buffer));
       Py_INCREF(m.view_->obj);
     } else {

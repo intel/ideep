@@ -2126,14 +2126,6 @@ public:
       computation::execute(x, grady, *y.get_extra(), gradx);
   }
 
-  void execute(const tensor &x, const tensor &grady, const tensor *ws,
-      const tensor &gradx) {
-    if (num_of_inputs() == 2)
-      computation::execute(x, grady, gradx);
-    else
-      computation::execute(x, grady, *ws, gradx);
-  }
-
   static tensor compute(const tensor& x, const tensor& grady, const tensor& y,
       void* gradx_r, int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
@@ -2153,7 +2145,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &x, const tensor &grady, const tensor *ws,
+  static tensor compute(const tensor &x, const tensor &grady, const tensor &y,
       int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
     auto key = utils::create_key(x.get_data_type(), x.get_dims(),
@@ -2168,7 +2160,7 @@ public:
 
     tensor gradx;
     gradx.init<alloc, lrn_backward>(comp.expected_gradx_descriptor());
-    comp.execute(x, grady, ws, gradx);
+    comp.execute(x, grady, y, gradx);
     return gradx;
   }
 };

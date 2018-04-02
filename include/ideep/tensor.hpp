@@ -750,10 +750,6 @@ public:
     twin_.reset(new tensor(workspace));
   }
 
-  void init_extra(tensor &t) {
-    twin_.reset(&t);
-  }
-
   void init_extra(const descriptor &workspace, void *handle) {
     twin_.reset(new tensor(workspace, handle));
   }

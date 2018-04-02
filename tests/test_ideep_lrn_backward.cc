@@ -66,7 +66,7 @@ TEST_P(lrn_test_float, TestsLRN2) {
   check_lrn_fwd<float>(ld, src_, dst);
 
   if (p.aprop_kind == prop_kind::forward_training) {
-    auto gradx = lrn_backward::compute(src_, grady_, dst.get_extra(),
+    auto gradx = lrn_backward::compute(src_, grady_, dst,
         ld.local_size, ld.alpha, ld.beta, ld.k, p.aalgorithm);
     check_lrn_bwd<float>(p, src_, grady_, gradx);
   }

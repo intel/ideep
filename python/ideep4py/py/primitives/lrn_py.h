@@ -53,8 +53,12 @@ public:
   }
 
   static mdarray Backward(mdarray *src, mdarray *grady, mdarray *ws, lrn_param_t *pp) {
+    tensor dst;
+    if (ws)
+      dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
+
     auto gradx = lrn_backward::compute<scratch_allocator>(*src->get(), *grady->get(),
-                    ws->get(), pp->n, pp->alpha, pp->beta, pp->k,
+                    dst, pp->n, pp->alpha, pp->beta, pp->k,
                     lrn_algo_convert(pp->algo_kind));
 
     auto out = mdarray(gradx);

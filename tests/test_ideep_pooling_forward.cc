@@ -5,144 +5,25 @@
 
 using namespace ideep;
 
-struct test_pool_desc_t {
-  int mb, c;
-  int ih, iw;
-  int oh, ow;
-  int kh, kw;
-  int padt, padl;
-  int strh, strw;
-};
-
-struct pool_test_params {
-  mkldnn::prop_kind aprop_kind;
-  const mkldnn::engine::kind engine_kind;
-  mkldnn::algorithm aalgorithm;
-  mkldnn::memory::format src_format;
-  mkldnn::memory::format dst_format;
-  test_pool_desc_t test_pd;
-  bool expect_to_fail;
-  mkldnn_status_t expected_status;
-};
-
 template <typename data_t>
-void check_pool_fwd(const pool_test_params &p, const tensor &src,
-        const tensor &dst, const tensor &ws)
-{
-  data_t *src_data = (data_t *)src.get_data_handle();
-  data_t *dst_data = (data_t *)dst.get_data_handle();
-
-  auto ws_data = [=](size_t idx) -> int {
-    auto w = (unsigned char *)ws.get_data_handle();
-    if (w == nullptr) return -1;
-    if (ws.get_mkldnn_memory_desc_t()->data_type == mkldnn_u8)
-      return (int)w[idx];
-    else
-      return ((int *)w)[idx];
-  };
-
-  const mkldnn::memory::desc src_d =
-      mkldnn::memory::desc(*src.get_mkldnn_memory_desc_t());
-  const mkldnn::memory::desc dst_d =
-      mkldnn::memory::desc(*dst.get_mkldnn_memory_desc_t());
-  const mkldnn::memory::desc ws_d  =
-      mkldnn::memory::desc(*ws.get_mkldnn_memory_desc_t());
-
-  auto pd = p.test_pd;
-
-#pragma omp parallel for collapse(4) schedule(static)
-  for (int n = 0; n < pd.mb; n++) {
-    for (int c = 0; c < pd.c; c++) {
-      for (int oh = 0; oh < pd.oh; oh++) {
-        for (int ow = 0; ow < pd.ow; ow++) {
-          int oidx = n * pd.c * pd.oh * pd.ow + c * pd.oh * pd.ow
-                  + oh * pd.ow + ow;
-          data_t out = dst_data[map_index(dst_d, oidx)];
-          int out_index = -1;
-          if(p.aalgorithm == mkldnn::pooling_max
-              && p.aprop_kind == mkldnn::prop_kind::forward_training) {
-            out_index = ws_data(map_index(ws_d, oidx));
-          }
-          data_t out_ref = data_t(0);
-          int out_ref_index = 0;
-          bool is_initialized = false;
-          int num_summands = 0;
-
-          for (int kh = 0; kh < pd.kh; ++kh) {
-            for (int kw = 0; kw < pd.kw; ++kw) {
-              const int ih = oh * pd.strh - pd.padt + kh;
-              const int iw = ow * pd.strw - pd.padl + kw;
-
-              if (ih < 0 || ih >= pd.ih) continue;
-              if (iw < 0 || iw >= pd.iw) continue;
-
-              int iidx = n * pd.c * pd.ih * pd.iw
-                      + c * pd.ih * pd.iw + ih * pd.iw + iw;
-
-              data_t d = src_data[map_index(src_d, iidx)];
-              if (p.aalgorithm == mkldnn::pooling_max) {
-                if (!is_initialized) {
-                  out_ref = d;
-                  out_ref_index = kh* pd.kh + kw;
-                  is_initialized = true;
-                } else {
-                  if (out_ref < d) {
-                    out_ref = d;
-                    out_ref_index = kh* pd.kh + kw;
-                  }
-                }
-              } else if (p.aalgorithm == mkldnn::pooling_avg_include_padding ||
-                       p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
-                out_ref += d;
-                num_summands++;
-              }
-            }
-          }
-
-          if (p.aalgorithm == mkldnn::pooling_avg_include_padding) {
-            num_summands = pd.kw * pd.kh;
-          }
-
-          if (p.aalgorithm == mkldnn::pooling_avg_include_padding ||
-            p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
-            out_ref = out_round<data_t>(
-                    (float)out_ref / num_summands);
-          }
-          EXPECT_NEAR(out, out_ref, 1e-6);
-          if(p.aalgorithm == mkldnn::pooling_max
-            && p.aprop_kind == mkldnn::forward_training) {
-            EXPECT_EQ(out_index, out_ref_index) << " n = " << n
-                 << " c = " << c << " oh = " << oh << " ow = " << ow;
-          }
-        }
-      }
-    }
-  }
-}
-
-template <typename data_t>
-class pooling_test : public ::testing::TestWithParam<pool_test_params> {
+class pooling_forward_test : public ::testing::TestWithParam<pool_test_params> {
 protected:
-  virtual void SetUp()
-  {
+  virtual void SetUp() {
     pool_test_params p
             = ::testing::TestWithParam<pool_test_params>::GetParam();
 
-    ASSERT_TRUE(p.engine_kind == mkldnn::engine::kind::cpu);
     ASSERT_TRUE(p.aprop_kind == mkldnn::prop_kind::forward_training
             || p.aprop_kind == mkldnn::prop_kind::forward_scoring);
-    mkldnn::memory::data_type data_type = data_traits<data_t>::data_type;
-
-    test_pool_desc_t pd = p.test_pd;
+    auto data_type = data_traits<data_t>::data_type;
+    auto pd = p.test_pd;
 
     tensor::descriptor src_desc({ pd.mb, pd.c, pd.ih, pd.iw },
         data_type, static_cast<format>(p.src_format));
 
-    tensor src;
-    src.init(src_desc);
+    src_.init(src_desc);
 
-    fill_data<data_t>(src.get_size()/ sizeof(data_t),
-            (data_t *)src.get_data_handle());
+    fill_data<data_t>(src_.get_size()/ sizeof(data_t),
+            (data_t *)src_.get_data_handle());
 
     std::vector<int> padR = { pd.padt, pd.padl };
     for (int i = 0; i < 2; ++i) {
@@ -150,62 +31,77 @@ protected:
     if ((pd.iw + pd.padl + padR[1] - pd.kw)/pd.strw + 1 < pd.ow) ++padR[1];
     }
 
-    tensor dst, ws;
+    size_t dst_sz = pd.mb * pd.c * pd.oh * pd.ow;
+    raw_dst_.reset(new char [dst_sz * sizeof(data_t)]);
+  }
+
+  void test_forward() {
+    pool_test_params p
+            = ::testing::TestWithParam<pool_test_params>::GetParam();
+
+    ASSERT_TRUE(p.aprop_kind == mkldnn::prop_kind::forward_training
+            || p.aprop_kind == mkldnn::prop_kind::forward_scoring);
+    auto pd = p.test_pd;
+
+    std::vector<int> padR = { pd.padt, pd.padl };
+    for (int i = 0; i < 2; ++i) {
+      if ((pd.ih + pd.padt + padR[0] - pd.kh)/pd.strh + 1 < pd.oh) ++padR[0];
+      if ((pd.iw + pd.padl + padR[1] - pd.kw)/pd.strw + 1 < pd.ow) ++padR[1];
+    }
+
+    tensor dst;
     auto test = [&]() {
-      size_t dst_sz = pd.mb * pd.c * pd.oh * pd.ow;
-      auto dst_r = new char [dst_sz * sizeof(data_t)];
-      dst = pooling_forward::compute(src,
-          {pd.mb, pd.c, pd.oh, pd.ow}, dst_r, {pd.strh, pd.strw},
+       dst = pooling_forward::compute(src_,
+          {pd.mb, pd.c, pd.oh, pd.ow}, raw_dst_.get(), {pd.strh, pd.strw},
           {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
           p.aprop_kind, padding_kind::zero);
-
-      bool with_workspace = true
-          && p.aprop_kind == mkldnn::prop_kind::forward_training
-          && p.aalgorithm == mkldnn::pooling_max;
-
-      if (with_workspace)
-        ws = *dst.get_extra();
-      else
-        ws.init(tensor::descriptor({}, data_type,
-            static_cast<format>(p.dst_format)));
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
       return;
 
-    check_pool_fwd<data_t>(p, src, dst, ws);
+    check_pool_fwd<data_t>(p, src_, dst);
+  }
 
+  void test_forward2() {
+    pool_test_params p
+            = ::testing::TestWithParam<pool_test_params>::GetParam();
+
+    ASSERT_TRUE(p.aprop_kind == mkldnn::prop_kind::forward_training
+            || p.aprop_kind == mkldnn::prop_kind::forward_scoring);
+    auto pd = p.test_pd;
+
+    tensor dst;
+    std::vector<int> padR = { pd.padt, pd.padl };
+    for (int i = 0; i < 2; ++i) {
+      if ((pd.ih + pd.padt + padR[0] - pd.kh)/pd.strh + 1 < pd.oh) ++padR[0];
+      if ((pd.iw + pd.padl + padR[1] - pd.kw)/pd.strw + 1 < pd.ow) ++padR[1];
+    }
     auto test2 = [&]() {
-      dst = pooling_forward::compute(src,
+      dst = pooling_forward::compute(src_,
           {pd.mb, pd.c, pd.oh, pd.ow}, {pd.strh, pd.strw},
           {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
           p.aprop_kind, padding_kind::zero);
-
-      bool with_workspace = true
-          && p.aprop_kind == mkldnn::prop_kind::forward_training
-          && p.aalgorithm == mkldnn::pooling_max;
-
-      if (with_workspace)
-        ws = *dst.get_extra();
-      else
-        ws.init(tensor::descriptor({}, data_type,
-            static_cast<format>(p.dst_format)));
     };
 
     if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
       return;
 
-    check_pool_fwd<data_t>(p, src, dst, ws);
+    check_pool_fwd<data_t>(p, src_, dst);
   }
+
+  tensor src_;
+  std::unique_ptr<char []> raw_dst_;
 };
 
-using pooling_test_float = pooling_test<float>;
-using pooling_test_s8 = pooling_test<int8_t>;
-using pooling_test_u8 = pooling_test<uint8_t>;
-using pooling_test_s32 = pooling_test<int32_t>;
+using pooling_test_float = pooling_forward_test<float>;
+using pooling_test_s8 = pooling_forward_test<int8_t>;
+using pooling_test_u8 = pooling_forward_test<uint8_t>;
+using pooling_test_s32 = pooling_forward_test<int32_t>;
 using pool_test_params_float = pool_test_params;
-TEST_P(pooling_test_s8, TestsPooling)
-{
+TEST_P(pooling_test_s8, TestsPooling) {
+  test_forward();
+  test_forward2();
 }
 
 namespace mkldnn {
@@ -286,8 +182,9 @@ INSTANTIATE_TEST_CASE_P(
     {16, 64, 32, 32, 16, 16, 3, 3, 0, 0, 2, 2 } }
 ));
 
-TEST_P(pooling_test_u8, TestsPooling)
-{
+TEST_P(pooling_test_u8, TestsPooling){
+  test_forward();
+  test_forward2();
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -353,8 +250,9 @@ INSTANTIATE_TEST_CASE_P(
     {16, 64, 32, 32, 16, 16, 3, 3, 0, 0, 2, 2 } }
 ));
 
-TEST_P(pooling_test_s32, TestsPooling)
-{
+TEST_P(pooling_test_s32, TestsPooling) {
+  test_forward();
+  test_forward2();
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -433,8 +331,9 @@ INSTANTIATE_TEST_CASE_P(
     {16, 64, 32, 32, 16, 16, 3, 3, 0, 0, 2, 2 } }
 ));
 
-TEST_P(pooling_test_float, TestsPooling)
-{
+TEST_P(pooling_test_float, TestsPooling) {
+  test_forward();
+  test_forward2();
 }
 
 INSTANTIATE_TEST_CASE_P(
@@ -1198,5 +1097,4 @@ INSTANTIATE_TEST_CASE_P(
     {1, 96, 300, 500, 151, 251, 3, 3, 1, 1, 2, 2} }
 
 ));
-
 };

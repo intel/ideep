@@ -2370,107 +2370,49 @@ public:
       computation::execute(grady, *ws, gradx);
   }
 
-  template<class alloc>
-  static tensor compute_impl(const tensor &grady, const tensor &y,
-      const tensor::dims gradx_dims, void *gradx_r,
-      const tensor::descriptor *gradx_desc,
-      const tensor::dims strides, const tensor::dims kernel,
+  static tensor compute(const tensor &grady, const tensor &y, const tensor& x,
+      void *gradx_r, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    bool gradx_format_inquiring = false;
-    const tensor::descriptor *_gradx_desc;
-    tensor::descriptor tmp_desc;
-    if (gradx_desc) {
-      assert(gradx_dims == gradx_desc->get_dims());
-      _gradx_desc = gradx_desc;
-    } else {
-      tmp_desc = tensor::descriptor(gradx_dims,
-          grady.get_data_type(), engine::default_format(gradx_dims.size()));
-      _gradx_desc = &tmp_desc;
-      gradx_format_inquiring = true;
-    }
-
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
-        grady.get_internal_format(), gradx_dims,
-        static_cast<format>(_gradx_desc->get_mkldnn_memory_desc_t()->format),
-        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+        grady.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
+        padding_r, aalgorithm, apadding_kind);
 
-    auto comp = fetch_or_create_m(key, *_gradx_desc, grady.get_descriptor(),
-        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+    auto comp = fetch_or_create_m(key, x.get_descriptor(),
+        grady.get_descriptor(), strides, kernel, padding_l, padding_r,
+        aalgorithm, apadding_kind);
 
     auto sg = utils::make_guard([&key, &comp]() {
         release(key, std::move(comp));
         });
 
-    auto gradx = tensor(gradx_format_inquiring ?
-        comp.expected_gradx_descriptor() : *_gradx_desc, gradx_r);
-
+    auto gradx = tensor(comp.expected_gradx_descriptor(), gradx_r);
     comp.execute(grady, y, gradx);
-
     return gradx;
   }
 
-  template<class alloc>
-  static tensor compute_impl(const tensor &grady, const tensor *ws,
-      const tensor::dims gradx_dims, const tensor::descriptor *gradx_desc,
-      const tensor::dims strides, const tensor::dims kernel,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    bool gradx_format_inquiring = false;
-    const tensor::descriptor *_gradx_desc;
-    tensor::descriptor tmp_desc;
-    if (gradx_desc) {
-      assert(gradx_dims == gradx_desc->get_dims());
-      _gradx_desc = gradx_desc;
-    } else {
-      tmp_desc = tensor::descriptor(gradx_dims,
-          grady.get_data_type(), engine::default_format(gradx_dims.size()));
-      _gradx_desc = &tmp_desc;
-      gradx_format_inquiring = true;
-    }
-
-    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
-        grady.get_internal_format(), gradx_dims,
-        static_cast<format>(_gradx_desc->get_mkldnn_memory_desc_t()->format),
-        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
-
-    auto comp = fetch_or_create_m(key, *_gradx_desc, grady.get_descriptor(),
-        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
-    // TODO: reorder
-    tensor gradx;
-    gradx.init<alloc, pooling_backward>(gradx_format_inquiring?
-         comp.expected_gradx_descriptor() : *_gradx_desc);
-
-    comp.execute(grady, ws, gradx);
-
-    return gradx;
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor &grady, const tensor &y,
-      const tensor::dims gradx_dims,
-      void *gradx_r, const tensor::descriptor *gradx_desc,
-      const tensor::dims strides, const tensor::dims kernel,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    return compute_impl<alloc>(grady, y, gradx_dims, gradx_r, gradx_desc,
-        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
-  }
-
+  // TODO: evalue this interface and remove ws pointer
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &grady, const tensor *ws,
-      const tensor::dims gradx_dims,
-      const tensor::descriptor *gradx_desc,
-      const tensor::dims strides, const tensor::dims kernel,
+      const tensor& x, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    return compute_impl<alloc>(grady, ws, gradx_dims, gradx_desc,
-        strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        grady.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
+        padding_r, aalgorithm, apadding_kind);
+
+    auto comp = fetch_or_create_m(key, x.get_descriptor(),
+        grady.get_descriptor(), strides, kernel, padding_l, padding_r,
+        aalgorithm, apadding_kind);
+
+    auto sg = utils::make_guard([&key, &comp]() {
+        release(key, std::move(comp));
+        });
+
+    tensor gradx;
+    gradx.init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
+    comp.execute(grady, ws, gradx);
+    return gradx;
   }
 };
 

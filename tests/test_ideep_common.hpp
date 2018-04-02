@@ -496,6 +496,311 @@ void check_lrn_bwd(const lrn_test_params &p, const tensor& src,
   }
 }
 
+struct test_pool_desc_t {
+  int mb, c;
+  int ih, iw;
+  int oh, ow;
+  int kh, kw;
+  int padt, padl;
+  int strh, strw;
+};
+
+struct pool_test_params {
+  mkldnn::prop_kind aprop_kind;
+  const mkldnn::engine::kind engine_kind;
+  mkldnn::algorithm aalgorithm;
+  mkldnn::memory::format src_format;
+  mkldnn::memory::format dst_format;
+  test_pool_desc_t test_pd;
+  bool expect_to_fail;
+  mkldnn_status_t expected_status;
+};
+
+struct test_pool_bwd_desc_t {
+  int mb, c;
+  int ih, iw;
+  int oh, ow;
+  int kh, kw;
+  int padt, padl;
+  int strh, strw;
+};
+
+struct pool_bwd_test_params {
+  mkldnn::engine::kind engine_kind;
+  mkldnn::algorithm aalgorithm;
+  mkldnn::memory::format diff_src_format;
+  mkldnn::memory::format diff_dst_format;
+  test_pool_bwd_desc_t test_pd;
+  bool expect_to_fail;
+  mkldnn_status_t expected_status;
+};
+
+template <typename data_t>
+void check_pool_fwd(const pool_test_params &p, const tensor &src,
+        const tensor &dst) {
+  data_t *src_data = (data_t *)src.get_data_handle();
+  data_t *dst_data = (data_t *)dst.get_data_handle();
+  auto *ws = dst.get_extra();
+
+  auto ws_data = [=](size_t idx) -> int {
+    auto w = (unsigned char *)ws->get_data_handle();
+    if (w == nullptr) return -1;
+    if (ws->get_mkldnn_memory_desc_t()->data_type == mkldnn_u8)
+      return (int)w[idx];
+    else
+      return ((int *)w)[idx];
+  };
+
+  const auto *src_d = src.get_mkldnn_memory_desc_t();
+  const auto *dst_d = dst.get_mkldnn_memory_desc_t();
+  const auto *ws_d = ws == nullptr? nullptr : ws->get_mkldnn_memory_desc_t();
+
+  auto pd = p.test_pd;
+
+#pragma omp parallel for collapse(4) schedule(static)
+  for (int n = 0; n < pd.mb; n++) {
+    for (int c = 0; c < pd.c; c++) {
+      for (int oh = 0; oh < pd.oh; oh++) {
+        for (int ow = 0; ow < pd.ow; ow++) {
+          int oidx = n * pd.c * pd.oh * pd.ow + c * pd.oh * pd.ow
+                  + oh * pd.ow + ow;
+          data_t out = dst_data[map_index(dst_d, oidx)];
+          int out_index = -1;
+          if(p.aalgorithm == mkldnn::pooling_max
+              && p.aprop_kind == mkldnn::prop_kind::forward_training) {
+            out_index = ws_data(map_index(ws_d, oidx));
+          }
+          data_t out_ref = data_t(0);
+          int out_ref_index = 0;
+          bool is_initialized = false;
+          int num_summands = 0;
+
+          for (int kh = 0; kh < pd.kh; ++kh) {
+            for (int kw = 0; kw < pd.kw; ++kw) {
+              const int ih = oh * pd.strh - pd.padt + kh;
+              const int iw = ow * pd.strw - pd.padl + kw;
+
+              if (ih < 0 || ih >= pd.ih) continue;
+              if (iw < 0 || iw >= pd.iw) continue;
+
+              int iidx = n * pd.c * pd.ih * pd.iw
+                      + c * pd.ih * pd.iw + ih * pd.iw + iw;
+
+              data_t d = src_data[map_index(src_d, iidx)];
+              if (p.aalgorithm == mkldnn::pooling_max) {
+                if (!is_initialized) {
+                  out_ref = d;
+                  out_ref_index = kh* pd.kh + kw;
+                  is_initialized = true;
+                } else {
+                  if (out_ref < d) {
+                    out_ref = d;
+                    out_ref_index = kh* pd.kh + kw;
+                  }
+                }
+              } else if (p.aalgorithm == mkldnn::pooling_avg_include_padding ||
+                       p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
+                out_ref += d;
+                num_summands++;
+              }
+            }
+          }
+
+          if (p.aalgorithm == mkldnn::pooling_avg_include_padding) {
+            num_summands = pd.kw * pd.kh;
+          }
+
+          if (p.aalgorithm == mkldnn::pooling_avg_include_padding ||
+            p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
+            out_ref = out_round<data_t>(
+                    (float)out_ref / num_summands);
+          }
+          EXPECT_NEAR(out, out_ref, 1e-6);
+          if(p.aalgorithm == mkldnn::pooling_max
+            && p.aprop_kind == mkldnn::forward_training) {
+            EXPECT_EQ(out_index, out_ref_index) << " n = " << n
+                 << " c = " << c << " oh = " << oh << " ow = " << ow;
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void check_pool_fwd(const pool_bwd_test_params &p, const tensor& src,
+        const tensor& dst)
+{
+  data_t *src_data = (data_t *)src.get_data_handle();
+  data_t *dst_data = (data_t *)dst.get_data_handle();
+
+  const auto *src_d = src.get_mkldnn_memory_desc_t();
+  const auto *dst_d = dst.get_mkldnn_memory_desc_t();
+
+  auto pd = p.test_pd;
+
+  auto apply_offset = [=](int index, int offset) {
+      return (index > offset) ? index - offset : 0;
+  };
+
+#pragma omp parallel for collapse(4) schedule(static)
+  for (int n = 0; n < pd.mb; n++) {
+    for (int c = 0; c < pd.c; c++) {
+      for (int oh = 0; oh < pd.oh; oh++) {
+        for (int ow = 0; ow < pd.ow; ow++) {
+          int oidx = n * pd.c * pd.oh * pd.ow + c * pd.oh * pd.ow
+            + oh * pd.ow + ow;
+          data_t out = dst_data[map_index(dst_d, oidx)];
+          data_t out_ref = data_t(0);
+          bool is_initialized = false;
+
+          auto ih_start = apply_offset(oh*pd.strh, pd.padt);
+          auto iw_start = apply_offset(ow*pd.strw, pd.padl);
+          auto ih_end =
+              std::min(oh*pd.strh - pd.padt + pd.kh, pd.ih);
+          auto iw_end =
+              std::min(ow*pd.strw - pd.padl + pd.kw, pd.iw);
+
+          auto num_summands =
+            (p.aalgorithm != mkldnn::pooling_avg_exclude_padding)
+              ? pd.kw*pd.kh : (ih_end - ih_start)*(iw_end - iw_start);
+
+          for (int ih = ih_start; ih < ih_end; ++ih) {
+            for (int iw = iw_start; iw < iw_end; ++iw) {
+              int iidx = n * pd.c * pd.ih * pd.iw
+                + c * pd.ih * pd.iw + ih * pd.iw + iw;
+
+              data_t d = src_data[map_index(src_d, iidx)];
+              if (p.aalgorithm == mkldnn::pooling_max) {
+                if (!is_initialized) {
+                  out_ref = d;
+                  is_initialized = true;
+                } else {
+                  if (out_ref < d)
+                    out_ref = d;
+                }
+              } else if (p.aalgorithm ==
+                mkldnn::pooling_avg_include_padding ||
+                p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
+                out_ref += d;
+              }
+            }
+          }
+
+          if (p.aalgorithm == mkldnn::pooling_avg_include_padding ||
+              p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
+            out_ref /= num_summands;
+          }
+          EXPECT_NEAR(out, out_ref, 1e-6f);
+        }
+      }
+    }
+  }
+}
+
+template <typename data_t>
+void check_pool_bwd(const pool_bwd_test_params &p, const tensor &gradx,
+        const tensor &grady, const tensor &y)
+{
+  data_t *diff_src_data = (data_t *)gradx.get_data_handle();
+  data_t *diff_dst_data = (data_t *)grady.get_data_handle();
+  auto *ws = y.get_extra();
+
+  auto ws_data = [=](size_t idx) -> int {
+    auto w = (unsigned char *)ws->get_data_handle();
+    if (w == nullptr) return -1;
+    if (ws->get_data_type() == mkldnn_u8)
+      return (int)w[idx];
+    else
+      return ((int *)w)[idx];
+  };
+
+  const auto *diff_src_d = gradx.get_mkldnn_memory_desc_t();
+  const auto *diff_dst_d = grady.get_mkldnn_memory_desc_t();
+  const auto *ws_d = ws == nullptr ? nullptr : ws->get_mkldnn_memory_desc_t();
+
+  auto pd = p.test_pd;
+  data_t *ref_diff_src = new data_t[pd.mb*pd.c*pd.ih*pd.iw];
+
+  auto apply_offset = [=](int index, int offset) {
+    return (index > offset) ? index - offset : 0;
+  };
+
+#pragma omp parallel for collapse(4) schedule(static)
+  for (int n = 0; n < pd.mb; n++) {
+    for (int c = 0; c < pd.c; c++) {
+      for (int ih = 0; ih < pd.ih; ih++) {
+        for (int iw = 0; iw < pd.iw; iw++) {
+          int iidx = n * pd.c * pd.ih * pd.iw
+              + c * pd.ih * pd.iw + ih * pd.iw + iw;
+          ref_diff_src[iidx] = 0.;
+        }
+      }
+    }
+  }
+
+#pragma omp parallel for collapse(2) schedule(static)
+  for (int n = 0; n < pd.mb; n++) {
+    for (int c = 0; c < pd.c; c++) {
+      for (int oh = 0; oh < pd.oh; oh++) {
+        for (int ow = 0; ow < pd.ow; ow++) {
+          int oidx = n * pd.c * pd.oh * pd.ow + c * pd.oh * pd.ow
+                  + oh * pd.ow + ow;
+          data_t diff_dst = diff_dst_data[map_index(diff_dst_d, oidx)];
+          if (p.aalgorithm == mkldnn::pooling_max) {
+            int kh_max = ws_data(map_index(ws_d, oidx)) / pd.kw;
+            int kw_max = ws_data(map_index(ws_d, oidx)) % pd.kw;
+            for (int kh = 0; kh < pd.kh; kh++) {
+              for (int kw = 0; kw < pd.kw; kw++) {
+                int iw = ow * pd.strw - pd.padl + kw;
+                int ih = oh * pd.strh - pd.padt + kh;
+                if (iw < 0 || iw >= pd.iw) continue;
+                if (ih < 0 || ih >= pd.ih) continue;
+                int iidx = n * pd.c * pd.ih * pd.iw
+                        + c * pd.ih * pd.iw + ih * pd.iw + iw;
+
+                if (kh == kh_max && kw == kw_max)
+                  ref_diff_src[iidx] += diff_dst;
+              }
+            }
+          } else if (p.aalgorithm == mkldnn::pooling_avg_include_padding
+                || p.aalgorithm == mkldnn::pooling_avg_exclude_padding) {
+            auto ih_start = apply_offset(oh*pd.strh, pd.padt);
+            auto iw_start = apply_offset(ow*pd.strw, pd.padl);
+            auto ih_end =
+                std::min(oh*pd.strh - pd.padt + pd.kh, pd.ih);
+            auto iw_end =
+                std::min(ow*pd.strw - pd.padl + pd.kw, pd.iw);
+
+            auto num_summands = (p.aalgorithm != mkldnn::pooling_avg_exclude_padding)
+                ? pd.kw*pd.kh : (ih_end - ih_start)*(iw_end - iw_start);
+
+            for (int ih = ih_start; ih < ih_end; ih++) {
+              for (int iw = iw_start; iw < iw_end; iw++) {
+                int iidx = n * pd.c * pd.ih * pd.iw
+                        + c * pd.ih * pd.iw + ih * pd.iw + iw;
+                ref_diff_src[iidx] += diff_dst / num_summands;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+#pragma omp parallel for collapse(4) schedule(static)
+  for (auto n = 0; n < pd.mb; n++)
+    for (auto c = 0; c < pd.c; c++)
+      for (auto ih = 0; ih < pd.ih; ih++)
+        for (auto iw = 0; iw < pd.iw; iw++) {
+          int iidx = n * pd.c * pd.ih * pd.iw
+              + c * pd.ih * pd.iw + ih * pd.iw + iw;
+          EXPECT_NEAR(ref_diff_src[iidx],
+                      diff_src_data[map_index(diff_src_d, iidx)],
+                      1e-5f);
+        }
+}
+
 struct test_bnrm_sizes_t {
   int mb, c, h, w;
 };

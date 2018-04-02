@@ -157,6 +157,13 @@ public:
   virtual ~mdarray() = default;
 
   // FIXME: memory controled by tensor
+  // mdarray must be an owner of memory. In the case of the ctor,
+  // * It is guaranteed that input tensor is a memory owner. If tensor
+  //   is not a memory owner, please use ctor `mdarray(const mdarray &m)`.
+  // * It is guaranteed that input tensor is a memory entity not a view.
+  //   ALLOWED: tensor(entity) -> mdarray
+  //   NOT-ALLOWED: mdarray(entity) -> mdarray/tensor(view) -> mdarray
+  //   If tensor is a view, please use ctor `mdarray(const mdarray &m)`.
   mdarray(const tensor &t) :
       tensor(t),
       buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(

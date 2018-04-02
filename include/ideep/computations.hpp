@@ -49,12 +49,12 @@
   #include <unistd.h>
 #endif*/
 
-#include "mkl_vsl.h"
 #include <ideep/abstract_types.hpp>
 #include <ideep/fast_math.hpp>
 #include <ideep/tensor.hpp>
 #include <ideep/lru_cache.hpp>
 #include <ideep/scope_guard.hpp>
+#include <mkl_vsl.h>
 #endif
 
 namespace ideep {
@@ -605,9 +605,6 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
 
     auto op = fetch_or_create_m(key, input.get_descriptor(),
         output.get_descriptor(), attr);
-    auto sg = utils::make_guard([&key, &op]() {
-        release(key, std::move(op));
-        });
 
     op(input, output);
   }
@@ -624,10 +621,6 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
 
     auto op = fetch_or_create_m(key, view, input.get_descriptor(),
         gx.get_descriptor());
-
-    auto sg = utils::make_guard([&key, &op]() {
-        release(key, std::move(op));
-        });
 
     op(input, gx);
     return gx;
@@ -998,10 +991,6 @@ struct convolution_forward: public computation,
         tensor::descriptor {result_dims, src.get_data_type()},
         std::forward<Ts>(args)...);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     // XXX: Performance evaluation
     // TODO: Custom allocator support
     auto src_in = src;
@@ -1034,9 +1023,6 @@ struct convolution_forward: public computation,
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // Performance evaluation
     auto src_in = src;
@@ -1068,9 +1054,6 @@ struct convolution_forward: public computation,
         weights.get_descriptor(), bias.get_descriptor(),
         tensor::descriptor {result_dims, src.get_data_type()},
         std::forward<Ts>(args)...);
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // Performance evaluation
     auto src_in = src;
@@ -1103,9 +1086,6 @@ struct convolution_forward: public computation,
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), result_desc,
         std::forward<Ts>(args)...);
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // Performance evaluation
     auto src_in = src;
@@ -1395,10 +1375,6 @@ public:
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     // XXX: Performance evaluation
     // TODO: Custom allocator support
     auto grady_in = grady;
@@ -1428,10 +1404,6 @@ public:
 
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // XXX: Performance evaluation
     // TODO: Custom allocator support
@@ -1707,10 +1679,6 @@ public:
         grady.get_descriptor(), gradw_desc, gradb_desc,
         std::forward<Ts>(args)...);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     // XXX: Performance evaluation
     // TODO: Custom allocator support
     auto src_in = src;
@@ -1743,10 +1711,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     // XXX: Performance evaluation
     // TODO: Custom allocator support
     auto src_in = src;
@@ -1777,10 +1741,6 @@ public:
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // XXX: Performance evaluation
     // TODO: Custom allocator support
@@ -1817,10 +1777,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, gradb_desc,
         std::forward<Ts>(args)...);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // XXX: Performance evaluation
     // TODO: Custom allocator support
@@ -2026,10 +1982,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
     // TODO: scratch allocator support
@@ -2052,10 +2004,6 @@ public:
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         local_size, alpha, beta, k, aalgorithm, aprop_kind);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
@@ -2135,10 +2083,6 @@ public:
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
     comp.execute(x, grady, y, gradx);
     return gradx;
@@ -2153,10 +2097,6 @@ public:
 
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     tensor gradx;
     gradx.init<alloc, lrn_backward>(comp.expected_gradx_descriptor());
@@ -2243,10 +2183,6 @@ public:
         dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
         aprop_kind, apadding_kind);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     bool with_workspace = true
         && aprop_kind == prop_kind::forward_training
         && aalgorithm == mkldnn::pooling_max;
@@ -2275,10 +2211,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
         aprop_kind, apadding_kind);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     bool with_workspace = true
         && aprop_kind == prop_kind::forward_training
@@ -2375,10 +2307,6 @@ public:
         grady.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     auto gradx = tensor(comp.expected_gradx_descriptor(), gradx_r);
     comp.execute(grady, y, gradx);
     return gradx;
@@ -2397,10 +2325,6 @@ public:
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     tensor gradx;
     gradx.init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
@@ -2462,10 +2386,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         std::forward<Ts>(args)...);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     tensor dst(src.get_descriptor(), result);
     comp.execute(src, dst);
     return dst;
@@ -2478,10 +2398,6 @@ public:
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         std::forward<Ts>(args)...);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     tensor dst;
     dst.init<alloc, eltwise_forward>(comp.expected_dst_descriptor());
@@ -2564,10 +2480,6 @@ public:
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     tensor gradx(comp.expected_gradx_descriptor(), result);
     comp.execute(src, grady, gradx);
     return gradx;
@@ -2581,10 +2493,6 @@ public:
 
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     tensor gradx;
     gradx.init<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
@@ -2735,10 +2643,6 @@ public:
     }
 
     auto comp = fetch_or_create_m(key, axis, tdesc);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     tensor dst;
     dst.init<alloc, concat_forward>(comp.expected_dst_descriptor());
@@ -2901,10 +2805,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
         comp.expected_weights_descriptor()); */
 
@@ -2921,10 +2821,6 @@ public:
         src.get_internal_format(), 5, epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // weights_ is small
     /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
@@ -2943,10 +2839,6 @@ public:
         src.get_internal_format(), 5, epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // weights_ is small
     /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
@@ -3050,10 +2942,6 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     /* comp.weights_.init<alloc, batch_normalization_forward_training>(
         comp.expected_weights_descriptor()); */
 
@@ -3073,10 +2961,6 @@ public:
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     /* comp.weights_.init<alloc, batch_normalization_forward_training>(
         comp.expected_weights_descriptor()); */
@@ -3099,10 +2983,6 @@ public:
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     // TODO: Substitue running statistics calculation with lighter version
     tensor dst(comp.expected_dst_descriptor(), dst_r);
@@ -3378,10 +3258,6 @@ struct inner_product_forward: public computation,
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(), dst_desc);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     auto src_in = src;
     auto weights_in = weights;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
@@ -3409,10 +3285,6 @@ struct inner_product_forward: public computation,
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), dst_desc);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     auto src_in = src;
     auto weights_in = weights;
@@ -3443,10 +3315,6 @@ struct inner_product_forward: public computation,
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(), dst_desc);
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     auto src_in = src;
     auto weights_in = weights;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
@@ -3475,10 +3343,6 @@ struct inner_product_forward: public computation,
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), dst_desc);
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     auto src_in = src;
     auto weights_in = weights;
@@ -3560,10 +3424,6 @@ public:
     auto comp = fetch_or_create_m(key, gradx_desc,
         weights.get_descriptor(), grady.get_descriptor());
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     auto grady_in = grady;
     auto weights_in = weights;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
@@ -3592,10 +3452,6 @@ public:
 
     auto comp = fetch_or_create_m(key, gradx_desc,
         weights.get_descriptor(), grady.get_descriptor());
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     auto grady_in = grady;
     auto weights_in = weights;
@@ -3705,10 +3561,6 @@ public:
     auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc,
         grady.get_descriptor());
 
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
-
     auto x_in = x;
     auto grady_in = grady;
     if (x.get_descriptor() != comp.expected_src_descriptor()) {
@@ -3741,10 +3593,6 @@ public:
 
     auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc, gradb_desc,
         grady.get_descriptor());
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     auto x_in = x;
     auto grady_in = grady;
@@ -3779,10 +3627,6 @@ public:
 
     auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc, gradb_desc,
         grady.get_descriptor());
-
-    auto sg = utils::make_guard([&key, &comp]() {
-        release(key, std::move(comp));
-        });
 
     auto x_in = x;
     auto grady_in = grady;

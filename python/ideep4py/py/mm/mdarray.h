@@ -505,7 +505,6 @@ public:
   using mdarray = implementation::mdarray;
 
   bool non_trivial_;
-  mdarray dst_;
   std::shared_ptr<char> data_;
 
   inline void *data() const {
@@ -514,37 +513,27 @@ public:
 
 public:
   reorderer(const mdarray &src) :
-      non_trivial_(!src.is_public_format()),
-      dst_([&] () {
-        if (non_trivial()) {
-          mdarray dst;
-          dst.init({src.get_dims(), src.get_data_type(),
-              descriptor::public_compatible_format(src.get_descriptor())});
-          return dst;
-        } else {
-          return src;
-      }} ()) {
+      non_trivial_(!src.is_public_format()) {
     if (non_trivial()) {
       data_ = std::shared_ptr<char>(reinterpret_cast<char *>(
-          new scratch_allocator::byte<tensor>[dst_.get_size()]),
+          new scratch_allocator::byte<tensor>[src.get_size()]),
           [](char *p) {
             auto _p = reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
             delete [] _p;
           });
-      dst_.set_data_handle(reinterpret_cast<void *>(data_.get()));
     } else {
       data_ = src.get_shared_buff();
     }
   }
 
   void fire(const mdarray &src) {
-    if (non_trivial())
-      reorder::compute(src, dst_);
-  }
-
-  void sync(const mdarray &src) {
-    if (non_trivial())
-      reorder::compute(dst_, src);
+    if (non_trivial()) {
+      tensor dst;
+      dst.init({src.get_dims(), src.get_data_type(),
+          descriptor::public_compatible_format(src.get_descriptor())});
+      dst.set_data_handle((void *)data_.get());
+      reorder::compute(src, dst);
+    }
   }
 
   inline bool non_trivial() const {

@@ -769,28 +769,24 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
     if (rb->non_trivial()) {
       rb->fire(*this);
 
-      buff_.reset(rb->data_.get());
+      buff_ = rb->data_;
       init({get_dims(), get_data_type(),
           descriptor::public_compatible_format(get_descriptor())},
           reinterpret_cast<void *>(rb->data()));
-
-      // FIXME
-      view_.reset();
+      // mdarray in internal format has no view
+      // view_.reset();
     }
   }
 
-  if (rb) {
-    if (build_view(view, flags, *rb)) {
-      PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
-      Py_DECREF(rbobj);
-      return -1;
-    }
-  } else {
-    // FIXED: cannot copy directly
-    // In some case, operations on mdarray just make impacts on tensor,
-    // not the mdarray(view), e.g. `reshape`. So it is necessary to
-    // create a rb to build a new view for consumer.
-    // memcpy((void *)view, (void *)view_.get(), sizeof(Py_buffer));
+  // FIXED: cannot copy directly
+  // In some case, operations on mdarray just make impacts on tensor,
+  // not the mdarray(view), e.g. `reshape`. So it is necessary to
+  // create a rb to build a new view for consumer.
+  // memcpy((void *)view, (void *)view_.get(), sizeof(Py_buffer));
+  if (build_view(view, flags, *rb)) {
+    PyErr_SetString(PyExc_RuntimeError, "Can't build Py_buffer!");
+    Py_DECREF(rbobj);
+    return -1;
   }
 
   // Stolen reference

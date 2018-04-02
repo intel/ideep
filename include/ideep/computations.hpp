@@ -1729,7 +1729,7 @@ public:
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gbias(comp.expected_gradb_descriptor(), gbias_r);
     comp.execute(src_in, grady_in, gradw, gbias);
-    return std::make_pair(gradw, gbias);
+    return std::make_pair(std::move(gradw), std::move(gbias));
   }
 
   template <class alloc, typename ...Ts>
@@ -1842,7 +1842,7 @@ public:
     gradw.init<alloc, convolution_backward_weights>(comp.expected_gradw_descriptor());
     gbias.init<alloc, convolution_backward_weights>(comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gbias);
-    return std::make_pair(gradw, gbias);
+    return std::make_pair(std::move(gradw), std::move(gbias));
   }
 
   template<class alloc = utils::allocator>
@@ -3151,7 +3151,8 @@ public:
     tensor variance(comp.expected_statistic_descriptor());
 
     comp.execute(src, scale, shift, dst, mean, variance);
-    return std::make_tuple(dst, mean, variance);
+    return std::make_tuple(std::move(dst), std::move(mean),
+                           std::move(variance));
   }
 
   static tensor compute(const tensor& src, const tensor& scale,
@@ -3340,7 +3341,8 @@ public:
     comp.execute(
         src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
 
-    return std::make_tuple(gradx, grad_scale, grad_shift);
+    return std::make_tuple(std::move(gradx), std::move(grad_scale),
+                           std::move(grad_shift));
   }
 
 private:
@@ -3825,7 +3827,7 @@ public:
     tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
     tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
     comp.execute(x_in, grady_in, gradw, gradb);
-    return std::make_pair(gradw, gradb);
+    return std::make_pair(std::move(gradw), std::move(gradb));
   }
 
   template<class alloc = utils::allocator>
@@ -3865,7 +3867,7 @@ public:
     gradw.init<alloc, inner_product_backward_weights>(comp.expected_gradw_descriptor());
     gradb.init<alloc, inner_product_backward_weights>(comp.expected_gradb_descriptor());
     comp.execute(x_in, grady_in, gradw, gradb);
-    return std::make_pair(gradw, gradb);
+    return std::make_pair(std::move(gradw), std::move(gradb));
   }
 };
 
@@ -3940,7 +3942,7 @@ public:
       dst_data[i] = mask_data[i] * src_data[i];
     }
 
-    return std::make_pair(mask, dst);
+    return std::make_pair(std::move(mask), std::move(dst));
   }
 
   template<class alloc = utils::allocator>

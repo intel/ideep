@@ -42,8 +42,8 @@ print('bs_list: ', bs_list)
     # 'with_bias': [True, ],
     'dtype': [numpy.float32, ],
     'cover_all': [True],
-    'channel': [10, 96],
-    'bs': [256, ],
+    'channel': [8, 32],
+    'bs': [16, ],
     'with_bias': [True, ],
 }))
 @testing.fix_random()

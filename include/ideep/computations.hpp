@@ -2387,12 +2387,14 @@ public:
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     bool gradx_format_inquiring = false;
     const tensor::descriptor *_gradx_desc;
+    tensor::descriptor tmp_desc;
     if (gradx_desc) {
       assert(gradx_dims == gradx_desc->get_dims());
       _gradx_desc = gradx_desc;
     } else {
-      _gradx_desc = new tensor::descriptor(gradx_dims,
+      tmp_desc = tensor::descriptor(gradx_dims,
           grady.get_data_type(), engine::default_format(gradx_dims.size()));
+      _gradx_desc = &tmp_desc;
       gradx_format_inquiring = true;
     }
 
@@ -2424,12 +2426,14 @@ public:
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     bool gradx_format_inquiring = false;
     const tensor::descriptor *_gradx_desc;
+    tensor::descriptor tmp_desc;
     if (gradx_desc) {
       assert(gradx_dims == gradx_desc->get_dims());
       _gradx_desc = gradx_desc;
     } else {
-      _gradx_desc =new tensor::descriptor(gradx_dims,
+      tmp_desc = tensor::descriptor(gradx_dims,
           grady.get_data_type(), engine::default_format(gradx_dims.size()));
+      _gradx_desc = &tmp_desc;
       gradx_format_inquiring = true;
     }
 
@@ -2448,7 +2452,7 @@ public:
     // TODO: reorder
     tensor gradx;
     gradx.init<alloc, pooling_backward>(gradx_format_inquiring?
-         comp.expected_gradx_descriptor() : *gradx_desc);
+         comp.expected_gradx_descriptor() : *_gradx_desc);
 
     comp.execute(grady, ws, gradx);
 

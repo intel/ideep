@@ -139,6 +139,7 @@ namespace implementation {
     return m_ ## method ## _map_impl(self, o1, o2); \
   } \
 
+// FIXME: Redundant interceptions in lambda []
 class mdarray : public ideep::tensor {
 public:
   using tensor = ideep::tensor;
@@ -156,7 +157,7 @@ public:
   mdarray() = default;
   virtual ~mdarray() = default;
 
-  // FIXME: memory controled by tensor
+  // Create an memory entity from tensor
   // mdarray must be an owner of memory. In the case of the ctor,
   // * It is guaranteed that input tensor is a memory owner. If tensor
   //   is not a memory owner, please use ctor `mdarray(const mdarray &m)`.
@@ -166,9 +167,15 @@ public:
   //   If tensor is a view, please use ctor `mdarray(const mdarray &m)`.
   mdarray(const tensor &t) :
       tensor(t),
-      buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
-          reinterpret_cast<scratch_allocator::byte<tensor> *>(
-          get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
+      buff_([t]() {
+            if (t.get_tensor_buffer().get() != nullptr) {
+              return t.get_tensor_buffer();
+            } else {
+              throw error(mkldnn_invalid_arguments, std::string(
+                  "mdarray ctor does not support view input"));
+              return std::shared_ptr<char>(nullptr);
+            }
+          } ()),
       view_(nullptr) {}
 
   // Share from a mdarray
@@ -197,6 +204,7 @@ public:
     view_.reset(view);
   }
 
+  // Memory entity created by array attributes
   mdarray(dims_t dims, data_type_t dt) :
       tensor({dims, dt, [dims]() {
             return ndims2format(dims.size());
@@ -204,11 +212,13 @@ public:
             return reinterpret_cast<void *>(
                 new scratch_allocator::byte<tensor>[dims2size(dims, dt)]);
           } ()),
-      buff_(std::shared_ptr<scratch_allocator::byte<tensor>>(
-          reinterpret_cast<scratch_allocator::byte<tensor> *>(
-          get_data_handle()), [](scratch_allocator::byte<tensor> *) {})),
+      buff_(std::shared_ptr<char>((char *)get_data_handle(), [](char *p) {
+            auto _p = reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
+            delete [] _p;
+          })),
       view_(nullptr) {}
 
+  // Memory view created by producer's view
   mdarray(Py_buffer *view, char input_type='d') :
       tensor({[&]() {
             return dims_t(view->shape, view->shape + view->ndim);
@@ -233,27 +243,26 @@ public:
           } (), [&]() {
             return ndims2format(view->ndim, input_type);
           } ()}, [&]() {
-            char *buf = (char *)view->buf;
-            // FIXME: 32 byte
-            if ((unsigned long long)buf & (SYS_MEMORY_ALIGNMENT - 1)) {
-              buf = reinterpret_cast<char *>(
+            void *buf = view->buf;
+            if ((uint64_t)buf & (SYS_MEMORY_ALIGNMENT - 1)) {
+              buf = reinterpret_cast<void *>(
                   new scratch_allocator::byte<tensor>[view->len]);
               // TODO: 4k per thread
-              fast_memcpy(buf, (char *)view->buf, view->len);
+              fast_memcpy((char *)buf, (char *)view->buf, view->len);
             }
-            return (void *)buf;
+            return buf;
           } ()),
       buff_([&] () {
             if (get_data_handle() != view->buf) {
-              return std::shared_ptr<scratch_allocator::byte<tensor>>(
-                  reinterpret_cast<scratch_allocator::byte<tensor> *>(
-                  get_data_handle()),
-                  [] (scratch_allocator::byte<tensor> *p) { delete [] p; });
+              return std::shared_ptr<char>((char *)get_data_handle(),
+                  [](char *p) {
+                    auto _p =
+                        reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
+                    delete [] _p;
+                  });
             } else {
-              // FIXME: iDeep integration
-              return std::shared_ptr<scratch_allocator::byte<tensor>>(
-                  reinterpret_cast<scratch_allocator::byte<tensor> *>(
-                  view->buf), [] (scratch_allocator::byte<tensor> *p) {});
+              // Im not the owner of the memory
+              return std::shared_ptr<char>((char *)view->buf, [](char *p) {});
             }
           } ()), view_(view) {
     /* TODO: input_type */
@@ -364,8 +373,7 @@ public:
   inline void reset_tensor(tensor &dst) {
       init(dst.get_descriptor(), dst.get_data_handle()); }
 
-  inline std::shared_ptr<scratch_allocator::byte<tensor>>
-  get_shared_buff() const { return buff_; }
+  inline std::shared_ptr<char> get_shared_buff() const { return buff_; }
 
 private:
   static inline size_t dims2size(dims_t &dims, data_type_t dt) {
@@ -472,7 +480,7 @@ private:
   };
 
   // FIXME: --> char[]
-  std::shared_ptr<scratch_allocator::byte<tensor>> buff_;
+  std::shared_ptr<char> buff_;
   std::unique_ptr<const Py_buffer, view_manager> view_;
 
 protected:
@@ -480,6 +488,12 @@ protected:
 };
 }
 
+// `reorderer` is designed from iDeep internal format.
+// `reorderer` also is considered as a memory holder, when memory shareing
+// request from python buffer protocol. `reorderer` will be descreased or
+// deleted by protocol consumer, when related view releases. Memory entity
+// mdarray always creates new `reorderer` to consumer, and memory view
+// mdarray always shares the `reorderer` in view to consumer.
 class reorderer {
 public:
   using tensor = ideep::tensor;
@@ -492,7 +506,7 @@ public:
 
   bool non_trivial_;
   mdarray dst_;
-  std::shared_ptr<scratch_allocator::byte<tensor>> data_;
+  std::shared_ptr<char> data_;
 
   inline void *data() const {
     return reinterpret_cast<void *>(data_.get());
@@ -511,9 +525,12 @@ public:
           return src;
       }} ()) {
     if (non_trivial()) {
-      data_ = std::shared_ptr<scratch_allocator::byte<tensor>>(
-          new scratch_allocator::byte<tensor>[dst_.get_size()],
-          [](scratch_allocator::byte<tensor> *p) { delete [] p; });
+      data_ = std::shared_ptr<char>(reinterpret_cast<char *>(
+          new scratch_allocator::byte<tensor>[dst_.get_size()]),
+          [](char *p) {
+            auto _p = reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
+            delete [] _p;
+          });
       dst_.set_data_handle(reinterpret_cast<void *>(data_.get()));
     } else {
       data_ = src.get_shared_buff();

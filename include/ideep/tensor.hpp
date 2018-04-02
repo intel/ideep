@@ -735,6 +735,7 @@ public:
            convert_to_c(descriptor::public_compatible_format(desc));
   }
 
+  inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }
 private:
   // mirror descriptor's same information
   format public_format_;

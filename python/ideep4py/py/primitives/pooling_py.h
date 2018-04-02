@@ -60,13 +60,16 @@ public:
     return outs;
   }
 
-  static mdarray Backward(mdarray *grady,
+  static mdarray Backward(mdarray *src,
+                          mdarray *grady,
                           mdarray *ws,
                           pooling_param_t *pp) {
+    tensor dst;
+    if (ws)
+      dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
+
     auto gx = pooling_backward::compute<scratch_allocator>(
-                  *(grady->get()),
-                  ws ? ws->get() : NULL,
-                  pp->out_dims, NULL,
+                  *grady->get(), dst, *src->get(),
                   tensor::dims {pp->sy, pp->sx},
                   tensor::dims {pp->kh, pp->kw},
                   tensor::dims {pp->pad_lh, pp->pad_lw},

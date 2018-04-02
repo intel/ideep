@@ -74,7 +74,8 @@ class TestPooling2DPyF32(unittest.TestCase):
         gx_expect = col2im_cpu(gcol, 2, 2, 1, 1, h, w)
         gx_expect /= 3 * 3
         gy_mdarray = ideep4py.mdarray(gy)
-        gx_act = pooling2D.Backward(gy_mdarray, None, pp)
+        x_mdarray = ideep4py.mdarray(x)
+        gx_act = pooling2D.Backward(x_mdarray, gy_mdarray, None, pp)
         gx_act = numpy.array(gx_act, dtype=self.dtype)
 
         numpy.testing.assert_allclose(

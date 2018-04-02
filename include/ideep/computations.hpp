@@ -2363,13 +2363,6 @@ public:
       computation::execute(grady, *y.get_extra(), gradx);
   }
 
-  void execute(const tensor &grady, const tensor *ws, const tensor &gradx) {
-    if (num_of_inputs() == 1)
-      computation::execute(grady, gradx);
-    else
-      computation::execute(grady, *ws, gradx);
-  }
-
   static tensor compute(const tensor &grady, const tensor &y, const tensor& x,
       void *gradx_r, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -2391,10 +2384,10 @@ public:
     return gradx;
   }
 
-  // TODO: evalue this interface and remove ws pointer
+  // TODO: evalue this interface
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &grady, const tensor *ws,
-      const tensor& x, const tensor::dims strides, const tensor::dims kernel,
+  static tensor compute(const tensor &grady, const tensor &y,
+      const tensor &x, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
@@ -2411,7 +2404,7 @@ public:
 
     tensor gradx;
     gradx.init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
-    comp.execute(grady, ws, gradx);
+    comp.execute(grady, y, gradx);
     return gradx;
   }
 };

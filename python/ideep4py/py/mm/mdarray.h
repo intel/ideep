@@ -530,8 +530,8 @@ public:
     if (non_trivial()) {
       tensor dst;
       dst.init({src.get_dims(), src.get_data_type(),
-          descriptor::public_compatible_format(src.get_descriptor())});
-      dst.set_data_handle((void *)data_.get());
+          descriptor::public_compatible_format(src.get_descriptor())},
+          (void *)data_.get());
       reorder::compute(src, dst);
     }
   }

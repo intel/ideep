@@ -50,29 +50,29 @@ public:
     std::vector<mdarray> outs;
 
     if (mean) {
-      auto dst = batch_normalization_forward_inference::compute(*src->get(),
-                 *mean->get(), *variance->get(), *scale->get(), *shift->get(), eps);
+      auto dst_ = batch_normalization_forward_inference::compute(*src->get(),
+                  *mean->get(), *variance->get(), *scale->get(), *shift->get(), eps);
 
-      outs.push_back(mdarray(dst));
+      outs.push_back(mdarray(dst_));
     } else {
       auto tensors = batch_normalization_forward_training::compute(*src->get(),
                      *scale->get(), *shift->get(), 0, eps);
 
-      auto dst = std::get<0>(tensors);
-      auto mean = std::get<1>(tensors);
-      auto variance = std::get<2>(tensors);
+      auto dst_ = std::get<0>(tensors);
+      auto mean_ = std::get<1>(tensors);
+      auto variance_ = std::get<2>(tensors);
 
-      tensor inv;
-      inv.init({variance.get_dims(), src->get()->get_data_type(),
-                descriptor::public_compatible_format(variance.get_descriptor())});
+      tensor inv_;
+      inv_.init({variance_.get_dims(), src->get()->get_data_type(),
+                descriptor::public_compatible_format(variance_.get_descriptor())});
 
-      batch_normalization_inv((float *)variance.get_data_handle(), eps, variance.get_size(),
-                              (float *)inv.get_data_handle());
+      batch_normalization_inv((float *)variance_.get_data_handle(), eps, variance_.get_size(),
+                              (float *)inv_.get_data_handle());
 
-      outs.push_back(mdarray(dst));
-      outs.push_back(mdarray(mean));
-      outs.push_back(mdarray(variance));
-      outs.push_back(mdarray(inv));
+      outs.push_back(mdarray(dst_));
+      outs.push_back(mdarray(mean_));
+      outs.push_back(mdarray(variance_));
+      outs.push_back(mdarray(inv_));
     }
 
     return outs;

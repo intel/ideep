@@ -26,6 +26,8 @@
   #include "basic.h"
 %}
 
+%include "basic.h"
+
 %typemap(in) (std::vector<mdarray *> arrays) {
     int i;
     int argc;

@@ -144,11 +144,8 @@ else:
 
 src = ['ideep4py/py/ideep4py.i',
        # 'ideep4py/py/dlcp/dlcp_py.cc',
-       # 'ideep4py/mm/mem.cc',
-       # 'ideep4py/mm/tensor.cc',
        'ideep4py/py/mm/mdarray.cc',
        # 'ideep4py/blas/sum.cc',
-       # 'ideep4py/py/mm/basic.cc',
        ]
 
 ###############################################################################

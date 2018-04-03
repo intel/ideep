@@ -38,4 +38,5 @@
 %include "concat.i"
 %include "lrn.i"
 %include "dropout.i"
+%include "basic.i"
 /* %include "dlcp.i" */

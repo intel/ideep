@@ -66,7 +66,7 @@ public:
       inv_.init({variance_.get_dims(), src->get()->get_data_type(),
                 descriptor::public_compatible_format(variance_.get_descriptor())});
 
-      batch_normalization_inv((float *)variance_.get_data_handle(), eps, variance_.get_size(),
+      batch_normalization_inv((float *)variance_.get_data_handle(), eps, variance_.get_nelems(),
                               (float *)inv_.get_data_handle());
 
       outs.push_back(mdarray(dst_));

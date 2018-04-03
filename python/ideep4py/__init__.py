@@ -24,41 +24,41 @@ from ideep4py._ideep4py import basic_copyto  # NOQA
 # # from ideep4py._ideep4py import dlCompression  # NOQA
 # 
 # from ideep4py import cosim  # NOQA
-# 
-# 
-# # ------------------------------------------------------------------------------
-# # ideep4py.mdarray allocation
-# # ------------------------------------------------------------------------------
-# dat_array = 'd'  # data array
-# wgt_array = 'w'  # weight array
-# 
-# 
-# def array(x, itype=dat_array):
-#     """Create a :class:`ideep4py.mdarray` object according to ``x``.
-# 
-#     Args:
-#         array (numpy.ndarray or ideep4py.mdarray):
-#             if ``x`` is numpy.ndarray not in C contiguous, it will be
-#             converted to C contiguous before ideep4py.mdarray created.
-#         itype (=data_type): ideep4py.mdarray created is optimized according
-#             ``itype`` flag.
-# 
-#     Returns:
-#         Instance of :class:`ideep4py.mdarray`.
-# 
-#     """
-#     if isinstance(x, numpy.ndarray) and \
-#             x.dtype == numpy.dtype('float32'):
-#         if x.flags.contiguous is False:
-#             x = numpy.ascontiguousarray(x)
-#         return mdarray(x, itype)
-#     else:
-#         return x
-# 
-# 
-# _ideep4py_ = sys.modules[__name__]
-# 
-# 
+
+
+# ------------------------------------------------------------------------------
+# ideep4py.mdarray allocation
+# ------------------------------------------------------------------------------
+dat_array = 'd'  # data array
+wgt_array = 'w'  # weight array
+
+
+def array(x, itype=dat_array):
+    """Create a :class:`ideep4py.mdarray` object according to ``x``.
+
+    Args:
+        array (numpy.ndarray or ideep4py.mdarray):
+            if ``x`` is numpy.ndarray not in C contiguous, it will be
+            converted to C contiguous before ideep4py.mdarray created.
+        itype (=data_type): ideep4py.mdarray created is optimized according
+            ``itype`` flag.
+
+    Returns:
+        Instance of :class:`ideep4py.mdarray`.
+
+    """
+    if isinstance(x, numpy.ndarray) and \
+            x.dtype == numpy.dtype('float32'):
+        if x.flags.contiguous is False:
+            x = numpy.ascontiguousarray(x)
+        return mdarray(x, itype)
+    else:
+        return x
+
+
+_ideep4py_ = sys.modules[__name__]
+
+
 # def get_array_module(array):
 #     return _ideep4py_
 # 
@@ -166,21 +166,21 @@ from ideep4py._ideep4py import basic_copyto  # NOQA
 #         ys = numpy.split(x, indices_or_sections, axis)
 # 
 #     return ys
-# 
-# 
-# def tanh(x):
-#     if all_ready((x,)):
-#         y = _ideep4py.tanh.Forward(array(x))  # NOQA
-#     else:
-#         y = numpy.tanh(x)
-# 
-#     return y
-# 
-# 
-# def multi_add(xs):
-#     xs = tuple([array(x) for x in xs])
-#     y = basic_acc_sum(xs)
-#     return y
+
+
+def tanh(x):
+    if all_ready((x,)):
+        y = _ideep4py.tanh.Forward(array(x))  # NOQA
+    else:
+        y = numpy.tanh(x)
+
+    return y
+
+
+def multi_add(xs):
+    xs = tuple([array(x) for x in xs])
+    y = basic_acc_sum(xs)
+    return y
 
 
 def convolution2DParam(out_dims, dy, dx, sy, sx, ph, pw, pd, pr):

@@ -32,6 +32,9 @@ using tensor = ideep::tensor;
 
 class basic {
 public:
+  using tensor = ideep::tensor;
+  using sum = ideep::sum;
+
   static PyObject *copyto(mdarray *dst, mdarray *src) {
     tensor dst_ = *dst->get();
     tensor src_ = *src->get();
@@ -63,7 +66,15 @@ public:
     Py_RETURN_NONE;
   }
 
-  static mdarray acc_sum(std::vector<mdarray *> arrays) {
-    return mdarray();
+  static mdarray acc_sum(std::vector<mdarray> arrays) {
+    std::vector<float> scales;
+    std::vector<tensor> inputs;
+    for (int a = 0; a < arrays.size(); a++) {
+      scales.push_back(1.0);
+      inputs.push_back(*arrays[a]);
+    }
+
+    auto output = sum::compute(scales, inputs);
+    return mdarray(output);
   }
 };

@@ -2578,11 +2578,33 @@ public:
     return output;
   }
 
+  template<class alloc>
+  static tensor compute_impl(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs) {
+    std::vector<tensor::descriptor> inputs_desc;
+    for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
+        inputs_desc.push_back(in.get_descriptor());
+        });
+
+    auto comp = sum(scales, inputs_desc);
+
+    tensor output;
+    output.init<alloc, sum>(comp.expected_dst_descriptor());
+    comp.execute(inputs, output);
+    return output;
+  }
+
   template<class alloc = utils::allocator>
   static tensor compute(const std::vector<float> &scales,
       const std::vector<tensor> &inputs, void *raw_out,
       const tensor::descriptor *out_desc = nullptr) {
     return compute_impl<alloc>(scales, inputs, raw_out, out_desc);
+  }
+
+  template<class alloc = utils::allocator>
+  static tensor compute(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs) {
+    return compute_impl<alloc>(scales, inputs);
   }
 };
 

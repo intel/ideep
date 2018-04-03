@@ -49,11 +49,11 @@
   #include <unistd.h>
 #endif*/
 
-#include <ideep/abstract_types.hpp>
-#include <ideep/fast_math.hpp>
-#include <ideep/tensor.hpp>
-#include <ideep/lru_cache.hpp>
-#include <ideep/scope_guard.hpp>
+#include "abstract_types.hpp"
+#include "fast_math.hpp"
+#include "tensor.hpp"
+#include "lru_cache.hpp"
+#include "scope_guard.hpp"
 #include <mkl_vsl.h>
 #endif
 
@@ -1444,23 +1444,6 @@ public:
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, const tensor::dims strides,
-      const tensor::dims dilates,
-      const tensor::dims padding_l, const int group,
-      const tensor::dims padding_r,
-      algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    auto gw_dims = weights.get_dims();
-    gw_dims.insert(gw_dims.begin(), group);
-    gw_dims[1] = gw_dims[1] / group;
-    auto gweights = tensor(
-        tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-        weights.get_data_handle());
-    return compute_impl<alloc>(grady, weights, gradx_dims, strides,
-        dilates, padding_l, padding_r, aalgorithm, apadding_kind);
-  }
 };
 
 struct convolution_backward_weights : public computation,
@@ -1854,7 +1837,7 @@ public:
 
   template<class alloc = utils::allocator>
   static std::pair<tensor, tensor> compute(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims,
+      const tensor::dims& gradw_dims, bool with_bias,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       algorithm aalgorithm = algorithm::convolution_direct,
@@ -1862,7 +1845,7 @@ public:
     auto gradgw_dims = gradw_dims;
     gradgw_dims.insert(gradgw_dims.begin(), group);
     gradgw_dims[1] = gradgw_dims[1] / group;
-    return compute_impl<alloc>(src, grady, gradgw_dims,
+    return compute_impl<alloc>(src, grady, gradgw_dims, with_bias,
         strides, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };

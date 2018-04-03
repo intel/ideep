@@ -4,7 +4,7 @@
 #include <string>
 #include <type_traits>
 #include <immintrin.h>
-#include <ideep/abstract_types.hpp>
+#include "abstract_types.hpp"
 namespace ideep {
 namespace utils {
 

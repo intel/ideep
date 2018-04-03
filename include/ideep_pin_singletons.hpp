@@ -1,7 +1,7 @@
 #ifndef _IDEEP_PIN_SINGLETONS_HPP_
 #define _IDEEP_PIN_SINGLETONS_HPP_
 
-#include <ideep.hpp>
+#include "ideep.hpp"
 
 namespace ideep {
 /// Put these in only one library

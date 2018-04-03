@@ -5,8 +5,8 @@
 #include <numeric>
 #include <functional>
 #include <cassert>
-#include <ideep/abstract_types.hpp>
-#include <ideep/allocators.hpp>
+#include "abstract_types.hpp"
+#include "allocators.hpp"
 
 namespace ideep {
 struct computation;

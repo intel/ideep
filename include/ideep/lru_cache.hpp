@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 #include <list>
-#include <ideep/tensor.hpp>
+#include "tensor.hpp"
 
 namespace ideep {
 namespace utils {

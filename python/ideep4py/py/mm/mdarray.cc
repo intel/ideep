@@ -24,9 +24,6 @@
 
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#if defined(OPENMP_AFFINITY)
-#include "cpu_info.h"
-#endif
 #include "mdarray.h"
 #include <mkl_vml_functions.h>
 #include "mkldnn_ex.h"
@@ -127,13 +124,6 @@ void g_init() {
 
   // Initiate static variables imported from numpy include
   import_array();
-
-#if defined(OPENMP_AFFINITY)
-  // google::SetStderrLogging(1);
-  // google::InitGoogleLogging("mkldnn");
-  // OpenMpManager::bindOpenMpThreads();
-  // OpenMpManager::printVerboseInformation();
-#endif
 
   // dlCompression::init();
 

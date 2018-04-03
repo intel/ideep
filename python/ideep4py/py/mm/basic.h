@@ -43,6 +43,7 @@ public:
         src_.get_dims() != dst_.get_dims()) {
       throw error(mkldnn_invalid_arguments,
             std::string("mismatch src and dst mdarray"));
+      return nullptr;
     }
 
     fast_memcpy((char *)dst_.get_data_handle(),
@@ -56,9 +57,11 @@ public:
   static PyObject *copyto(mdarray *dst, Py_buffer *view) {
     tensor dst_ = *dst->get();
 
-    if (dst_.get_size() != view->len)
+    if (dst_.get_size() != view->len) {
       throw error(mkldnn_invalid_arguments,
             std::string("mismatch src and dst mdarray"));
+      return nullptr;
+    }
 
     fast_memcpy((char *)dst_.get_data_handle(),
                 (char *)view->buf, view->len);

@@ -3997,7 +3997,7 @@ public:
 
   template<typename data_t>
   static inline tensor sum_fast_along_axis(tensor &src,
-      void *dst_r, std::vector<int> axis, err_num_t &err) {
+      std::vector<int> axis, err_num_t &err) {
     int axises = axis.size();
     std::vector<int> valid_axis_4dim = {0, 2, 3};
 
@@ -4033,13 +4033,16 @@ public:
     if (err == (err_num_t)-UNSUPPORT_AXIS_FAST_SUM)
       return tensor();
 
+    tensor dst;
+    dst.init({{src.get_dims()[1]},
+              src.get_data_type(),
+              format::x});
+
     sum_nChwXC_along_channel((data_t *)src.get_data_handle(),
-        src.get_descriptor(), axis, (data_t *)dst_r);
+                             src.get_descriptor(), axis,
+                             (data_t *)dst.get_data_handle());
 
-    tensor::descriptor dst_desc(
-        get_dst_dims(src.get_dims(), axis), src.get_data_type());
-
-    return tensor(dst_desc, dst_r);
+    return dst;
   }
 
   template<typename data_t>
@@ -4214,10 +4217,11 @@ public:
 
   template<typename data_t>
   static inline tensor sum_common_along_axis(tensor &src,
-      void *dst_r, std::vector<int> axis, err_num_t &err) {
+      std::vector<int> axis, err_num_t &err) {
     auto src_dims = src.get_dims();
     int dst_ndims = src.ndims() - axis.size();
 
+    err = NOERR;
     // TODO: Support sum all
     if ((dst_ndims != 1 && dst_ndims != 2 && dst_ndims != 4) ||
         axis.size() == 0) {
@@ -4225,44 +4229,47 @@ public:
       return tensor();
     }
 
+    tensor dst;
+    dst.init({get_dst_dims(src.get_dims(), axis),
+              src.get_data_type(),
+              engine::default_format(dst_ndims)});
+
     sum_along_axis((data_t *)src.get_data_handle(),
-        src.get_descriptor(), axis, (data_t *)dst_r);
+                   src.get_descriptor(), axis,
+                   (data_t *)dst.get_data_handle());
 
-    tensor::descriptor dst_desc(
-        get_dst_dims(src.get_dims(), axis), src.get_data_type());
-
-    return tensor(dst_desc, dst_r);
+    return dst;
   }
 
   static tensor compute(tensor &src,
-      void *dst_r, std::vector<int> &axis, err_num_t &err) {
+      std::vector<int> &axis, err_num_t &err) {
     if (optimized_format(src)) {
       switch(src.get_data_type()) {
       case tensor::data_type::f32:
-        return sum_fast_along_axis<float>(src, dst_r, axis, err);
+        return sum_fast_along_axis<float>(src, axis, err);
       case tensor::data_type::s32:
-        return sum_fast_along_axis<int32_t>(src, dst_r, axis, err);
+        return sum_fast_along_axis<int32_t>(src, axis, err);
       case tensor::data_type::s16:
-        return sum_fast_along_axis<int16_t>(src, dst_r, axis, err);
+        return sum_fast_along_axis<int16_t>(src, axis, err);
       case tensor::data_type::s8:
-        return sum_fast_along_axis<int8_t>(src, dst_r, axis, err);
+        return sum_fast_along_axis<int8_t>(src, axis, err);
       case tensor::data_type::u8:
-        return sum_fast_along_axis<uint8_t>(src, dst_r, axis, err);
+        return sum_fast_along_axis<uint8_t>(src, axis, err);
       default:
         break;
       }
     } else {
       switch(src.get_data_type()) {
       case tensor::data_type::f32:
-        return sum_common_along_axis<float>(src, dst_r, axis, err);
+        return sum_common_along_axis<float>(src, axis, err);
       case tensor::data_type::s32:
-        return sum_common_along_axis<int32_t>(src, dst_r, axis, err);
+        return sum_common_along_axis<int32_t>(src, axis, err);
       case tensor::data_type::s16:
-        return sum_common_along_axis<int16_t>(src, dst_r, axis, err);
+        return sum_common_along_axis<int16_t>(src, axis, err);
       case tensor::data_type::s8:
-        return sum_common_along_axis<int8_t>(src, dst_r, axis, err);
+        return sum_common_along_axis<int8_t>(src, axis, err);
       case tensor::data_type::u8:
-        return sum_common_along_axis<uint8_t>(src, dst_r, axis, err);
+        return sum_common_along_axis<uint8_t>(src, axis, err);
       default:
         break;
       }

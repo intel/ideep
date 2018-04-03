@@ -200,6 +200,8 @@ PyObject *mdarray::py_mdarray_from(PyObject *o) const {
 }
 
 using sum = ideep::sum;
+using sum_array = ideep::sum_array;
+using err_num_t = sum_array::err_num_t;
 using scratch_allocator = ideep::utils::scratch_allocator;
 using descriptor = ideep::tensor::descriptor;
 
@@ -939,34 +941,35 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
     return resultobj;
 }
 
-#if 0
-PyObject *mdarray::sum(vector<int> axis, bool keepdims)
+PyObject *mdarray::sum(std::vector<int> axis, bool keepdims)
 {
-    auto tensor = tensor_->sum(axis);
-    if (tensor) {
-        if (keepdims) {
-            vector<int> expected_shape;
-            for (int v = 0; v < this->ndims(); v++)
-                expected_shape.push_back(this->desc().data.dims[v]);
+    err_num_t e;
+    mdarray dst;
 
-            for (unsigned a = 0; a < axis.size(); a++)
-                expected_shape[axis[a]] = 1;
-
-            auto _tensor = tensor->reshape(expected_shape);
-            delete tensor;
-            tensor = _tensor;
-        }
-
-        auto output = new py_handle(new mdarray(tensor));
-        auto resultobj = SWIG_Python_NewPointerObj(nullptr,
-                             SWIG_as_voidptr(output), SwigTy_mdarray,
-                             SWIG_POINTER_OWN | 0);
-        return resultobj;
-    } else {
-        return nullptr;
+    auto tensor = sum_array::compute(*this, axis, e);
+    if (e != err_num_t::NOERR) {
+      throw error(mkldnn_invalid_arguments,
+            std::string("Unsupported array operation"));
+      return nullptr;
     }
+
+    if (keepdims) {
+        std::vector<int> expected_shape;
+        for (int v = 0; v < this->ndims(); v++)
+            expected_shape.push_back(this->get_dims()[v]);
+
+        for (unsigned a = 0; a < axis.size(); a++)
+            expected_shape[axis[a]] = 1;
+
+        tensor.reshape(expected_shape);
+    }
+
+    auto output = new py_handle(new mdarray(tensor));
+    auto resultobj = SWIG_Python_NewPointerObj(nullptr,
+                         SWIG_as_voidptr(output), SwigTy_mdarray,
+                         SWIG_POINTER_OWN | 0);
+    return resultobj;
 }
-#endif
 
 bool mdarray::is_mdarray(PyObject *o)
 {

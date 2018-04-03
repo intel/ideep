@@ -100,3 +100,5 @@ class TestMdarraySum(unittest.TestCase):
         ms = mx.sum((1))
         ns = x.sum((1))
         numpy.testing.assert_allclose(ms, ns, **self.check_options)
+
+testing.run_module(__name__, __file__)

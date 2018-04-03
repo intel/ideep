@@ -33,46 +33,6 @@
 #include "omp.h"
 using namespace mkldnn;
 
-// utils function conver int/double/bool/dims/ to string
-static inline std::string int_to_string(int value) {
-    std::ostringstream os;
-    os << std::hex << "I" << value << "_";
-    return os.str();
-}
-
-static inline std::string double_to_string(double value) {
-    std::ostringstream os;
-    os << "D" << value << "_";
-    return os.str();
-}
-
-static inline std::string float_to_string(float value) {
-    std::ostringstream os;
-    os << "F" << value << "_";
-    return os.str();
-}
-
-static inline std::string bool_to_string(bool value) {
-    std::ostringstream os;
-    os << "B" << value << "_";
-    return os.str();
-}
-
-static inline std::string dims_to_string(mkldnn::memory::dims dims) {
-   std::ostringstream os;
-   os << "DIMS:";
-   for (unsigned int i = 0; i < dims.size(); i++)
-       os << dims[i] << ",";
-   os << ";";
-   return os.str();
-}
-
-static inline std::string long_to_string(size_t value) {
-    std::ostringstream os;
-    os << std::hex << "L" << value << "_";
-    return os.str();
-}
-
 static inline mkldnn::algorithm pooling_algo_convert(pooling_param_t::algorithm input) {
     switch(input) {
         case pooling_param_t::algorithm::pooling_max:

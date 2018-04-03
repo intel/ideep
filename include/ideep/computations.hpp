@@ -530,6 +530,8 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
           &desc, src_desc.get(), dst_desc.get(), attr.get()),
         "could not create a reorder primitive descriptor");
+    c_wrapper<mkldnn_primitive_desc_t> sg(desc);
+
     in.init(src_desc, invalid_buffer);
     out.init(dst_desc, invalid_buffer);
 
@@ -547,6 +549,8 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
           &desc, view.get(), dst_desc.get()),
         "could not create a reorder primitive descriptor");
+    c_wrapper<mkldnn_primitive_desc_t> sg(desc);
+
     in.init(src_desc, invalid_buffer);
     out.init(dst_desc, invalid_buffer);
 
@@ -564,6 +568,8 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
           &desc, src_desc.get(), view.get()),
         "could not create a reorder primitive descriptor");
+    c_wrapper<mkldnn_primitive_desc_t> sg(desc);
+
     in.init(src_desc, invalid_buffer);
     out.init(dst_desc, invalid_buffer);
 

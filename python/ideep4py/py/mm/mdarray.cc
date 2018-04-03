@@ -32,6 +32,10 @@
 
 namespace implementation {
 
+// Pin virtual table
+
+mdarray:: ~mdarray() = default;
+
 static PyObject *PyType_reorder_buffer = nullptr;
 
 static swig_type_info *SwigTy_mdarray = nullptr;

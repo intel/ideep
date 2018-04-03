@@ -155,7 +155,7 @@ public:
   typedef size_t size_type;
 
   mdarray() = default;
-  virtual ~mdarray() = default;
+  virtual ~mdarray();
 
   // Create an memory entity from tensor
   // mdarray must be an owner of memory. In the case of the ctor,

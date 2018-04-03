@@ -171,7 +171,7 @@ ext = Extension(
 
 ext_modules.append(ext)
 
-packages = ['ideep4py', 'ideep4py.cosim']
+packages = ['ideep4py']
 
 setup(
     name='ideep4py',

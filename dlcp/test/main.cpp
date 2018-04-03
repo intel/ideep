@@ -193,6 +193,11 @@ bool test_compressed_buffer_reduce_sum()
         printf("compress failed error = %d!\n", ret);
         free(tempData1);
         free(tempData2);
+        free(tempData3);
+        free(tempData4);
+        free(sum1);
+        free(sum2);
+        free(sum3);
         return false;
     }
     
@@ -208,6 +213,11 @@ bool test_compressed_buffer_reduce_sum()
         printf("compress failed error = %d!\n", ret);
         free(tempData1);
         free(tempData2);
+        free(tempData3);
+        free(tempData4);
+        free(sum1);
+        free(sum2);
+        free(sum3);
         return false;
     }
 
@@ -234,6 +244,11 @@ bool test_compressed_buffer_reduce_sum()
         printf("reduce sum failed error = %d!\n", ret);
         free(tempData1);
         free(tempData2);
+        free(tempData3);
+        free(tempData4);
+        free(sum1);
+        free(sum2);
+        free(sum3);
         return false;
     }
    
@@ -245,6 +260,11 @@ bool test_compressed_buffer_reduce_sum()
         printf("de compress failed error = %d!\n", ret);
         free(tempData1);
         free(tempData2);
+        free(tempData3);
+        free(tempData4);
+        free(sum1);
+        free(sum2);
+        free(sum3);
         return false;
     }
 
@@ -264,5 +284,10 @@ bool test_compressed_buffer_reduce_sum()
 
     free(tempData1);
     free(tempData2);
+    free(tempData3);
+    free(tempData4);
+    free(sum1);
+    free(sum2);
+    free(sum3);
     return true;
 }

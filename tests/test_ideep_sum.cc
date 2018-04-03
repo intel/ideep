@@ -129,9 +129,16 @@ protected:
   }
 };
 
+using sum_test_float = sum_test<float,float>;
+using sum_test_u8 = sum_test<uint8_t,float>;
+using sum_test_s32 = sum_test<int32_t,float>;
+
+TEST_P(sum_test_float, TestsSum) {}
+TEST_P(sum_test_u8, TestsSum) {}
+TEST_P(sum_test_s32, TestsSum) {}
+
 namespace mkldnn {
 #define INST_TEST_CASE(test) \
-TEST_P(test, TestsSum) {} \
 INSTANTIATE_TEST_CASE_P(TestSum, test, ::testing::Values( \
     sum_test_params{engine::kind::cpu, \
     {memory::format::nchw, memory::format::nchw}, memory::format::nchw, \
@@ -175,13 +182,8 @@ INSTANTIATE_TEST_CASE_P(TestSum, test, ::testing::Values( \
     {2, 16, 3, 3}, {2.0f, 3.0f}} \
 ));
 
-using sum_test_float = sum_test<float,float>;
-using sum_test_u8 = sum_test<uint8_t,float>;
-using sum_test_s32 = sum_test<int32_t,float>;
-
 INST_TEST_CASE(sum_test_float)
 INST_TEST_CASE(sum_test_u8)
 INST_TEST_CASE(sum_test_s32)
-
 #undef INST_TEST_CASE
 }

@@ -104,6 +104,21 @@ TEST_P(pooling_test_s8, TestsPooling) {
   test_forward2();
 }
 
+TEST_P(pooling_test_u8, TestsPooling){
+  test_forward();
+  test_forward2();
+}
+
+TEST_P(pooling_test_s32, TestsPooling) {
+  test_forward();
+  test_forward2();
+}
+
+TEST_P(pooling_test_float, TestsPooling) {
+  test_forward();
+  test_forward2();
+}
+
 namespace mkldnn {
 
 INSTANTIATE_TEST_CASE_P(
@@ -182,11 +197,6 @@ INSTANTIATE_TEST_CASE_P(
     {16, 64, 32, 32, 16, 16, 3, 3, 0, 0, 2, 2 } }
 ));
 
-TEST_P(pooling_test_u8, TestsPooling){
-  test_forward();
-  test_forward2();
-}
-
 INSTANTIATE_TEST_CASE_P(
   TestPoolingForwardMaxU8, pooling_test_u8, ::testing::Values(
     pool_test_params{ prop_kind::forward_inference,
@@ -249,11 +259,6 @@ INSTANTIATE_TEST_CASE_P(
     memory::format::nhwc, memory::format::nhwc,
     {16, 64, 32, 32, 16, 16, 3, 3, 0, 0, 2, 2 } }
 ));
-
-TEST_P(pooling_test_s32, TestsPooling) {
-  test_forward();
-  test_forward2();
-}
 
 INSTANTIATE_TEST_CASE_P(
   TestPoolingAlexnetForwardS32, pooling_test_s32, ::testing::Values(
@@ -330,11 +335,6 @@ INSTANTIATE_TEST_CASE_P(
     memory::format::nhwc, memory::format::nhwc,
     {16, 64, 32, 32, 16, 16, 3, 3, 0, 0, 2, 2 } }
 ));
-
-TEST_P(pooling_test_float, TestsPooling) {
-  test_forward();
-  test_forward2();
-}
 
 INSTANTIATE_TEST_CASE_P(
   TestPoolingForwardEF, pooling_test_float, ::testing::Values(

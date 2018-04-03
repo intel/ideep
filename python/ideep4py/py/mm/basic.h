@@ -23,20 +23,44 @@
 
 
 #pragma once
-#define NO_IMPORT_ARRAY
-#define PY_ARRAY_UNIQUE_SYMBOL basic_ARRAY_API
+#include <cstring>
 #include <Python.h>
 #include "mdarray.h"
 #include "ideep.hpp"
 
+using tensor = ideep::tensor;
+
 class basic {
 public:
   static PyObject *copyto(mdarray *dst, mdarray *src) {
-    return nullptr;
+    tensor dst_ = *dst->get();
+    tensor src_ = *src->get();
+
+    if (src_.get_data_type() != dst_.get_data_type() ||
+        src_.get_dims() != dst_.get_dims()) {
+      throw error(mkldnn_invalid_arguments,
+            std::string("mismatch src and dst mdarray"));
+    }
+
+    fast_memcpy((char *)dst_.get_data_handle(),
+                (char *)src_.get_data_handle(), src_.get_size());
+
+    dst_.init(src_.get_descriptor(), dst_.get_data_handle());
+
+    Py_RETURN_NONE;
   }
 
   static PyObject *copyto(mdarray *dst, Py_buffer *view) {
-    return nullptr;
+    tensor dst_ = *dst->get();
+
+    if (dst_.get_size() != view->len)
+      throw error(mkldnn_invalid_arguments,
+            std::string("mismatch src and dst mdarray"));
+
+    fast_memcpy((char *)dst_.get_data_handle(),
+                (char *)view->buf, view->len);
+
+    Py_RETURN_NONE;
   }
 
   static mdarray acc_sum(std::vector<mdarray *> arrays) {

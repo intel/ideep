@@ -34,8 +34,6 @@
 #include "omp.h"
 using namespace mkldnn;
 
-#define GET_PTR(t, p, offset) reinterpret_cast<t*>( reinterpret_cast<size_t>(p) +static_cast<size_t>(offset) )
-
 memory::format get_desired_format(int channel);
 memory::format get_desired_format_weight(int channel0, int channel1);
 template<typename T>

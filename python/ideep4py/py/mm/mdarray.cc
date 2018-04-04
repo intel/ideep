@@ -200,6 +200,8 @@ PyObject *mdarray::py_mdarray_from(PyObject *o) const {
 }
 
 using sum = ideep::sum;
+using tensor = ideep::tensor;
+using reorder = ideep::reorder;
 using sum_array = ideep::sum_array;
 using err_num_t = sum_array::err_num_t;
 using scratch_allocator = ideep::utils::scratch_allocator;
@@ -431,19 +433,11 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
       break;
     }
 
-    // TODO: computation reorder
     auto oprd2_internal_m = *oprd2_mdarr;
-    #if 0
-    std::vector<mkldnn::primitive> prims;
-    std::unique_ptr<mkldnn::memory> mreorder;
-
-    auto oprd2_internal_m = reorder_if_must(oprd2_mdarr->mkldnn_memory(),
-                               oprd1_mdarr->mkldnn_memory().get_primitive_desc(),
-                               mreorder,
-                               &prims);
-    mkldnn::stream s(mkldnn::stream::kind::eager);
-    s.submit(prims).wait();
-    #endif
+    if (oprd2_mdarr->get_descriptor() != oprd1_mdarr->get_descriptor()) {
+        oprd2_internal_m.init(oprd1_mdarr->get_descriptor());
+        reorder::compute(*oprd2_mdarr, oprd2_internal_m);
+    }
 
     assert(oprd1_mdarr->ndims() == 2 || oprd1_mdarr->ndims() == 4);
 

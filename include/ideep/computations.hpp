@@ -1206,6 +1206,7 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
     auto gw_dims = weights.get_dims();
     gw_dims.insert(gw_dims.begin(), group);
+    gw_dims[1] = gw_dims[1] / group;
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
@@ -1224,6 +1225,7 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
     auto gw_dims = weights.get_dims();
     gw_dims.insert(gw_dims.begin(), group);
+    gw_dims[1] = gw_dims[1] / group;
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
@@ -1434,6 +1436,7 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
     auto gw_dims = weights.get_dims();
     gw_dims.insert(gw_dims.begin(), group);
+    gw_dims[1] = gw_dims[1] / group;
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
@@ -1451,6 +1454,7 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
     auto gw_dims = weights.get_dims();
     gw_dims.insert(gw_dims.begin(), group);
+    gw_dims[1] = gw_dims[1] / group;
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
@@ -1843,6 +1847,7 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
     auto gradgw_dims = gradw_dims;
     gradgw_dims.insert(gradgw_dims.begin(), group);
+    gradgw_dims[1] = gradgw_dims[1] / group;
     return compute_impl<alloc>(src, grady, gradgw_dims, strides,
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
@@ -1856,6 +1861,7 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
     auto gradgw_dims = gradw_dims;
     gradgw_dims.insert(gradgw_dims.begin(), group);
+    gradgw_dims[1] = gradgw_dims[1] / group;
     return compute_impl<alloc>(src, grady, gradgw_dims,
         strides, padding_l, padding_r, aalgorithm, apadding_kind);
   }

@@ -1197,46 +1197,7 @@ struct convolution_forward: public computation,
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src, const tensor& weights,
-      const tensor::dims result_dims, void *result, const tensor::dims strides,
-      const tensor::dims dilateds, const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
-      const descriptor::attr_t attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward,
-      const padding_kind appading_kind = padding_kind::zero) {
-    auto gw_dims = weights.get_dims();
-    gw_dims.insert(gw_dims.begin(), group);
-    auto gweights = tensor(
-        tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-        weights.get_data_handle());
-    return compute_impl<alloc>(src, gweights, result_dims, result, strides,
-        dilateds, padding_l, padding_r,
-        attr, aalogorithm, aprop_kind, appading_kind);
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src, const tensor& weights,
-      const tensor& bias, const tensor::dims result_dims,
-      void *result, const tensor::dims strides,
-      const tensor::dims dilateds, const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
-      const descriptor::attr_t attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward,
-      const padding_kind appading_kind = padding_kind::zero) {
-    auto gw_dims = weights.get_dims();
-    gw_dims.insert(gw_dims.begin(), group);
-    auto gweights = tensor(
-        tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-        weights.get_data_handle());
-    return compute_impl<alloc>(src, gweights, bias, result_dims, result, strides,
-        dilateds, padding_l, padding_r,
-        attr, aalogorithm, aprop_kind, appading_kind);
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src, const tensor& weights,
-      const tensor::dims result_dims, void *result, const tensor::dims strides,
+      const tensor::dims result_dims, const tensor::dims strides,
       const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       const descriptor::attr_t attr = descriptor::attr_t(),
@@ -1248,13 +1209,13 @@ struct convolution_forward: public computation,
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
-    return compute_impl<alloc>(src, gweights, result_dims, result, strides,
+    return compute_impl<alloc>(src, gweights, result_dims, strides,
         padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src, const tensor& weights,
-      const tensor& bias, const tensor::dims result_dims, void *result,
+      const tensor& bias, const tensor::dims result_dims,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       const descriptor::attr_t attr = descriptor::attr_t(),
@@ -1266,7 +1227,7 @@ struct convolution_forward: public computation,
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
-    return compute_impl<alloc>(src, gweights, bias, result_dims, result, strides,
+    return compute_impl<alloc>(src, gweights, bias, result_dims, strides,
         padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
   }
 };
@@ -1466,7 +1427,7 @@ public:
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, void *result, const tensor::dims strides,
+      const tensor::dims& gradx_dims, const tensor::dims strides,
       const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       algorithm aalgorithm = algorithm::convolution_direct,
@@ -1476,13 +1437,13 @@ public:
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
-    return compute_impl<alloc>(grady, weights, gradx_dims, result, strides,
+    return compute_impl<alloc>(grady, weights, gradx_dims, strides,
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, void *result, const tensor::dims strides,
+      const tensor::dims& gradx_dims, const tensor::dims strides,
       const tensor::dims dilates,
       const tensor::dims padding_l, const int group,
       const tensor::dims padding_r,
@@ -1493,7 +1454,7 @@ public:
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
-    return compute_impl<alloc>(grady, weights, gradx_dims, result, strides,
+    return compute_impl<alloc>(grady, weights, gradx_dims, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };
@@ -1875,55 +1836,27 @@ public:
 
   template<class alloc = utils::allocator>
   static tensor compute(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, void *gradw_r,
-      const tensor::dims strides, const tensor::dims dilates,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      const int group,
-      algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    auto gradgw_dims = gradw_dims;
-    gradgw_dims.insert(gradgw_dims.begin(), group);
-    return compute_impl<alloc>(src, grady, std::move(gradgw_dims), gradw_r, strides,
-        dilates, padding_l, padding_r, aalgorithm, apadding_kind);
-  }
-
-  template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
-      const tensor::dims strides, const tensor::dims dilates,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      const int group,
-      algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    auto gradgw_dims = gradw_dims;
-    gradgw_dims.insert(gradgw_dims.begin(), group);
-    return compute_impl<alloc>(src, grady, gradgw_dims, gradw_r, gradb_r,
-        strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, void *gradw_r,
+      const tensor::dims& gradw_dims,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
     auto gradgw_dims = gradw_dims;
     gradgw_dims.insert(gradgw_dims.begin(), group);
-    return compute_impl<alloc>(src, grady, gradgw_dims, gradw_r, strides,
+    return compute_impl<alloc>(src, grady, gradgw_dims, strides,
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
   template<class alloc = utils::allocator>
   static std::pair<tensor, tensor> compute(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, void *gradw_r, void *gradb_r,
+      const tensor::dims& gradw_dims,
       const tensor::dims strides, const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
     auto gradgw_dims = gradw_dims;
     gradgw_dims.insert(gradgw_dims.begin(), group);
-    return compute_impl<alloc>(src, grady, gradgw_dims, gradw_r, gradb_r,
+    return compute_impl<alloc>(src, grady, gradgw_dims,
         strides, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };

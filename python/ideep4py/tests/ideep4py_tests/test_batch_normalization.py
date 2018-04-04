@@ -111,7 +111,6 @@ class TestBatchNormalizationF32(unittest.TestCase):
             ideep4py.mdarray(self.mean),
             ideep4py.mdarray(self.var),
             ideep4py.mdarray(gamma),
-            ideep4py.mdarray(beta),
             self.eps
         )
         if expand_dim:

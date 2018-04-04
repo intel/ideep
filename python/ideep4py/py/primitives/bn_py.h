@@ -80,7 +80,7 @@ public:
 
   static std::vector<mdarray> Backward(mdarray *src, mdarray *grady,
                                        mdarray *mean, mdarray *variance,
-                                       mdarray *scale, mdarray *shift, float eps) {
+                                       mdarray *scale, float eps) {
     std::vector<mdarray> outs;
     auto tensors = batch_normalization_backward::compute(*src->get(),
                        *mean->get(), *variance->get(), *grady->get(),

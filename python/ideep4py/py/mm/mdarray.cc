@@ -936,32 +936,28 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
 
 PyObject *mdarray::sum(std::vector<int> axis, bool keepdims)
 {
-    err_num_t e;
-    mdarray dst;
+  err_num_t e;
 
-    auto tensor = sum_array::compute(*this, axis, e);
-    if (e != err_num_t::NOERR) {
-      throw error(mkldnn_invalid_arguments,
-            std::string("Unsupported array operation"));
-      return nullptr;
-    }
+  auto tensor = sum_array::compute(*this, axis, e);
+  if (e != err_num_t::NOERR)
+    return nullptr;
 
-    if (keepdims) {
-        std::vector<int> expected_shape;
-        for (int v = 0; v < this->ndims(); v++)
-            expected_shape.push_back(this->get_dims()[v]);
+  if (keepdims) {
+    std::vector<int> expected_shape;
+    for (int v = 0; v < this->ndims(); v++)
+      expected_shape.push_back(this->get_dims()[v]);
 
-        for (unsigned a = 0; a < axis.size(); a++)
-            expected_shape[axis[a]] = 1;
+    for (unsigned a = 0; a < axis.size(); a++)
+      expected_shape[axis[a]] = 1;
 
-        tensor.reshape(expected_shape);
-    }
+    tensor.reshape(expected_shape);
+  }
 
-    auto output = new py_handle(new mdarray(tensor));
-    auto resultobj = SWIG_Python_NewPointerObj(nullptr,
-                         SWIG_as_voidptr(output), SwigTy_mdarray,
-                         SWIG_POINTER_OWN | 0);
-    return resultobj;
+  auto output = new py_handle(new mdarray(tensor));
+  auto resultobj = SWIG_Python_NewPointerObj(nullptr,
+                   SWIG_as_voidptr(output), SwigTy_mdarray,
+                   SWIG_POINTER_OWN | 0);
+  return resultobj;
 }
 
 bool mdarray::is_mdarray(PyObject *o)

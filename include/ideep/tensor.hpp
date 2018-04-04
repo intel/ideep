@@ -546,9 +546,12 @@ public:
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
     } else if (new_dims != get_dims()) {
       // XXX: format is an issue here, only default format considered
+      // Lock buffer by auto _buff temporarily
+      std::shared_ptr<char> _buff = buffer_;
       descriptor new_desc(new_dims, get_data_type());
       void *handle = get_data_handle();
       init(new_desc, handle);
+      buffer_ = _buff;
     }
 
     return *this;

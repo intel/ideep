@@ -182,7 +182,6 @@
 }
 
 /* mdarray::sum */
-/*
 %extend mdarray {
   %feature ("kwargs") sum;
   %typemap(in) std::vector<int> axis {
@@ -282,7 +281,6 @@
     return (*self)->sum(axis, keepdims);
   }
 }
-*/
 
 /*
 %extend mdarray {

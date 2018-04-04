@@ -208,15 +208,9 @@ using descriptor = ideep::tensor::descriptor;
 
 template<class T>
 void mdarray::axpby(tensor &dst, T a, const tensor &x, T b, const tensor &y) {
-  // ideep::sum only supports float for now
-  return;
-}
-
-template<> void mdarray::axpby<float>(
-    tensor &dst, float a, const tensor &x, float b, const tensor &y) {
   auto dst_desc = dst.get_descriptor();
   auto dst_raw = dst.get_data_handle();
-  sum::compute<scratch_allocator>({a, b}, {x, y}, dst_raw, &dst_desc);
+  sum::compute<scratch_allocator>({(float)a, (float)b}, {x, y}, dst_raw, &dst_desc);
   return;
 }
 
@@ -258,8 +252,6 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   return resultobj;
 }
 
-// FIXME: explicit instance ?
-template PyObject *mdarray::inplace_axpby<double>(double, PyObject *, double, PyObject *);
 template<class T>
 PyObject *mdarray::inplace_axpby(T a, PyObject *self, T b, PyObject *o) {
   // Resource manager, for GCC do not accept lambda

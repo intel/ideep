@@ -35,6 +35,8 @@ class pooling2D
 {
 public:
   using tensor = ideep::tensor;
+  using param = ideep::param;
+  using engine = ideep::engine;
   using scratch_allocator = ideep::utils::scratch_allocator;
   using pooling_forward = ideep::pooling_forward;
   using pooling_backward = ideep::pooling_backward;
@@ -70,6 +72,32 @@ public:
 
     auto gx = pooling_backward::compute<scratch_allocator>(
                   *grady->get(), dst, *src->get(),
+                  tensor::dims {pp->sy, pp->sx},
+                  tensor::dims {pp->kh, pp->kw},
+                  tensor::dims {pp->pad_lh, pp->pad_lw},
+                  tensor::dims {pp->pad_rh, pp->pad_rw},
+                  pooling_algo_convert(pp->algo_kind));
+
+    auto out = mdarray(gx);
+    return out;
+  }
+
+  // Deprecated:
+  // use above API instead.
+  static mdarray Backward(mdarray *grady,
+                          mdarray *ws,
+                          pooling_param_t *pp) {
+    tensor src;
+    tensor dst;
+
+    src.init({pp->out_dims, grady->get()->get_data_type(),
+              engine::default_format(pp->out_dims.size())}, invalid_buffer);
+
+    if (ws)
+      dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
+
+    auto gx = pooling_backward::compute<scratch_allocator>(
+                  *grady->get(), dst, src,
                   tensor::dims {pp->sy, pp->sx},
                   tensor::dims {pp->kh, pp->kw},
                   tensor::dims {pp->pad_lh, pp->pad_lw},

@@ -26,7 +26,6 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "mdarray.h"
 #include <mkl_vml_functions.h>
-#include "mkldnn_ex.h"
 #include "ideep_pin_singletons.hpp"
 // #include "dlcp_py.h"
 

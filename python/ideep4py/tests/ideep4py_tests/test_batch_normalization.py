@@ -105,7 +105,7 @@ class TestBatchNormalizationF32(unittest.TestCase):
         gamma = gamma[self.expander]
         beta = numpy.zeros_like(gamma)
 
-        gx_act, ggamma, gbeta = batchNormalization.Backward(
+        gx_act, gW = batchNormalization.Backward(
             ideep4py.mdarray(x),
             ideep4py.mdarray(gy),
             ideep4py.mdarray(self.mean),

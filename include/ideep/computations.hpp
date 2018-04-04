@@ -3086,7 +3086,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::tuple<tensor, tensor, tensor> compute(const tensor& src,
+  static std::pair<tensor, tensor> compute(const tensor& src,
         const tensor& mean, const tensor& variance, const tensor& grady,
         const tensor& scale, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
@@ -3101,13 +3101,11 @@ public:
         comp.expected_gradw_descriptor()); */
 
     tensor gradx(comp.expected_gradx_descriptor());
-    tensor grad_scale(mean.get_descriptor());
-    tensor grad_shift(mean.get_descriptor());
+    tensor gradw(comp.expected_gradw_descriptor());
     comp.execute(
-        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
+        src, mean, variance, grady, scale, gradx, gradw);
 
-    return std::make_tuple(std::move(gradx), std::move(grad_scale),
-                           std::move(grad_shift));
+    return std::make_pair(std::move(gradx), std::move(gradw));
   }
 
 private:

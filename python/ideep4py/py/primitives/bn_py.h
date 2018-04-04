@@ -35,6 +35,7 @@
 class batchNormalization {
 public:
   using tensor = ideep::tensor;
+  using format = ideep::format;
   using alloc = ideep::utils::allocator;
   using descriptor = ideep::param::descriptor;
   using batch_normalization_forward_training = ideep::batch_normalization_forward_training;
@@ -82,13 +83,71 @@ public:
                                        mdarray *mean, mdarray *variance,
                                        mdarray *scale, float eps) {
     std::vector<mdarray> outs;
+
+    tensor scale_ = *scale->get();
+    // For old framework compatibility
+    // deprecated in new framewrok.
+    if (scale_.ndims() == 2) {
+      // scale is weights (scale + shift).
+      // cut half to scale.
+      scale_.init({{scale_.get_nelems() / 2}, scale_.get_data_type(), format::x},
+                  scale_.get_data_handle());
+    }
+
     auto tensors = batch_normalization_backward::compute(*src->get(),
                        *mean->get(), *variance->get(), *grady->get(),
-                       *scale->get(), eps);
+                       scale_, eps);
 
     outs.push_back(mdarray(std::get<0>(tensors)));
     outs.push_back(mdarray(std::get<1>(tensors)));
-    outs.push_back(mdarray(std::get<2>(tensors)));
+
+    return outs;
+  }
+
+  // Deprecated:
+  // use above forward API instead.
+  static std::vector<mdarray> Forward(mdarray *src,
+                                      mdarray *weights,
+                                      mdarray *mean,
+                                      mdarray *variance,
+                                      float eps) {
+    tensor scale;
+    tensor shift;
+    std::vector<mdarray> outs;
+    tensor weights_ = *weights->get();
+
+    scale.init({{weights_.get_nelems() / 2},
+                weights_.get_data_type(), format::x},
+                weights_.get_data_handle());
+    shift.init({{weights_.get_nelems() / 2},
+                weights_.get_data_type(), format::x},
+                weights_.get_data_handle() + weights_.get_size() / 2);
+
+    if (mean) {
+      auto dst_ = batch_normalization_forward_inference::compute(*src->get(),
+                  *mean->get(), *variance->get(), scale, shift, eps);
+
+      outs.push_back(mdarray(dst_));
+    } else {
+      auto tensors = batch_normalization_forward_training::compute(*src->get(),
+                     scale, shift, 0, eps);
+
+      auto dst_ = std::get<0>(tensors);
+      auto mean_ = std::get<1>(tensors);
+      auto variance_ = std::get<2>(tensors);
+
+      tensor inv_;
+      inv_.init({variance_.get_dims(), src->get()->get_data_type(),
+                descriptor::public_compatible_format(variance_.get_descriptor())});
+
+      batch_normalization_inv((float *)variance_.get_data_handle(), eps, variance_.get_nelems(),
+                              (float *)inv_.get_data_handle());
+
+      outs.push_back(mdarray(dst_));
+      outs.push_back(mdarray(mean_));
+      outs.push_back(mdarray(variance_));
+      outs.push_back(mdarray(inv_));
+    }
 
     return outs;
   }

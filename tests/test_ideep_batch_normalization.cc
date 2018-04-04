@@ -137,8 +137,17 @@ protected:
     auto gs = batch_normalization_backward::compute(src_, mean_,
         variance_, grady_, scale_, p.eps);
 
+    tensor gscale;
+    tensor gshift;
+    tensor gw = std::get<1>(gs);
+
+    gscale.init({{gw.get_nelems() / 2}, gw.get_data_type(), format::x},
+                gw.get_data_handle());
+    gshift.init({{gw.get_nelems() / 2}, gw.get_data_type(), format::x},
+                (void *)((unsigned long long)gw.get_data_handle() + gw.get_size() / 2));
+
     check_bnrm_bwd<data_t>(p, src_, grady_, mean_, variance_, scale_,
-        std::get<0>(gs), std::get<1>(gs), std::get<2>(gs),
+        std::get<0>(gs), gscale, gshift,
         batch_normalization_flag::use_scale_shift, prop_kind::backward);
   }
 

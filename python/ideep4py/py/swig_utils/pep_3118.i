@@ -60,7 +60,7 @@
 }
 
 %typemap(in) (VIEW) (int res, Py_buffer *view = nullptr
-  , int flags = PyBUF_C_CONTIGUOUS | PyBUF_RECORDS) {
+  , int flags = PyBUF_C_CONTIGUOUS | PyBUF_RECORDS_RO) {
   view = new Py_buffer;
   res = PyObject_GetBuffer($input, view, flags);
   if (res != 0) {

@@ -121,7 +121,7 @@ public:
                 weights_.get_data_handle());
     shift.init({{weights_.get_nelems() / 2},
                 weights_.get_data_type(), format::x},
-                weights_.get_data_handle() + weights_.get_size() / 2);
+                (char *)weights_.get_data_handle() + weights_.get_size() / 2);
 
     if (mean) {
       auto dst_ = batch_normalization_forward_inference::compute(*src->get(),

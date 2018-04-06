@@ -333,7 +333,7 @@
 }
 */
 
-class mdarray: public py_handle {
+class mdarray {
 public:
   // It is deliberately NOT matching prototypes!
   // FIXME

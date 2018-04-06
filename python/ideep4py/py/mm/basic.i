@@ -23,14 +23,8 @@
 
 
 %{
+  #define SWIG_FILE_WITH_INIT
   #include "basic.h"
 %}
 
 %include "basic.h"
-
-class basic {
-public:
-    static PyObject *copyto(mdarray *dst, mdarray *src);
-    static PyObject *copyto(mdarray *dst, Py_buffer *view);
-    static mdarray acc_sum(std::vector<mdarray> arrays);
-};

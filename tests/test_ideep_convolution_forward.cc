@@ -68,15 +68,12 @@ protected:
     }
 
     dst_dims_ = {cd.mb, cd.oc, cd.oh, cd.ow};
-    auto dst_size = std::accumulate(dst_dims_.begin(), dst_dims_.end(),
-        sizeof(data_t_dst), std::multiplies<int>());
-    raw_dst_.reset(new char [dst_size]);
   }
 
   tensor src_, weights_, bias_;
   tensor::dims dst_dims_;
   tensor::dims padR_;
-  std::unique_ptr<char []> raw_dst_;
+  tensor dst_;
   bool with_bias_;
 };
 
@@ -160,16 +157,17 @@ TEST_P(convolution_test, TestCompute) {
     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
   test_convolution_sizes_t cd = p.sizes;
 
-  tensor dst;
+  auto dst = make_output();
 
   auto test = [&]() {
-    dst = with_bias_ ?
-      convolution_forward::compute(src_, weights_, bias_, dst_dims_,
-          raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
+    if(with_bias_)
+      convolution_forward::compute(src_, weights_, bias_, dst_dims_, dst,
+          tensor::dims {cd.strh, cd.strw },
           tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
-          padR_) :
-      convolution_forward::compute(src_, weights_, dst_dims_,
-          raw_dst_.get(), tensor::dims {cd.strh, cd.strw },
+          padR_);
+    else
+      convolution_forward::compute(src_, weights_, dst_dims_, dst,
+          tensor::dims {cd.strh, cd.strw },
           tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw },
           padR_);
   };
@@ -186,34 +184,6 @@ TEST_P(convolution_test, TestCompute) {
   compare_tensor<float>(ref_dst, dst);
 }
 
-TEST_P(convolution_test, TestCompute2) {
-  test_convolution_params_t p =
-    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
-  test_convolution_sizes_t cd = p.sizes;
-
-  tensor dst;
-
-  auto test = [&]() {
-    dst = with_bias_ ?
-      convolution_forward::compute(src_, weights_, bias_, dst_dims_,
-          tensor::dims {cd.strh, cd.strw }, tensor::dims {cd.dilh, cd.dilw},
-          tensor::dims {cd.padh, cd.padw }, padR_) :
-      convolution_forward::compute(src_, weights_, dst_dims_,
-          tensor::dims {cd.strh, cd.strw }, tensor::dims {cd.dilh, cd.dilw},
-          tensor::dims {cd.padh, cd.padw }, padR_);
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  tensor ref_dst(dst.get_descriptor());
-  test_convolution_attr_t attr = p.attr;
-  attr.mkldnn_attr_recreate();
-  compute_ref_conv_fwd<float, float, float, float>(
-      cd, attr, src_, weights_, bias_, ref_dst);
-
-  compare_tensor<float>(ref_dst, dst);
-}
 #define FP32
 #define DIRECTION_FORWARD
 #include "convolution_common.h"

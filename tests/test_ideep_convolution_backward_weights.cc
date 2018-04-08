@@ -51,21 +51,12 @@ protected:
       tensor::dims {cd.oc, cd.ic, cd.kh, cd.kw};
 
     gradb_dims_ = {cd.oc};
-
-    auto gradw_size = std::accumulate(gradw_dims_.begin(), gradw_dims_.end(),
-        sizeof(data_t), std::multiplies<int>());
-    auto gradb_size = std::accumulate(gradb_dims_.begin(), gradb_dims_.end(),
-        sizeof(data_t), std::multiplies<int>());
-    raw_gradw_.reset(new char [gradw_size]);
-    raw_gradb_.reset(new char [gradb_size]);
   }
 
   tensor src_, grady_;
   tensor::dims gradw_dims_;
   tensor::dims gradb_dims_;
   tensor::dims padR_;
-  std::unique_ptr<char []> raw_gradw_;
-  std::unique_ptr<char []> raw_gradb_;
 };
 
 using convolution_test =
@@ -76,10 +67,11 @@ TEST_P(convolution_test, TestCompute) {
     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
   test_convolution_sizes_t cd = p.sizes;
 
-  std::pair<tensor, tensor> gradwb;
+  auto gradw = make_output();
+  auto gradb = make_output();
   auto test = [&]() {
-    gradwb = convolution_backward_weights::compute(src_, grady_,
-        gradw_dims_, raw_gradw_.get(), raw_gradb_.get(),
+    convolution_backward_weights::compute(src_, grady_,
+        gradw_dims_, gradw, gradb,
         tensor::dims {cd.strh, cd.strw}, tensor::dims {cd.dilh, cd.dilw},
         tensor::dims {cd.padh, cd.padw}, padR_);
   };
@@ -87,40 +79,13 @@ TEST_P(convolution_test, TestCompute) {
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
-  tensor ref_gradw(gradwb.first.get_descriptor());
+  tensor ref_gradw(gradw.get_descriptor());
   //tensor::descriptor gradb_desc ({grady_.get_dim(1)}, grady_.get_data_type());
-  tensor ref_gradb(gradwb.second.get_descriptor());
+  tensor ref_gradb(gradb.get_descriptor());
   compute_ref_conv_bwd_weights<float>(cd, src_, grady_, ref_gradw);
-  compare_tensor<float>(ref_gradw, gradwb.first);
+  compare_tensor<float>(ref_gradw, gradw);
   compute_ref_conv_bwd_bias<float>(cd, grady_, ref_gradb);
-  compare_tensor<float>(ref_gradb, gradwb.second);
-}
-
-TEST_P(convolution_test, TestCompute2) {
-  test_convolution_params_t p =
-    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
-  test_convolution_sizes_t cd = p.sizes;
-
-  std::pair<tensor, tensor> gradwb;
-  bool with_bias_ = true;
-  auto test = [&]() {
-    gradwb = convolution_backward_weights::compute(
-        src_, grady_, gradw_dims_, with_bias_,
-        tensor::dims {cd.strh, cd.strw},
-        tensor::dims {cd.dilh, cd.dilw},
-        tensor::dims {cd.padh, cd.padw}, padR_);
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  tensor ref_gradw(gradwb.first.get_descriptor());
-  //tensor::descriptor gradb_desc ({grady_.get_dim(1)}, grady_.get_data_type());
-  tensor ref_gradb(gradwb.second.get_descriptor());
-  compute_ref_conv_bwd_weights<float>(cd, src_, grady_, ref_gradw);
-  compare_tensor<float>(ref_gradw, gradwb.first);
-  compute_ref_conv_bwd_bias<float>(cd, grady_, ref_gradb);
-  compare_tensor<float>(ref_gradb, gradwb.second);
+  compare_tensor<float>(ref_gradb, gradb);
 }
 
 #define FP32

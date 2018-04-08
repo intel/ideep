@@ -816,5 +816,17 @@ protected:
   std::shared_ptr<tensor> twin_;
 };
 
+static inline tensor make_output(void *buf = nullptr) {
+  tensor ret;
+  ret.set_data_handle(buf);
+  return ret;
+}
+
+/*
+static inline tensor alloc_output(tensor::dims adims) {
+  tensor ret;
+  return ret;
+}*/
+
 }
 #endif

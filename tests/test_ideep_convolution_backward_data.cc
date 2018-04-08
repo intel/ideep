@@ -52,15 +52,11 @@ protected:
     }
 
     gradx_dims_ = {cd.mb, cd.ic, cd.ih, cd.iw};
-    auto gradx_size = std::accumulate(gradx_dims_.begin(), gradx_dims_.end(),
-        sizeof(data_t_gradx), std::multiplies<int>());
-    raw_gradx_.reset(new char [gradx_size]);
   }
 
   tensor weights_, grady_;
   tensor::dims gradx_dims_;
   tensor::dims padR_;
-  std::unique_ptr<char []> raw_gradx_;
 };
 
 using convolution_test =
@@ -73,30 +69,8 @@ TEST_P(convolution_test, TestCompute) {
 
   tensor gradx;
   auto test = [&] () {
-    gradx = convolution_backward_data::compute(grady_, weights_,
-        gradx_dims_, raw_gradx_.get(), tensor::dims {cd.strh, cd.strw},
-        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw},
-        padR_);
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  tensor ref_gradx(gradx.get_descriptor());
-  compute_ref_conv_bwd_data<float, float, float, float>(cd, ref_gradx,
-      weights_, grady_);
-  compare_tensor<float>(ref_gradx, gradx);
-}
-
-TEST_P(convolution_test, TestCompute2) {
-  test_convolution_params_t p =
-    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
-  test_convolution_sizes_t cd = p.sizes;
-
-  tensor gradx;
-  auto test = [&] () {
-    gradx = convolution_backward_data::compute(grady_, weights_,
-        gradx_dims_, tensor::dims {cd.strh, cd.strw},
+    convolution_backward_data::compute(grady_, weights_,
+        gradx_dims_, gradx, tensor::dims {cd.strh, cd.strw},
         tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw},
         padR_);
   };

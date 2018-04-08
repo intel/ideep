@@ -35,11 +35,9 @@ protected:
             static_cast<format>(p.diff_src_format));
 
     gradx_ref_.init(gradx_desc);
-    raw_gradx_.reset(new char [gradx_desc.get_size()]);
   }
 
   tensor grady_, weights_, gradx_ref_;
-  std::unique_ptr<char []> raw_gradx_;
 };
 
 using inner_product_test_float = inner_product_test_bwd_data<float>;
@@ -56,31 +54,7 @@ TEST_P(inner_product_test_float, TestsBackwardData) {
     tensor::dims {ipd.mb, ipd.ic};
 
   auto test = [&] () {
-    gradx = inner_product_backward_data::compute(grady_, weights_, gradx_dims,
-        raw_gradx_.get());
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  compute_ref_inner_product_bwd_data<float>(
-      p.test_ipd, grady_, weights_, gradx_ref_);
-  compare_tensor<float>(gradx_ref_, gradx);
-}
-
-TEST_P(inner_product_test_float, TestsBackwardData2) {
-  auto p = ::testing::TestWithParam<inprod_test_bwd_data_params>::GetParam();
-  auto ipd = p.test_ipd;
-  fill_tensor(grady_);
-  fill_tensor(weights_);
-
-  tensor gradx;
-  auto gradx_dims = ipd.kh > 1 && ipd.kw > 1 ?
-    tensor::dims {ipd.mb, ipd.ic, ipd.kh, ipd.kw} :
-    tensor::dims {ipd.mb, ipd.ic};
-
-  auto test = [&] () {
-    gradx = inner_product_backward_data::compute(grady_, weights_, gradx_dims);
+    inner_product_backward_data::compute(grady_, weights_, gradx_dims, gradx);
   };
 
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))

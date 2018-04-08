@@ -37,7 +37,6 @@ protected:
         tensor::descriptor({ipd.oc, ipd.ic}, data_type,
             static_cast<format>(p.diff_weights_format));
     gradw_ref_.init(gradw_desc);
-    raw_gradw_.reset(new char [gradw_desc.get_size()]);
 
     auto gradb_desc = with_bias ?
       tensor::descriptor({ipd.oc}, data_type,
@@ -45,12 +44,9 @@ protected:
         tensor::descriptor(tensor::dims{}, data_type,
             static_cast<format>(p.diff_bias_format));
     gradb_ref_.init(gradb_desc);
-    raw_gradb_.reset(new char [gradb_desc.get_size()]);
   }
 
   tensor src_, grady_, gradw_ref_, gradb_ref_;
-  std::unique_ptr<char []> raw_gradw_;
-  std::unique_ptr<char []> raw_gradb_;
 };
 
 using inner_product_test_float = inner_product_test_bwd_weights<float>;
@@ -67,15 +63,12 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
     p.diff_bias_format != mkldnn::memory::format::format_undef;
 
   tensor gradw;
-  std::pair<tensor, tensor> gradwb;
+  tensor gradb;
   auto test = [&] () {
     if (with_bias) {
-      gradwb = inner_product_backward_weights::compute(
-          src_, grady_, raw_gradw_.get(), raw_gradb_.get());
-      gradw = gradwb.first;
+      inner_product_backward_weights::compute(src_, grady_, gradw, gradb);
     } else
-      gradw = inner_product_backward_weights::compute(
-          src_, grady_, raw_gradw_.get());
+      inner_product_backward_weights::compute(src_, grady_, gradw);
   };
 
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
@@ -86,37 +79,7 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
 
   if (with_bias) {
     compute_ref_inner_product_bwd_bias<float>(ipd, grady_, gradb_ref_);
-    compare_tensor<float>(gradb_ref_, gradwb.second);
-  }
-}
-
-TEST_P(inner_product_test_float, TestBackwardWeights2) {
-  auto p =
-    ::testing::TestWithParam<inprod_test_bwd_weights_params>::GetParam();
-  auto ipd = p.test_ipd;
-  fill_tensor(src_);
-  fill_tensor(grady_);
-
-  bool with_bias =
-    p.diff_bias_format != mkldnn::memory::format::format_undef;
-
-  tensor gradw;
-  std::pair<tensor, tensor> gradwb;
-  auto test = [&] () {
-    gradwb = inner_product_backward_weights::compute(
-        src_, grady_);
-    gradw = gradwb.first;
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  compute_ref_inner_product_bwd_weights<float>(ipd, src_, grady_, gradw_ref_);
-  compare_tensor<float>(gradw_ref_, gradw);
-
-  if (with_bias) {
-    compute_ref_inner_product_bwd_bias<float>(ipd, grady_, gradb_ref_);
-    compare_tensor<float>(gradb_ref_, gradwb.second);
+    compare_tensor<float>(gradb_ref_, gradb);
   }
 }
 

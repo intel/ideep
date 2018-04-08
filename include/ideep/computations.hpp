@@ -1020,13 +1020,13 @@ struct convolution_forward: public computation,
   template <class alloc, typename ...Ts>
   static void compute_impl(const tensor& src,
       const tensor& weights, const tensor& bias,
-      const tensor::dims& result_dims, tensor& dst, Ts&&... args) {
+      const tensor::dims& dst_dims, tensor& dst, Ts&&... args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        weights.get_dims(), bias.get_dims(), result_dims, args...);
+        weights.get_dims(), bias.get_dims(), dst_dims, args...);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(),
-        tensor::descriptor {result_dims, src.get_data_type()},
+        tensor::descriptor {dst_dims, src.get_data_type()},
         std::forward<Ts>(args)...);
 
     // XXX: Performance evaluation
@@ -1050,11 +1050,11 @@ struct convolution_forward: public computation,
 
   template <class alloc, typename ...Ts>
   static void compute_impl(const tensor& src,
-      const tensor& weights, const tensor::dims& result_dims,
+      const tensor& weights, const tensor::dims& dst_dims,
       tensor& dst, Ts&&... args) {
-    tensor::descriptor result_desc(result_dims, src.get_data_type());
+    tensor::descriptor result_desc(dst_dims, src.get_data_type());
     std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
-        weights.get_dims(), result_dims, args...);
+        weights.get_dims(), dst_dims, args...);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
@@ -2182,6 +2182,18 @@ struct concat_forward : public computation,
           "could not create a concat primitive descriptor");
       reset(result);
     }
+    descriptor(int concat_dimension,
+        const std::vector<tensor::descriptor> &inputs,
+        const tensor::descriptor out_desc) {
+      mkldnn_primitive_desc_t result;
+      auto c_api_inputs = cpp_to_c(inputs);
+      error::wrap_c_api(mkldnn_concat_primitive_desc_create(
+              &result, out_desc.get_mkldnn_memory_desc_t(),
+              (int)c_api_inputs.size(),
+              concat_dimension, &c_api_inputs[0]),
+          "could not create a concat primitive descriptor");
+      reset(result);
+    }
   };
 public:
   using computation::execute;
@@ -2195,7 +2207,8 @@ public:
 
   concat_forward() = default;
 
-  concat_forward(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
+  concat_forward(int concat_dimension,
+      const std::vector<tensor::descriptor> &inputs) {
     init(concat_dimension, inputs);
   }
 
@@ -2204,7 +2217,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(std::vector<tensor> &inputs, int axis) {
+  static void compute(std::vector<tensor> &inputs, int axis, tensor& dst) {
     std::vector<tensor::descriptor> tdesc;
     std::vector<tensor::data_type> inputs_dt;
     std::vector<tensor::dims> inputs_dims;
@@ -2223,7 +2236,8 @@ public:
     for (int i = 1; i <tdesc.size(); i++) {
       if (inputs_format[i] != inputs_format[0]) {
         auto src_in = inputs[i];
-        src_in.init<alloc, concat_forward>({inputs_dims[i], inputs_dt[i], inputs_format[0]});
+        src_in.init<alloc, concat_forward>(
+            {inputs_dims[i], inputs_dt[i], inputs_format[0]});
         reorder::compute(inputs[i], src_in);
         inputs[i] = std::move(src_in);
         tdesc[i] = inputs[i].get_descriptor();
@@ -2231,12 +2245,8 @@ public:
     }
 
     auto comp = fetch_or_create_m(key, axis, tdesc);
-
-    tensor dst;
     dst.init<alloc, concat_forward>(comp.expected_dst_descriptor());
-
     comp.execute(inputs, dst);
-    return dst;
   }
 
   static std::pair<tensor, std::vector<int32_t>> compute(
@@ -2431,57 +2441,33 @@ public:
 
   using computation::expected_dst_descriptor;
 
+  // Inplace support?
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& scale,
-      const tensor& shift, void *dst_r, float epsilon) {
+  static void compute(const tensor& src, const tensor& scale,
+      const tensor& shift, tensor& dst, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 3, epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
 
-    /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_weights_descriptor()); */
-
-    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    dst.init<alloc, batch_normalization_forward_inference>(
+        comp.expected_dst_descriptor());
     comp.execute(src, scale, shift, dst);
-    return dst;
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& mean,
+  static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& scale,
-      const tensor& shift, void *dst_r, float epsilon) {
+      const tensor& shift, tensor& dst, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 5, epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
 
-    // weights_ is small
-    /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_weights_descriptor()); */
-
-    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    dst.init<alloc, batch_normalization_forward_inference>(
+        comp.expected_dst_descriptor());
     comp.execute(src, mean, variance, scale, shift, dst);
-    return dst;
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& mean,
-      const tensor& variance, const tensor& scale,
-      const tensor& shift, float epsilon) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), 5, epsilon);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
-
-    // weights_ is small
-    /* comp.weights_.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_weights_descriptor()); */
-
-    tensor dst(comp.expected_dst_descriptor());
-    comp.execute(src, mean, variance, scale, shift, dst);
-    return dst;
   }
 private:
   param weights_;
@@ -2568,8 +2554,8 @@ public:
   using computation::expected_dst_descriptor;
 
   template<class alloc = utils::allocator>
-  tensor compute(const tensor& src, const tensor& scale, const tensor& shift,
-      void *dst_r, void *mean_r, void *variance_r,
+  static void compute(const tensor& src, const tensor& scale, const tensor& shift,
+      tensor& dst, tensor& mean, tensor& variance,
       float momentum, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
@@ -2577,48 +2563,19 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
-    /* comp.weights_.init<alloc, batch_normalization_forward_training>(
-        comp.expected_weights_descriptor()); */
-
-    tensor dst(comp.expected_dst_descriptor(), dst_r);
-    tensor mean(comp.expected_statistic_descriptor(), mean_r);
-    tensor variance(comp.expected_statistic_descriptor(), variance_r);
+    dst.init<alloc, batch_normalization_forward_training>(
+        comp.expected_dst_descriptor());
+    mean.init(comp.expected_statistic_descriptor());
+    variance.init(comp.expected_statistic_descriptor());
 
     comp.execute(src, scale, shift, dst, mean, variance);
-    return dst;
   }
 
   template<class alloc = utils::allocator>
-  static std::tuple<tensor, tensor, tensor> compute(const tensor& src,
-      const tensor& scale, const tensor& shift, float momentum, float epsilon) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), epsilon);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
-
-    /* comp.weights_.init<alloc, batch_normalization_forward_training>(
-        comp.expected_weights_descriptor()); */
-
-    tensor dst;
-    tensor mean;
-    tensor variance;
-    dst.init<alloc, batch_normalization_forward_training>(
-        comp.expected_dst_descriptor());
-    mean.init<alloc, batch_normalization_forward_training>(
-        comp.expected_statistic_descriptor());
-    variance.init<alloc, batch_normalization_forward_training>(
-        comp.expected_statistic_descriptor());
-
-    comp.execute(src, scale, shift, dst, mean, variance);
-    return std::make_tuple(std::move(dst), std::move(mean),
-                           std::move(variance));
-  }
-
-  static tensor compute(const tensor& src, const tensor& scale,
-      const tensor& shift, void *dst_r, void *mean_r,
-      void *variance_r, void *running_mean_r,
-      void *running_var_r, float momentum, float epsilon) {
+  static void compute(const tensor& src, const tensor& scale,
+      const tensor& shift, tensor& dst, tensor& mean,
+      tensor& variance, tensor& running_mean,
+      tensor& running_var, float momentum, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
@@ -2626,15 +2583,15 @@ public:
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     // TODO: Substitue running statistics calculation with lighter version
-    tensor dst(comp.expected_dst_descriptor(), dst_r);
-    tensor mean(comp.expected_statistic_descriptor(), mean_r);
-    tensor variance(comp.expected_statistic_descriptor(), variance_r);
-    tensor running_mean(comp.expected_statistic_descriptor(), running_mean_r);
-    tensor running_var(comp.expected_statistic_descriptor(), running_var_r);
+    dst.init<alloc, batch_normalization_forward_training>(
+        comp.expected_dst_descriptor());
+    mean.init(comp.expected_statistic_descriptor());
+    variance.init(comp.expected_statistic_descriptor());
+    running_mean.init(comp.expected_statistic_descriptor());
+    running_var.init(comp.expected_statistic_descriptor());
 
     comp.execute(src, scale, shift, dst, mean, variance);
     comp.running_statistic(mean, variance, running_mean, running_var);
-    return dst;
   }
 
 private:
@@ -2753,56 +2710,22 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& mean,
+  static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
-      void *gradx_r, void *grad_scale_r, void *grad_shift_r, float epsilon) {
+      tensor& gradx, tensor& grad_scale, tensor& grad_shift, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
-    /* comp.weights_.init<alloc, batch_normalization_backward>(
-        comp.expected_weights_descriptor());
-    comp.gradw_.init<alloc, batch_normalization_backward>(
-        comp.expected_gradw_descriptor()); */
-
-    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
-    tensor grad_scale(mean.get_descriptor(), grad_scale_r);
-    tensor grad_shift(mean.get_descriptor(), grad_shift_r);
-    comp.execute(
-        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
-
-    return gradx;
-  }
-
-  template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor& src,
-        const tensor& mean, const tensor& variance, const tensor& grady,
-        const tensor& scale, float epsilon) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), epsilon);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        src.get_descriptor(), epsilon);
-
-    /* comp.weights_.init<alloc, batch_normalization_backward>(
-        comp.expected_weights_descriptor());
-    comp.gradw_.init<alloc, batch_normalization_backward>(
-        comp.expected_gradw_descriptor()); */
-
-    tensor gradx;
-    tensor gradw;
     gradx.init<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
-    gradw.init<alloc, batch_normalization_backward>(
-        comp.expected_gradw_descriptor());
+    grad_scale.init(mean.get_descriptor());
+    grad_shift.init(mean.get_descriptor());
     comp.execute(
-        src, mean, variance, grady, scale, gradx, gradw);
-
-    return std::make_pair(std::move(gradx), std::move(gradw));
+        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
   }
-
 private:
   tensor weights_, gradw_;
 };
@@ -2890,8 +2813,8 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& weights,
-      const tensor& bias, void *dst_r) {
+  static void compute(const tensor& src, const tensor& weights,
+      const tensor& bias, tensor& dst) {
     tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src.get_data_type());
 
@@ -2913,13 +2836,14 @@ struct inner_product_forward: public computation,
       reorder::compute(weights, weights_in);
     }
 
-    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    dst.init<alloc, inner_product_forward>(
+        comp.expected_dst_descriptor());
     comp.execute(src_in, weights_in, bias, dst);
-    return dst;
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& weights, void *dst_r) {
+  static void compute(
+      const tensor& src, const tensor& weights, tensor& dst) {
     tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src.get_data_type());
 
@@ -2941,68 +2865,9 @@ struct inner_product_forward: public computation,
       reorder::compute(weights, weights_in);
     }
 
-    tensor dst(comp.expected_dst_descriptor(), dst_r);
+    dst.init<alloc, inner_product_forward>(
+        comp.expected_dst_descriptor());
     comp.execute(src_in, weights_in, dst);
-    return dst;
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& weights,
-      const tensor& bias) {
-    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
-
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        weights.get_dims(), bias.get_dims(), dst_dims);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        weights.get_descriptor(), bias.get_descriptor(), dst_desc);
-
-    auto src_in = src;
-    auto weights_in = weights;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<alloc, inner_product_forward>(
-          comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
-    tensor dst;
-    dst.init<alloc, inner_product_forward>(comp.expected_dst_descriptor());
-    comp.execute(src_in, weights_in, bias, dst);
-    return dst;
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, const tensor& weights) {
-    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
-
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        weights.get_dims(), dst_dims);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        weights.get_descriptor(), dst_desc);
-
-    auto src_in = src;
-    auto weights_in = weights;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<alloc, inner_product_forward>(
-          comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
-    tensor dst;
-    dst.init<alloc, inner_product_forward>(comp.expected_dst_descriptor());
-    comp.execute(src_in, weights_in, dst);
-    return dst;
   }
 };
 
@@ -3057,8 +2922,8 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute( const tensor& grady, const tensor& weights,
-      tensor::dims gradx_dims, void* gradx_r) {
+  static void compute( const tensor& grady, const tensor& weights,
+      tensor::dims gradx_dims, tensor& gradx) {
     tensor::descriptor gradx_desc(gradx_dims, grady.get_data_type());
 
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
@@ -3080,39 +2945,9 @@ public:
       reorder::compute(weights, weights_in);
     }
 
-    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
+    gradx.init<alloc, inner_product_backward_data>(
+        comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
-    return gradx;
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute( const tensor& grady, const tensor& weights,
-      tensor::dims gradx_dims) {
-    tensor::descriptor gradx_desc(gradx_dims, grady.get_data_type());
-
-    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
-        weights.get_dims(), gradx_dims);
-
-    auto comp = fetch_or_create_m(key, gradx_desc,
-        weights.get_descriptor(), grady.get_descriptor());
-
-    auto grady_in = grady;
-    auto weights_in = weights;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<alloc, inner_product_backward_data>(
-          comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<alloc, inner_product_backward_data>(
-          comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
-    tensor gradx;
-    gradx.init<alloc, inner_product_backward_data>(comp.expected_gradx_descriptor());
-    comp.execute(grady_in, weights_in, gradx);
-    return gradx;
   }
 };
 
@@ -3193,7 +3028,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& x, const tensor& grady, void *gradw_r) {
+  static void compute(const tensor& x, const tensor& grady, tensor& gradw) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
     tensor::descriptor gradw_desc(gradw_dims, grady.get_data_type());
@@ -3216,14 +3051,14 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
+    gradw.init<alloc, inner_product_backward_weights>(
+        comp.expected_gradw_descriptor());
     comp.execute(x_in, grady_in, gradw);
-    return gradw;
   }
 
   template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor& x, const tensor& grady, void *gradw_r,
-      void *gradb_r) {
+  static void compute(const tensor& x, const tensor& grady, tensor& gradw,
+      tensor& gradb) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
 
@@ -3250,70 +3085,16 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    tensor gradw(comp.expected_gradw_descriptor(), gradw_r);
-    tensor gradb(comp.expected_gradb_descriptor(), gradb_r);
+    gradw.init<alloc, inner_product_backward_weights>(
+        comp.expected_gradw_descriptor());
+    gradb.init(comp.expected_gradb_descriptor());
     comp.execute(x_in, grady_in, gradw, gradb);
-    return std::make_pair(std::move(gradw), std::move(gradb));
-  }
-
-  template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor& x, const tensor& grady) {
-    auto gradw_dims = x.get_dims();
-    gradw_dims[0] = grady.get_dim(1);
-
-    tensor::dims gradb_dims = {grady.get_dim(1)};
-    tensor::descriptor gradw_desc(gradw_dims, x.get_data_type());
-    tensor::descriptor gradb_desc(gradb_dims, x.get_data_type());
-
-    auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
-        gradb_dims, grady.get_dims());
-
-    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc, gradb_desc,
-        grady.get_descriptor());
-
-    auto x_in = x;
-    auto grady_in = grady;
-    if (x.get_descriptor() != comp.expected_src_descriptor()) {
-      x_in.init<alloc, inner_product_backward_weights>(
-          comp.expected_src_descriptor());
-      reorder::compute(x, x_in);
-    }
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<alloc, inner_product_backward_weights>(
-          comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
-    tensor gradw;
-    tensor gradb;
-    gradw.init<alloc, inner_product_backward_weights>(comp.expected_gradw_descriptor());
-    gradb.init<alloc, inner_product_backward_weights>(comp.expected_gradb_descriptor());
-    comp.execute(x_in, grady_in, gradw, gradb);
-    return std::make_pair(std::move(gradw), std::move(gradb));
   }
 };
 
 struct dropout_forward {
 public:
   dropout_forward() = default;
-
-  /*
-  static uint32_t randomNumberSeed() {
-    // from folly/caffe2
-    static std::atomic<uint32_t> seed(0);
-    auto tv = std::chrono::system_clock::now().time_since_epoch();
-    uint64_t usec = static_cast<uint64_t>(
-            std::chrono::duration_cast<std::chrono::microseconds>(tv).count());
-    uint32_t tv_sec = usec / 1000000;
-    uint32_t tv_usec = usec % 1000000;
-    const uint32_t kPrime0 = 51551;
-    const uint32_t kPrime1 = 61631;
-    const uint32_t kPrime2 = 64997;
-    const uint32_t kPrime3 = 111857;
-    return kPrime0 * (seed++) + kPrime1 * static_cast<uint32_t>(getpid()) +
-        kPrime2 * tv_sec + kPrime3 * tv_usec;
-  }*/
-
 
   static void bernoulli_generate(const long n, const double p, int* r) {
     std::srand(std::time(0));
@@ -3332,18 +3113,20 @@ public:
         VSLStreamStatePtr stream;
         vslNewStream(&stream, VSL_BRNG_MCG31, seed);
         vslSkipAheadStream(stream, my_offset);
-        viRngBernoulli(VSL_RNG_METHOD_BERNOULLI_ICDF, stream, my_amount, r + my_offset, p);
+        viRngBernoulli(VSL_RNG_METHOD_BERNOULLI_ICDF, stream,
+            my_amount, r + my_offset, p);
         vslDeleteStream(&stream);
       }
     }
   }
 
   template<class alloc, class T>
-  static std::pair<tensor, tensor> compute_impl(const tensor &src, float ratio) {
+  static std::pair<tensor, tensor> compute_impl(const tensor &src, float ratio,
+      tensor& dst, tensor& mask) {
     const auto scale = 1.0 / (1.0 - ratio);
     const auto size = src.get_nelems();
-    tensor mask(src.get_descriptor());
-    tensor dst(src.get_descriptor());
+    mask.init(src.get_descriptor());
+    dst.init(src.get_descriptor());
 
     /*
     // TODO:
@@ -3363,23 +3146,22 @@ public:
       mask_data[i] = bernouli_nums[i] * scale;
       dst_data[i] = mask_data[i] * src_data[i];
     }
-
-    return std::make_pair(std::move(mask), std::move(dst));
   }
 
   template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor &src, float ratio) {
+  static std::pair<tensor, tensor> compute(const tensor &src, float ratio,
+      tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
     case tensor::data_type::f32:
-      return compute_impl<alloc, float>(src, ratio);
+      return compute_impl<alloc, float>(src, ratio, dst, mask);
     case tensor::data_type::s32:
-      return compute_impl<alloc, int32_t>(src, ratio);
+      return compute_impl<alloc, int32_t>(src, ratio, dst, mask);
     case tensor::data_type::s16:
-      return compute_impl<alloc, int16_t>(src, ratio);
+      return compute_impl<alloc, int16_t>(src, ratio, dst, mask);
     case tensor::data_type::s8:
-      return compute_impl<alloc, int8_t>(src, ratio);
+      return compute_impl<alloc, int8_t>(src, ratio, dst, mask);
     case tensor::data_type::u8:
-      return compute_impl<alloc, uint8_t>(src, ratio);
+      return compute_impl<alloc, uint8_t>(src, ratio, dst, mask);
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }
@@ -3391,9 +3173,9 @@ public:
   dropout_backward() = default;
 
   template<class alloc, class T>
-  static tensor compute_impl(const tensor &mask, const tensor &gy) {
+  static void compute_impl(const tensor &mask, const tensor &gy, tensor& gx) {
     const auto size = mask.get_nelems();
-    tensor gx(gy.get_descriptor());
+    gx.init(gy.get_descriptor());
 
     const auto mask_data = static_cast<T *>(mask.get_data_handle());
     const auto gy_data = static_cast<T *>(gy.get_data_handle());
@@ -3403,23 +3185,21 @@ public:
     for (size_t i = 0; i < size; i++) {
       gx_data[i] = mask_data[i] * gy_data[i];
     }
-
-    return gx;
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &mask, const tensor &gy) {
+  static tensor compute(const tensor &mask, const tensor &gy, tensor& gx) {
     switch(gy.get_data_type()) {
     case tensor::data_type::f32:
-      return compute_impl<alloc, float>(mask, gy);
+      return compute_impl<alloc, float>(mask, gy, gx);
     case tensor::data_type::s32:
-      return compute_impl<alloc, int32_t>(mask, gy);
+      return compute_impl<alloc, int32_t>(mask, gy, gx);
     case tensor::data_type::s16:
-      return compute_impl<alloc, int16_t>(mask, gy);
+      return compute_impl<alloc, int16_t>(mask, gy, gx);
     case tensor::data_type::s8:
-      return compute_impl<alloc, int8_t>(mask, gy);
+      return compute_impl<alloc, int8_t>(mask, gy, gx);
     case tensor::data_type::u8:
-      return compute_impl<alloc, uint8_t>(mask, gy);
+      return compute_impl<alloc, uint8_t>(mask, gy, gx);
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }

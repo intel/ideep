@@ -42,11 +42,9 @@ protected:
     tensor::descriptor dst_desc({ipd.mb, ipd.oc}, data_type,
         static_cast<format>(p.dst_format));
     dst_ref_.init(dst_desc);
-    raw_dst_.reset(new char [dst_desc.get_size()]);
   }
 
   tensor src_, weights_, bias_, dst_ref_;
-  std::unique_ptr<char []> raw_dst_;
 };
 
 using inner_product_test_float = inner_product_test<float>;
@@ -63,34 +61,9 @@ TEST_P(inner_product_test_float, TestsForward) {
   tensor dst;
   auto test = [&] () {
     if (with_bias)
-      dst = inner_product_forward::compute(src_, weights_, bias_, raw_dst_.get());
+      inner_product_forward::compute(src_, weights_, bias_, dst);
     else
-      dst = inner_product_forward::compute(src_, weights_, raw_dst_.get());
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  compute_ref_inner_product_fwd<float>(
-      p.test_ipd, src_, weights_, bias_, dst_ref_);
-  compare_tensor<float>(dst_ref_, dst);
-}
-
-TEST_P(inner_product_test_float, TestsForward2) {
-  auto p = ::testing::TestWithParam<inprod_test_forward_params>::GetParam();
-  bool with_bias = p.bias_format != mkldnn::memory::format::format_undef;
-
-  fill_tensor(src_);
-  fill_tensor(weights_);
-  if (with_bias)
-    fill_tensor(bias_);
-
-  tensor dst;
-  auto test = [&] () {
-    if (with_bias)
-      dst = inner_product_forward::compute(src_, weights_, bias_);
-    else
-      dst = inner_product_forward::compute(src_, weights_);
+      inner_product_forward::compute(src_, weights_, dst);
   };
 
   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))

@@ -38,10 +38,10 @@ protected:
     fill_tensor(variance_);
     fill_tensor(scale_);
     fill_tensor(shift_);
-    raw_dst_.reset(new char [src_.get_size()]);
+    auto dst = make_output();
 
-    auto dst = batch_normalization_forward_inference::compute(
-        src_, mean_, variance_, scale_, shift_, raw_dst_.get(), p.eps);
+    batch_normalization_forward_inference::compute(
+        src_, mean_, variance_, scale_, shift_, dst, p.eps);
 
     check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
         batch_normalization_flag::use_scale_shift |
@@ -54,20 +54,14 @@ protected:
     fill_tensor(src_);
     fill_tensor(scale_);
     fill_tensor(shift_);
-    raw_dst_.reset(new char [src_.get_size()]);
-    raw_mean_.reset(new char [statistic_desc_.get_size()]);
-    raw_var_.reset(new char [statistic_desc_.get_size()]);
-    running_mean_.reset(new char [statistic_desc_.get_size()]);
-    running_var_.reset(new char [statistic_desc_.get_size()]);
 
-    auto dst = batch_normalization_forward_training::compute(
-        src_, scale_, shift_, raw_dst_.get(), raw_mean_.get(), raw_var_.get(),
-        running_mean_.get(), running_var_.get(), 0.9f, p.eps);
+    tensor dst, mean, variance, running_mean, running_var;
 
-    mean_.init(statistic_desc_, raw_mean_.get());
-    variance_.init(statistic_desc_, raw_var_.get());
+    batch_normalization_forward_training::compute(
+        src_, scale_, shift_, dst, mean, variance,
+        running_mean, running_var, 0.9f, p.eps);
 
-    check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
+    check_bnrm_fwd<data_t>(p, src_, mean, variance, scale_, shift_, dst,
         batch_normalization_flag::use_scale_shift,
         prop_kind::forward_training);
   }
@@ -79,100 +73,35 @@ protected:
     fill_tensor(variance_);
     fill_tensor(grady_);
     fill_tensor(scale_);
-    raw_gradx_.reset(new char [src_.get_size()]);
-    raw_gscale_.reset(new char [statistic_desc_.get_size()]);
-    raw_gshift_.reset(new char [statistic_desc_.get_size()]);
 
-    auto gradx = batch_normalization_backward::compute(src_, mean_,
-        variance_, grady_, scale_, raw_gradx_.get(), raw_gscale_.get(),
-        raw_gshift_.get(), p.eps);
+    auto gradx = make_output();
+    auto gscale = make_output();
+    auto gshift = make_output();
 
-    tensor gscale(statistic_desc_, raw_gscale_.get());
-    tensor gshift(statistic_desc_, raw_gshift_.get());
+    batch_normalization_backward::compute(src_, mean_,
+        variance_, grady_, scale_, gradx, gscale, gshift, p.eps);
 
     check_bnrm_bwd<data_t>(p, src_, grady_, mean_, variance_, scale_,
         gradx, gscale, gshift, batch_normalization_flag::use_scale_shift,
         prop_kind::backward);
   }
 
-  void test_forward_inference2() {
-    auto p = ::testing::TestWithParam<test_bnrm_params_t>::GetParam();
-    fill_tensor(src_);
-    fill_tensor(mean_);
-    fill_tensor(variance_);
-    fill_tensor(scale_);
-    fill_tensor(shift_);
-
-    auto dst = batch_normalization_forward_inference::compute(
-        src_, mean_, variance_, scale_, shift_, p.eps);
-
-    check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
-        batch_normalization_flag::use_scale_shift |
-        batch_normalization_flag::use_global_stats,
-        prop_kind::forward_inference);
-  }
-
-  void test_forward_training2() {
-    auto p = ::testing::TestWithParam<test_bnrm_params_t>::GetParam();
-    fill_tensor(src_);
-    fill_tensor(scale_);
-    fill_tensor(shift_);
-
-    auto dst = batch_normalization_forward_training::compute(
-        src_, scale_, shift_, 0.9f, p.eps);
-
-    check_bnrm_fwd<data_t>(p, src_, std::get<1>(dst), std::get<2>(dst), scale_, shift_, std::get<0>(dst),
-        batch_normalization_flag::use_scale_shift,
-        prop_kind::forward_training);
-  }
-
-  void test_backward2() {
-    auto p = ::testing::TestWithParam<test_bnrm_params_t>::GetParam();
-    fill_tensor(src_);
-    fill_tensor(mean_);
-    fill_tensor(variance_);
-    fill_tensor(grady_);
-    fill_tensor(scale_);
-
-    auto gs = batch_normalization_backward::compute(src_, mean_,
-        variance_, grady_, scale_, p.eps);
-
-    tensor gscale;
-    tensor gshift;
-    tensor gw = std::get<1>(gs);
-
-    gscale.init({{gw.get_nelems() / 2}, gw.get_data_type(), format::x},
-                gw.get_data_handle());
-    gshift.init({{gw.get_nelems() / 2}, gw.get_data_type(), format::x},
-                (void *)((unsigned long long)gw.get_data_handle() + gw.get_size() / 2));
-
-    check_bnrm_bwd<data_t>(p, src_, grady_, mean_, variance_, scale_,
-        std::get<0>(gs), gscale, gshift,
-        batch_normalization_flag::use_scale_shift, prop_kind::backward);
-  }
-
   tensor::descriptor statistic_desc_;
   tensor src_, grady_, mean_, variance_, scale_, shift_;
-  std::unique_ptr<char []> raw_dst_, raw_gradx_, raw_mean_;
-  std::unique_ptr<char []> raw_var_, raw_gscale_, raw_gshift_;
-  std::unique_ptr<char []> running_mean_, running_var_;
 };
 
 using bnrm_test_float = batch_normalization_test<float>;
 
 TEST_P(bnrm_test_float, TestsInference) {
   test_forward_inference();
-  test_forward_inference2();
 }
 
 TEST_P(bnrm_test_float, TestsForward) {
   test_forward_training();
-  test_forward_training2();
 }
 
 TEST_P(bnrm_test_float, TestsBackward) {
   test_backward();
-  test_backward2();
 }
 
 #define EXPAND_ARGS(args) args

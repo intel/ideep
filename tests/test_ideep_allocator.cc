@@ -65,7 +65,6 @@ protected:
     src_.init(src_desc);
     wgt_.init(wgt_desc);
     dst_ref_.init(dst_desc);
-    raw_dst_.reset(new char[dst_desc.get_size()]);
 
     // tensor cases
     std::shared_ptr<tensor> src1(new tensor()), src2(new tensor()),
@@ -111,11 +110,10 @@ protected:
     tensor dst;
     auto test = [&] () {
       if (p.alloc == allocator_params::default_alloc) {
-        dst = inner_product_forward::compute(
-            src_, wgt_, raw_dst_.get());
+        inner_product_forward::compute(src_, wgt_, dst);
       } else if (p.alloc == allocator_params::scratch_alloc) {
-        dst = inner_product_forward::compute<ideep::utils::scratch_allocator>(
-            src_, wgt_, raw_dst_.get());
+        inner_product_forward::compute<ideep::utils::scratch_allocator>(
+            src_, wgt_, dst);
       } else {
         throw std::invalid_argument("bad arg");
       }
@@ -131,7 +129,6 @@ protected:
   }
 
   tensor src_, wgt_, dst_ref_;
-  std::unique_ptr<char []> raw_dst_;
 };
 
 using allocator_test_float = allocator_test<float>;

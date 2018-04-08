@@ -1817,7 +1817,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src,
+  static void compute(const tensor &src,
       const tensor::dims dst_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1843,7 +1843,6 @@ public:
     }
 
     comp.execute(src, dst);
-    return dst;
   }
 };
 
@@ -1932,7 +1931,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &grady, const tensor &y, const tensor& x,
+  static void compute(const tensor &grady, const tensor &y, const tensor& x,
       tensor& gradx, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
@@ -1954,7 +1953,6 @@ public:
 
     gradx .init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
     comp.execute(grady, y, gradx);
-    return gradx;
   }
 };
 
@@ -2002,48 +2000,20 @@ public:
     computation::execute(x, y);
   }
 
-  template<class alloc, typename ...Ts>
-  static tensor compute_impl(const tensor &src,
-      void *result, Ts &&...args) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), args...);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        std::forward<Ts>(args)...);
-
-    tensor dst(src.get_descriptor(), result);
-    comp.execute(src, dst);
-    return dst;
-  }
-
-  template<class alloc, typename ...Ts>
-  static tensor compute_impl(const tensor &src, Ts &&...args) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), args...);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        std::forward<Ts>(args)...);
-
-    tensor dst;
-    dst.init<alloc, eltwise_forward>(comp.expected_dst_descriptor());
-    comp.execute(src, dst);
-    return dst;
-  }
-
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src, void *result,
+  static void compute(const tensor &src, tensor& dst,
       algorithm aalogorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
-    return compute_impl<alloc>(src, result, alpha, beta, aalogorithm, aprop_kind);
-  }
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), alpha, beta, aalogorithm, aprop_kind);
 
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src,
-      float alpha = 0.0, float beta = 0.0,
-      algorithm aalogorithm = algorithm::eltwise_relu,
-      prop_kind aprop_kind = prop_kind::forward) {
-    return compute_impl<alloc>(src, alpha, beta, aalogorithm, aprop_kind);
+    auto comp = fetch_or_create_m(key, src.get_descriptor()
+        , alpha, beta, aalogorithm, aprop_kind);
+
+    if (dst != src)
+      dst.init<alloc, eltwise_forward>(src.get_descriptor());
+    comp.execute(src, dst);
   }
 };
 
@@ -2097,53 +2067,23 @@ public:
   }
 
   template<class alloc, typename ...Ts>
-  static tensor compute_impl(const tensor &src, const tensor &grady,
-      void *result, Ts &&...args) {
+  static void compute_impl(const tensor &src, const tensor &grady,
+      tensor& gradx, Ts &&...args) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), grady.get_internal_format(), args...);
 
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
 
-    tensor gradx(comp.expected_gradx_descriptor(), result);
-    comp.execute(src, grady, gradx);
-    return gradx;
-  }
-
-  // TODO: MKL-DNN should solve this problem in single-shot
-  template<class alloc, typename ...Ts>
-  static tensor compute_impl(const tensor &src, const tensor &grady,
-      Ts &&...args) {
-    tensor src_in = src;
-    if (src.get_internal_format() != grady.get_internal_format()) {
-      src_in.init<alloc, eltwise_backward>(grady.get_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
-        src_in.get_internal_format(), args...);
-
-    auto comp = fetch_or_create_m(key, grady.get_descriptor(),
-        src_in.get_descriptor(), std::forward<Ts>(args)...);
-
-    tensor gradx;
     gradx.init<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
-    comp.execute(src_in, grady, gradx);
-    return gradx;
+    comp.execute(src, grady, gradx);
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src, const tensor &grady,
-      void *result, algorithm aalogorithm = algorithm::eltwise_relu,
+  static void compute(const tensor &src, const tensor &grady,
+      tensor& gradx, algorithm aalogorithm = algorithm::eltwise_relu,
       float alpha = 0.0, float beta = 0.0) {
-    return compute_impl<alloc>(src, grady, result, alpha, beta, aalogorithm);
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const tensor &src, const tensor &grady,
-      float alpha = 0.0, float beta = 0.0,
-      algorithm aalogorithm = algorithm::eltwise_relu) {
-    return compute_impl<alloc>(src, grady, alpha, beta, aalogorithm);
+    compute_impl<alloc>(src, grady, gradx, alpha, beta, aalogorithm);
   }
 };
 

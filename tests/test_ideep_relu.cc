@@ -12,8 +12,6 @@ class relu_tests:
 private:
   tensor src_;
   tensor grady_;
-  std::unique_ptr<char> raw_dst_;
-  std::unique_ptr<char> raw_gradx_;
 
 protected:
   virtual void SetUp() {
@@ -36,33 +34,17 @@ protected:
         reinterpret_cast<data_t *>(grady_.get_data_handle()),
         data_t(0), data_t(1));
 
-    raw_dst_.reset(new char [src_.get_size()]);
-    raw_gradx_.reset(new char [src_.get_size()]);
-
-    Forward();
-    Backward();
   }
 
   void Forward() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor dst;
     auto test = [&]() {
-      dst = eltwise_forward::compute(src_, raw_dst_.get(),
+      eltwise_forward::compute(src_, dst,
           algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-      return;
-
-    check_relu_fwd(p.negative_slope, src_, dst);
-
-
-    auto test2 = [&]() {
-      dst = eltwise_forward::compute(src_, p.negative_slope, 0.0,
-          algorithm::eltwise_relu, prop_kind::forward);
-    };
-
-    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
       return;
 
     check_relu_fwd(p.negative_slope, src_, dst);
@@ -72,22 +54,11 @@ protected:
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor gradx;
     auto test = [&]() {
-      gradx = eltwise_backward::compute(src_, grady_, raw_gradx_.get(),
+      eltwise_backward::compute(src_, grady_, gradx,
           algorithm::eltwise_relu, p.negative_slope, 0.0);
     };
 
     if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-      return;
-
-    check_relu_bwd(p.negative_slope, src_, grady_, gradx);
-
-
-    auto test2 = [&]() {
-      gradx = eltwise_backward::compute(src_, grady_,
-          p.negative_slope, 0.0, algorithm::eltwise_relu);
-    };
-
-    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
       return;
 
     check_relu_bwd(p.negative_slope, src_, grady_, gradx);
@@ -97,7 +68,10 @@ protected:
 using relu_test_float = relu_tests<float>;
 using relu_test_params_float = relu_test_params<float>;
 
-TEST_P(relu_test_float, TestsRelu) {}
+TEST_P(relu_test_float, TestsRelu) {
+  Forward();
+  Backward();
+}
 
 #define EXPAND_SIZES(mb, c, h, w) { mb, c, h, w }
 #define EXPAND_FORMATS(data) mkldnn::memory::format::data

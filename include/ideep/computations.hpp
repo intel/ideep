@@ -1677,9 +1677,11 @@ public:
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
-    dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
-    if (with_workspace)
-      dst.init_extra(comp.expected_workspace_descriptor());
+    if (dst != src) { // not inplace
+      dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
+      if (with_workspace)
+        dst.init_extra(comp.expected_workspace_descriptor());
+    }
 
     comp.execute(src, dst);
   }
@@ -1814,37 +1816,9 @@ public:
       computation::execute(src, dst);
   }
 
-  static tensor compute(const tensor &src,
-      const tensor::dims dst_dims, void *dst_r,
-      const tensor::dims strides, const tensor::dims kernel,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), dst_dims, strides, kernel, padding_l,
-        padding_r, aalgorithm, aprop_kind, apadding_kind);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
-        aprop_kind, apadding_kind);
-
-    bool with_workspace = true
-        && aprop_kind == prop_kind::forward_training
-        && aalgorithm == mkldnn::pooling_max;
-
-    // TODO: scratch allocator support
-    tensor dst = with_workspace ? tensor(comp.expected_dst_descriptor(),
-      dst_r, comp.expected_workspace_descriptor()) :
-      tensor(comp.expected_dst_descriptor(), dst_r);
-
-    comp.execute(src, dst);
-    return dst;
-  }
-
   template<class alloc = utils::allocator>
   static tensor compute(const tensor &src,
-      const tensor::dims dst_dims,
+      const tensor::dims dst_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
@@ -1862,16 +1836,10 @@ public:
         && aprop_kind == prop_kind::forward_training
         && aalgorithm == mkldnn::pooling_max;
 
-    // TODO: reorder
-    tensor dst;
-    if (with_workspace) {
-      dst.init_extra(comp.expected_workspace_descriptor());
-      dst.init<alloc, pooling_forward>(comp.expected_dst_descriptor());
-      // init workspace tensor
-      (*dst.get_extra()).init<alloc, pooling_forward>(
-          comp.expected_workspace_descriptor());
-    } else {
-      dst.init<alloc, pooling_forward>(comp.expected_dst_descriptor());
+    if (dst != src) {
+      dst.init<alloc, lrn_backward>(comp.expected_dst_descriptor());
+      if (with_workspace)
+        dst.init_extra(comp.expected_workspace_descriptor());
     }
 
     comp.execute(src, dst);
@@ -1963,27 +1931,9 @@ public:
       computation::execute(grady, *y.get_extra(), gradx);
   }
 
-  static tensor compute(const tensor &grady, const tensor &y, const tensor& x,
-      void *gradx_r, const tensor::dims strides, const tensor::dims kernel,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
-        grady.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
-        padding_r, aalgorithm, apadding_kind);
-
-    auto comp = fetch_or_create_m(key, x.get_descriptor(),
-        grady.get_descriptor(), strides, kernel, padding_l, padding_r,
-        aalgorithm, apadding_kind);
-
-    auto gradx = tensor(comp.expected_gradx_descriptor(), gradx_r);
-    comp.execute(grady, y, gradx);
-    return gradx;
-  }
-
-  // TODO: evalue this interface
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &grady, const tensor &y,
-      const tensor &x, const tensor::dims strides, const tensor::dims kernel,
+  static tensor compute(const tensor &grady, const tensor &y, const tensor& x,
+      tensor& gradx, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto grady_in = grady;
@@ -2002,8 +1952,7 @@ public:
         grady_in.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
 
-    tensor gradx;
-    gradx.init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
+    gradx .init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
     comp.execute(grady, y, gradx);
     return gradx;
   }

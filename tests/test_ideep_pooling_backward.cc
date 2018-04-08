@@ -9,8 +9,6 @@ template <typename data_t>
 class pooling_bwd_test : public ::testing::TestWithParam<pool_bwd_test_params> {
 private:
   tensor x_, y_, grady_;
-  std::unique_ptr<char []> raw_y_;
-  std::unique_ptr<char []> raw_gradx_;
   mkldnn::memory::dims padR_;
 
 protected:
@@ -39,9 +37,6 @@ protected:
     grady_.init(y_desc);
     fill_data<data_t>(grady_.get_nelems(),
         reinterpret_cast<data_t *>(grady_.get_data_handle()));
-
-    raw_y_.reset(new char [y_desc.get_size()]);
-    raw_gradx_.reset(new char [x_.get_size()]);
   }
 
   void Forward() {
@@ -49,8 +44,8 @@ protected:
     auto pd = p.test_pd;
 
     auto test = [&]() {
-      y_ = pooling_forward::compute(x_, tensor::dims {pd.mb, pd.c, pd.oh, pd.ow},
-          raw_y_.get(), tensor::dims {pd.strh, pd.strw},
+      pooling_forward::compute(x_, tensor::dims {pd.mb, pd.c, pd.oh, pd.ow},
+          y_, tensor::dims {pd.strh, pd.strw},
           tensor::dims {pd.kh, pd.kw}, tensor::dims {pd.padt, pd.padl},
           padR_, p.aalgorithm,
           prop_kind::forward_training, padding_kind::zero);
@@ -68,7 +63,7 @@ protected:
 
     tensor gradx;
     auto test = [&]() {
-      gradx = pooling_backward::compute(grady_, y_, x_, raw_gradx_.get(),
+      pooling_backward::compute(grady_, y_, x_, gradx,
           {pd.strh, pd.strw}, {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR_,
           p.aalgorithm, padding_kind::zero);
     };

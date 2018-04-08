@@ -2868,26 +2868,26 @@ struct inner_product_forward: public computation,
         src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
 
       if (src.is_public_format())
-        src_in.init({new_dims, src.get_data_type(), format::oi}, src.get_data_handle());
+        src_in.init({new_dims, src.get_data_type(), format::nc}, src.get_data_handle());
       else {
         src_in.init<alloc, inner_product_forward>(
-            {src.get_dims(), src.get_data_type(), format::oihw});
+            {src.get_dims(), src.get_data_type(), format::nchw});
         reorder::compute(src, src_in);
-        src_in.set_descriptor({new_dims, src.get_data_type(), format::oi});
+        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
       }
     }
 
-    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+    tensor::dims dst_dims = {src_in.get_dim(0), weights.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
 
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
         weights.get_dims(), bias.get_dims(), dst_dims);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src_in.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(), dst_desc);
 
     auto weights_in = weights;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
@@ -2907,16 +2907,34 @@ struct inner_product_forward: public computation,
       const tensor& src, const tensor& weights, tensor& dst) {
     tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+    auto src_in = src;
 
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+    if (src.ndims() == 4 && weights.ndims() == 2) {
+      //
+      // tricky procedure, we change src back to public format
+      // then we using another tensor with 2 dimension to describe the buffer
+      //
+      tensor::dims new_dims { src.get_dim(0),
+        src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
+
+      if (src.is_public_format())
+        src_in.init({new_dims, src.get_data_type(), format::nc}, src.get_data_handle());
+      else {
+        src_in.init<alloc, inner_product_forward>(
+            {src.get_dims(), src.get_data_type(), format::nchw});
+        reorder::compute(src, src_in);
+        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
+      }
+    }
+
+    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
         weights.get_dims(), dst_dims);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    auto comp = fetch_or_create_m(key, src_in.get_descriptor(),
         weights.get_descriptor(), dst_desc);
 
-    auto src_in = src;
     auto weights_in = weights;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }

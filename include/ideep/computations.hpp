@@ -2416,15 +2416,21 @@ public:
   template<class alloc, typename ...Ts>
   static tensor compute_impl(const tensor &src, const tensor &grady,
       Ts &&...args) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), grady.get_internal_format(), args...);
+    tensor src_in = src;
+    if (src.get_internal_format() != grady.get_internal_format()) {
+      src_in.init<alloc, eltwise_backward>(grady.get_descriptor());
+      reorder::compute(src, src_in);
+    }
+
+    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+        src_in.get_internal_format(), args...);
 
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
-        src.get_descriptor(), std::forward<Ts>(args)...);
+        src_in.get_descriptor(), std::forward<Ts>(args)...);
 
     tensor gradx;
     gradx.init<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
-    comp.execute(src, grady, gradx);
+    comp.execute(src_in, grady, gradx);
     return gradx;
   }
 

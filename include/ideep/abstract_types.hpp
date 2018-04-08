@@ -9,6 +9,12 @@ namespace ideep {
 
 using error = mkldnn::error;
 
+#define IDEEP_ENFORCE(condition, message) \
+  do {  \
+    error::wrap_c_api((condition) \
+        ? mkldnn_success : mkldnn_invalid_arguments, (message));  \
+  } while(false) \
+
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance
 template <typename T, typename traits = mkldnn::handle_traits<T>>

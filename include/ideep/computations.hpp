@@ -98,9 +98,7 @@ public:
     }
 
     kind op_kind(int index) const {
-      error::wrap_c_api(
-          index < num_ops() ? mkldnn_success : mkldnn_invalid_arguments,
-          "post_ops index is out of range");
+      IDEEP_ENFORCE(index < num_ops(), "post_ops index is out of range");
       return static_cast<kind>(mkldnn_post_ops_get_kind(get(), index));
     }
 
@@ -644,13 +642,11 @@ public:
 
   static std::vector<tensor> compute(
       tensor input, std::vector<int32_t> axis_info, int axis, bool add_axis) {
-    error::wrap_c_api(axis < input.ndims()
-        ? mkldnn_success : mkldnn_invalid_arguments, "invalid axis in split");
-
     reorder reorder_;
     std::vector<tensor> outputs;
     tensor::dims output_dims(input.get_dims());
     tensor::dims offset_dims(output_dims.size(), 0);
+    IDEEP_ENFORCE(axis < input.ndims(), "invalid axis in split");
 
     for (int i = 0; i < axis_info.size(); ++i) {
       output_dims[axis] = axis_info[i];
@@ -665,6 +661,7 @@ public:
         output.reshape(out_dims);
       }
 
+      outputs.emplace_back(output);
       offset_dims[axis] += axis_info[i];
     }
 
@@ -1338,6 +1335,7 @@ public:
   MKLDNN_DEPRECATED
   static void compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, tensor& gradx,
+      const tensor::dims strides,
       const tensor::dims padding_l,
       const tensor::dims padding_r, const int group,
       algorithm aalgorithm = algorithm::convolution_direct,
@@ -1348,7 +1346,7 @@ public:
     auto gweights = tensor(
         tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
         weights.get_data_handle());
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx,
+    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides,
         padding_l, padding_r, aalgorithm, apadding_kind);
   }
 };
@@ -2277,15 +2275,15 @@ public:
     comp.execute(inputs, dst);
   }
 
-  static std::pair<tensor, std::vector<int32_t>> compute(
-      std::vector<tensor> &inputs, int axis, bool add_axis) {
-    error::wrap_c_api((axis < (inputs[0].ndims() + (add_axis ? 1 : 0)))
-        ? mkldnn_success : mkldnn_invalid_arguments, "invalid axis in concat");
+  static std::vector<int32_t> compute(
+      std::vector<tensor> &inputs, int axis, bool add_axis, tensor& dst) {
+    IDEEP_ENFORCE(axis < (inputs[0].ndims() + (add_axis ? 1 : 0)),
+        "invalid axis in concat");
     for (int i = 0; i <inputs[0].ndims(); i++) {
       if (i == axis && !add_axis) continue;
       for (int j = 1; j <inputs.size(); j++) {
-        error::wrap_c_api((inputs[j].get_dim(i) == inputs[0].get_dim(i))
-          ? mkldnn_success : mkldnn_invalid_arguments, "invalid axis in concat");
+        IDEEP_ENFORCE(inputs[j].get_dim(i) == inputs[0].get_dim(i),
+          "invalid input dims in concat");
       }
     }
 
@@ -2304,7 +2302,7 @@ public:
 
     reorder reorder_;
     tensor::dims offset_dims(dst_dims.size(), 0);
-    tensor dst({dst_dims, inputs[0].get_data_type(),
+    dst.init({dst_dims, inputs[0].get_data_type(),
         inputs[0].get_internal_format()});
     for (int i = 0; i < inputs.size(); ++i) {
       auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
@@ -2321,8 +2319,9 @@ public:
       offset_dims[axis] += axis_info[i];
     }
 
-    return std::make_pair(dst, axis_info);
+    return axis_info;
   }
+
 };
 
 struct softmax_forward : public computation {
@@ -3183,7 +3182,7 @@ public:
   }
 
   template<class alloc, class T>
-  static std::pair<tensor, tensor> compute_impl(const tensor &src, float ratio,
+  static void compute_impl(const tensor &src, float ratio,
       tensor& dst, tensor& mask) {
     const auto scale = 1.0 / (1.0 - ratio);
     const auto size = src.get_nelems();
@@ -3211,7 +3210,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::pair<tensor, tensor> compute(const tensor &src, float ratio,
+  static void compute(const tensor &src, float ratio,
       tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
     case tensor::data_type::f32:
@@ -3250,7 +3249,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &mask, const tensor &gy, tensor& gx) {
+  static void compute(const tensor &mask, const tensor &gy, tensor& gx) {
     switch(gy.get_data_type()) {
     case tensor::data_type::f32:
       return compute_impl<alloc, float>(mask, gy, gx);

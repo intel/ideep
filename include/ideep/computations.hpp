@@ -637,7 +637,40 @@ protected:
 };
 
 using direct_copy = reorder;
-using spliter = reorder;
+
+struct spliter : public reorder {
+public:
+  using reorder::reorder;
+
+  static std::vector<tensor> compute(
+      tensor input, std::vector<int32_t> axis_info, int axis, bool add_axis) {
+    error::wrap_c_api(axis < input.ndims()
+        ? mkldnn_success : mkldnn_invalid_arguments, "invalid axis in split");
+
+    reorder reorder_;
+    std::vector<tensor> outputs;
+    tensor::dims output_dims(input.get_dims());
+    tensor::dims offset_dims(output_dims.size(), 0);
+
+    for (int i = 0; i < axis_info.size(); ++i) {
+      output_dims[axis] = axis_info[i];
+      auto view = input.create_view(output_dims, offset_dims);
+      tensor output(view.expected_dst_descriptor());
+      reorder_.init(view, input.get_descriptor(), output.get_descriptor());
+      reorder_(input, output);
+
+      if (add_axis) {
+        tensor::dims out_dims(output_dims);
+        out_dims.erase(out_dims.begin() + axis);
+        output.reshape(out_dims);
+      }
+
+      offset_dims[axis] += axis_info[i];
+    }
+
+    return outputs;
+  }
+};
 
 struct computation : public primitive_group {
   computation() = default;
@@ -2605,6 +2638,53 @@ public:
 
     comp.execute(inputs, dst);
     return dst;
+  }
+
+  static std::pair<tensor, std::vector<int32_t>> compute(
+      std::vector<tensor> &inputs, int axis, bool add_axis) {
+    error::wrap_c_api((axis < (inputs[0].ndims() + (add_axis ? 1 : 0)))
+        ? mkldnn_success : mkldnn_invalid_arguments, "invalid axis in concat");
+    for (int i = 0; i <inputs[0].ndims(); i++) {
+      if (i == axis && !add_axis) continue;
+      for (int j = 1; j <inputs.size(); j++) {
+        error::wrap_c_api((inputs[j].get_dim(i) == inputs[0].get_dim(i))
+          ? mkldnn_success : mkldnn_invalid_arguments, "invalid axis in concat");
+      }
+    }
+
+    int32_t dst_channels = 0;
+    std::vector<int32_t> axis_info(inputs.size(), 0);
+    for (int k = 0; k <inputs.size(); k++) {
+      axis_info[k] = add_axis ? 1 : inputs[k].get_dim(axis);
+      dst_channels += axis_info[k];
+    }
+
+    tensor::dims dst_dims(inputs[0].get_dims());
+    if (add_axis)
+      dst_dims.insert(dst_dims.begin() + axis, dst_channels);
+    else
+      dst_dims[axis] = dst_channels;
+
+    reorder reorder_;
+    tensor::dims offset_dims(dst_dims.size(), 0);
+    tensor dst({dst_dims, inputs[0].get_data_type(),
+        inputs[0].get_internal_format()});
+    for (int i = 0; i < inputs.size(); ++i) {
+      auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
+      if (add_axis) {
+        tensor::dims in_dims(inputs[i].get_dims());
+        in_dims.insert(in_dims.begin() + axis, 1);
+        tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
+        reorder_.init(in_desc, view, dst.get_descriptor());
+        reorder_({in_desc, inputs[i].get_data_handle()}, dst);
+      } else {
+        reorder_.init(inputs[i].get_descriptor(), view, dst.get_descriptor());
+        reorder_(inputs[i], dst);
+      }
+      offset_dims[axis] += axis_info[i];
+    }
+
+    return std::make_pair(dst, axis_info);
   }
 };
 

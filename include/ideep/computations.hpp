@@ -1663,30 +1663,8 @@ public:
       computation::execute(src, dst);
   }
 
-  static tensor compute(const tensor& src, void* dst_r, int local_size,
-      float alpha, float beta, float k = 1.0,
-      algorithm aalgorithm = algorithm::lrn_across_channels,
-      prop_kind aprop_kind = prop_kind::forward_training) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), local_size, alpha, beta, k,
-        aalgorithm, aprop_kind);
-
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
-        local_size, alpha, beta, k, aalgorithm, aprop_kind);
-
-    bool with_workspace = aprop_kind == prop_kind::forward_training;
-
-    // TODO: scratch allocator support
-    tensor dst =  with_workspace ? tensor { comp.expected_dst_descriptor(),
-      dst_r, comp.expected_workspace_descriptor() } :
-        tensor { comp.expected_dst_descriptor(), dst_r };
-
-    comp.execute(src, dst);
-    return dst;
-  }
-
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor& src, int local_size,
+  static void compute(const tensor& src, tensor& dst, int local_size,
       float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels,
       prop_kind aprop_kind = prop_kind::forward_training) {
@@ -1699,20 +1677,11 @@ public:
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
-    // TODO: reorder
-    tensor dst;
-    if (with_workspace) {
+    dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
+    if (with_workspace)
       dst.init_extra(comp.expected_workspace_descriptor());
-      dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
-      // init workspace tensor
-      (*dst.get_extra()).init<alloc, lrn_forward>(
-          comp.expected_workspace_descriptor());
-    } else {
-      dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
-    }
 
     comp.execute(src, dst);
-    return dst;
   }
 };
 
@@ -1766,23 +1735,9 @@ public:
       computation::execute(x, grady, *y.get_extra(), gradx);
   }
 
-  static tensor compute(const tensor& x, const tensor& grady, const tensor& y,
-      void* gradx_r, int local_size, float alpha, float beta, float k = 1.0,
-      algorithm aalgorithm = algorithm::lrn_across_channels) {
-    auto key = utils::create_key(x.get_data_type(), x.get_dims(),
-        x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
-
-    auto comp = fetch_or_create_m(key, x.get_descriptor(),
-        grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
-
-    tensor gradx(comp.expected_gradx_descriptor(), gradx_r);
-    comp.execute(x, grady, y, gradx);
-    return gradx;
-  }
-
   template<class alloc = utils::allocator>
-  static tensor compute(const tensor &x, const tensor &grady, const tensor &y,
-      int local_size, float alpha, float beta, float k = 1.0,
+  static void compute(const tensor& x, const tensor& grady, const tensor& y,
+      tensor& gradx, int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
     auto key = utils::create_key(x.get_data_type(), x.get_dims(),
         x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
@@ -1790,10 +1745,8 @@ public:
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
-    tensor gradx;
     gradx.init<alloc, lrn_backward>(comp.expected_gradx_descriptor());
     comp.execute(x, grady, y, gradx);
-    return gradx;
   }
 };
 

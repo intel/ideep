@@ -31,15 +31,9 @@ protected:
             (data_t *)src_.get_data_handle());
 
     tensor::dims dst_dims = {ld.mb, ld.c, ld.h, ld.w};
-
-    auto dst_size = std::accumulate(dst_dims.begin(), dst_dims.end(),
-        sizeof(data_t), std::multiplies<int>());
-
-    raw_dst_.reset(new char [dst_size]);
   }
 
   tensor src_;
-  std::unique_ptr<char []> raw_dst_;
 };
 
 using lrn_forward_test_float = lrn_forward_test<float>;
@@ -48,12 +42,8 @@ using lrn_fwd_test_params_float = lrn_test_params;
 TEST_P (lrn_forward_test_float, TestsLRN) {
   auto p = ::testing::TestWithParam<lrn_test_params>::GetParam();
   auto ld = p.test_ld;
-  auto dst = lrn_forward::compute(src_, raw_dst_.get(), ld.local_size, ld.alpha,
-      ld.beta, ld.k, p.aalgorithm, p.aprop_kind);
-
-  check_lrn_fwd<float>(ld, src_, dst);
-
-  dst = lrn_forward::compute(src_, ld.local_size, ld.alpha,
+  auto dst = make_output();
+  lrn_forward::compute(src_, dst, ld.local_size, ld.alpha,
       ld.beta, ld.k, p.aalgorithm, p.aprop_kind);
 
   check_lrn_fwd<float>(ld, src_, dst);

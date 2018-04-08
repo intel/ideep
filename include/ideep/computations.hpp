@@ -2091,12 +2091,24 @@ struct sum : public computation,
   public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
     descriptor(const std::vector<float> &scales,
-        const std::vector<tensor::descriptor> &inputs,
-        const tensor::descriptor *output = nullptr) {
+        const std::vector<tensor::descriptor> &inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
-              &result, output ? output->get_mkldnn_memory_desc_t(): nullptr,
+              &result, nullptr,
+              (int)c_api_inputs.size(),
+              &scales[0], &c_api_inputs[0]),
+          "could not create a sum primitive descriptor");
+      reset(result);
+    }
+
+    descriptor(const std::vector<float> &scales,
+        const std::vector<tensor::descriptor> &inputs,
+        const tensor::descriptor output_desc) {
+      mkldnn_primitive_desc_t result;
+      auto c_api_inputs = cpp_to_c(inputs);
+      error::wrap_c_api(mkldnn_sum_primitive_desc_create(
+              &result, output_desc.get_mkldnn_memory_desc_t(),
               (int)c_api_inputs.size(),
               &scales[0], &c_api_inputs[0]),
           "could not create a sum primitive descriptor");
@@ -2108,9 +2120,15 @@ public:
   using computation::expected_dst_descriptor;
 
   void init(const std::vector<float> &scales,
+      const std::vector<tensor::descriptor> &inputs) {
+    descriptor forward_descriptor(scales, inputs);
+    computation::init(forward_descriptor, inputs);
+  }
+
+  void init(const std::vector<float> &scales,
       const std::vector<tensor::descriptor> &inputs,
-      const tensor::descriptor *output = nullptr) {
-    auto forward_descriptor = descriptor(scales, inputs, output);
+      const tensor::descriptor output) {
+    descriptor forward_descriptor(scales, inputs, output);
     computation::init(forward_descriptor, inputs);
   }
 
@@ -2118,61 +2136,35 @@ public:
 
   sum(const std::vector<float> &scales,
       const std::vector<tensor::descriptor> &inputs_desc,
-      const tensor::descriptor *output_desc = nullptr) {
+      const tensor::descriptor output_desc) {
     init(scales, inputs_desc, output_desc);
+  }
+
+  sum(const std::vector<float> &scales,
+      const std::vector<tensor::descriptor> &inputs_desc) {
+    init(scales, inputs_desc);
   }
 
   void execute(const std::vector<tensor> &inputs, const tensor &output) {
     computation::execute(inputs, output);
   }
 
-  template<class alloc>
-  static tensor compute_impl(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs, void *raw_out,
-      const tensor::descriptor *out_desc) {
+  template<class alloc = utils::allocator>
+  static void compute(const std::vector<float> &scales,
+      const std::vector<tensor> &inputs, tensor& output) {
     std::vector<tensor::descriptor> inputs_desc;
     for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
         inputs_desc.push_back(in.get_descriptor());
         });
 
-    auto comp = sum(scales, inputs_desc, out_desc);
-    auto _out_desc = out_desc ? *out_desc :
-        comp.expected_dst_descriptor();
-    auto output = tensor(_out_desc, raw_out);
-
-    comp.execute(inputs, output);
-    return output;
-  }
-
-  template<class alloc>
-  static tensor compute_impl(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs) {
-    std::vector<tensor::descriptor> inputs_desc;
-    for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
-        inputs_desc.push_back(in.get_descriptor());
-        });
-
-    auto comp = sum(scales, inputs_desc);
-
-    tensor output;
-    output.init<alloc, sum>(comp.expected_dst_descriptor());
-    comp.execute(inputs, output);
-    return output;
-  }
-
-  // Just for specific requirements (dst format)
-  // Recommand the other API of `sum` to avoid performance drop
-  template<class alloc = utils::allocator>
-  static tensor compute(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs, void *raw_out,
-      const tensor::descriptor *out_desc = nullptr) {
-    return compute_impl<alloc>(scales, inputs, raw_out, out_desc);
-  }
-
-  template<class alloc = utils::allocator>
-  static tensor compute(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs) {
-    return compute_impl<alloc>(scales, inputs);
+    if (output.get_dims().size() == 0) {
+      sum comp(scales, inputs_desc);
+      output.init<alloc, sum>(comp.expected_dst_descriptor());
+      comp.execute(inputs, output);
+    } else {
+      sum comp(scales, inputs_desc, output.get_descriptor());
+      comp.execute(inputs, output);
+    }
   }
 };
 

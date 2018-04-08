@@ -96,12 +96,12 @@ protected:
       data_t *dst_data = (data_t *)dst1.get_data_handle();
       const size_t sz = dst1.get_size() / sizeof(data_t);
       // overwriting dst to prevent false positives for test cases.
-# pragma parallel for
+#     pragma parallel for
       for (size_t i = 0; i < sz; i++) {
         dst_data[i] = -32;
       }
 
-      sum::compute(p.scale, srcs, dst_data, &dst_desc);
+      sum::compute(p.scale, srcs, dst1);
     };
 
     // query dst format
@@ -110,12 +110,12 @@ protected:
       const size_t sz = srcs[0].get_size() / sizeof(data_t);
       data_t *dst_data = new data_t[sz];
       // overwriting dst to prevent false positives for test cases.
-# pragma parallel for
+#     pragma parallel for
       for (size_t i = 0; i < sz; i++) {
         dst_data[i] = -32;
       }
 
-      dst2 = sum::compute(p.scale, srcs, dst_data);
+      sum::compute(p.scale, srcs, dst2);
     };
 
     if (catch_expected_failures(test1, p.expect_to_fail, p.expected_status))

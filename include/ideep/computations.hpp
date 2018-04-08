@@ -2446,6 +2446,7 @@ public:
     return gradx;
   }
 
+  // TODO: MKL-DNN should solve this problem in single-shot
   template<class alloc, typename ...Ts>
   static tensor compute_impl(const tensor &src, const tensor &grady,
       Ts &&...args) {

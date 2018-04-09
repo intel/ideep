@@ -530,8 +530,8 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
         "could not create a reorder primitive descriptor");
     c_wrapper<mkldnn_primitive_desc_t> sg(desc);
 
-    in.init(src_desc, invalid_buffer);
-    out.init(dst_desc, invalid_buffer);
+    in.init(src_desc, nullptr);
+    out.init(dst_desc, nullptr);
 
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
@@ -549,8 +549,8 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
         "could not create a reorder primitive descriptor");
     c_wrapper<mkldnn_primitive_desc_t> sg(desc);
 
-    in.init(src_desc, invalid_buffer);
-    out.init(dst_desc, invalid_buffer);
+    in.init(src_desc, nullptr);
+    out.init(dst_desc, nullptr);
 
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
@@ -568,8 +568,8 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
         "could not create a reorder primitive descriptor");
     c_wrapper<mkldnn_primitive_desc_t> sg(desc);
 
-    in.init(src_desc, invalid_buffer);
-    out.init(dst_desc, invalid_buffer);
+    in.init(src_desc, nullptr);
+    out.init(dst_desc, nullptr);
 
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
@@ -693,7 +693,7 @@ struct computation : public primitive_group {
   void connect_reorder_for(int index, const descriptor_group &adesc,
       const tensor::descriptor &desc) {
     if (adesc.need_reorder_input(index)) {
-      inouts_[index] = param { desc, invalid_buffer };
+      inouts_[index] = param { desc, nullptr };
       create_reorder_for(
           (unsigned)index, adesc, inouts_[(unsigned)index],
           primitive_inputs_[(unsigned)index]);
@@ -709,7 +709,7 @@ struct computation : public primitive_group {
     mkldnn_primitive_at_t inputs[n_inputs];
     for (int i =0; i < n_inputs; i ++) {
       primitive_inputs_[i] = {
-        adesc.expected_input_descriptor(i), invalid_buffer };
+        adesc.expected_input_descriptor(i), nullptr };
       // connect real inputs and primitive inputs
       inouts_[i] = primitive_inputs_[i];
       inputs[i] = { primitive_inputs_[i].get(), 0 };
@@ -718,7 +718,7 @@ struct computation : public primitive_group {
     const_mkldnn_primitive_t outputs[n_outputs];
     for (int i = 0; i < n_outputs; i ++) {
       inouts_[i + n_inputs] = {
-        adesc.expected_output_descriptor(i), invalid_buffer };
+        adesc.expected_output_descriptor(i), nullptr };
       outputs[i] = inouts_[i + n_inputs].get();
     }
 
@@ -1042,12 +1042,7 @@ struct convolution_forward: public computation,
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
-
-    // TODO: interface it
-    if (dst.get_size() >= dst_desc.get_size())
-      dst.set_descriptor(std::move(dst_desc));
-    else
-      dst.init<alloc, convolution_forward>(std::move(dst_desc));
+    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
     comp.execute(src_in, weights_in, bias, dst);
   }
 
@@ -1079,10 +1074,7 @@ struct convolution_forward: public computation,
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
-    if (dst.get_size() >= dst_desc.get_size())
-      dst.set_descriptor(std::move(dst_desc));
-    else
-      dst.init<alloc, convolution_forward>(std::move(dst_desc));
+    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
     comp.execute(src_in, weights_in, dst);
   }
 
@@ -1315,7 +1307,7 @@ public:
       reorder::compute(weights, weights_in);
     }
 
-    gradx.init<alloc, convolution_backward_data>(
+    gradx.reinit<alloc, convolution_backward_data>(
         comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -1563,9 +1555,9 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    gradw.init<alloc, convolution_backward_weights>(
+    gradw.reinit<alloc, convolution_backward_weights>(
         comp.expected_gradw_descriptor());
-    gbias.init<alloc, convolution_backward_weights>(
+    gbias.reinit<alloc, convolution_backward_weights>(
         comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gbias);
   }
@@ -1596,7 +1588,7 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    gradw.init<alloc, convolution_backward_weights>(
+    gradw.reinit<alloc, convolution_backward_weights>(
         comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
   }
@@ -1714,7 +1706,7 @@ public:
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
     if (dst != src) { // not inplace
-      dst.init<alloc, lrn_forward>(comp.expected_dst_descriptor());
+      dst.reinit<alloc, lrn_forward>(comp.expected_dst_descriptor());
       if (with_workspace)
         dst.init_extra(comp.expected_workspace_descriptor());
     }
@@ -1783,7 +1775,7 @@ public:
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
-    gradx.init<alloc, lrn_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit<alloc, lrn_backward>(comp.expected_gradx_descriptor());
     comp.execute(x, grady, y, gradx);
   }
 };
@@ -1873,7 +1865,7 @@ public:
         && aalgorithm == mkldnn::pooling_max;
 
     if (dst != src) {
-      dst.init<alloc, lrn_backward>(comp.expected_dst_descriptor());
+      dst.reinit<alloc, lrn_backward>(comp.expected_dst_descriptor());
       if (with_workspace)
         dst.init_extra(comp.expected_workspace_descriptor());
     }
@@ -1987,7 +1979,7 @@ public:
         grady_in.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
 
-    gradx .init<alloc, pooling_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit<alloc, pooling_backward>(comp.expected_gradx_descriptor());
     comp.execute(grady, y, gradx);
   }
 };
@@ -2048,7 +2040,7 @@ public:
         , alpha, beta, aalogorithm, aprop_kind);
 
     if (dst != src)
-      dst.init<alloc, eltwise_forward>(src.get_descriptor());
+      dst.reinit<alloc, eltwise_forward>(src.get_descriptor());
     comp.execute(src, dst);
   }
 };
@@ -2113,7 +2105,7 @@ public:
     auto comp = fetch_or_create_m(key, grady.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
 
-    gradx.init<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
     comp.execute(src, grady, gradx);
   }
 
@@ -2197,7 +2189,7 @@ public:
 
     if (output.get_dims().size() == 0) {
       sum comp(scales, inputs_desc);
-      output.init<alloc, sum>(comp.expected_dst_descriptor());
+      output.reinit<alloc, sum>(comp.expected_dst_descriptor());
       comp.execute(inputs, output);
     } else {
       sum comp(scales, inputs_desc, output.get_descriptor());
@@ -2283,7 +2275,7 @@ public:
     }
 
     auto comp = fetch_or_create_m(key, axis, tdesc);
-    dst.init<alloc, concat>(comp.expected_dst_descriptor());
+    dst.reinit<alloc, concat>(comp.expected_dst_descriptor());
     comp.execute(inputs, dst);
   }
 

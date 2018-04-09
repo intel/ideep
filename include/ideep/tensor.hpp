@@ -20,9 +20,6 @@ public:
   using dim_t = dims::value_type;
   using data_type = mkldnn::memory::data_type;
 
-  constexpr static const long fortytwo = 42;
-#define invalid_buffer reinterpret_cast<void *>(param::fortytwo)
-
   /// A param descriptor.
   struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
     friend class param;
@@ -520,10 +517,35 @@ public:
     init<utils::allocator, computation>(adesc);
   }
 
+  /// Function that refill tensor with new description or buffer
+  //
+  template<class alloc = utils::allocator, class computation_t = computation>
+  void reinit(const descriptor &adesc) {
+    auto curr_size = get_size();
+    auto new_size = adesc.get_size();
+
+    // TODO: 42 problem
+    if (curr_size >= new_size ||
+        (buffer_ == nullptr && get_data_handle() != nullptr)) {
+      // We don't have to allocate new buffer or we don't manage the buffer
+      // either way, we don't allocate new buffer
+      // People who manage buffer provide enough space
+      set_descriptor(adesc);
+    } else {
+      // re-allocate new room
+      init<alloc, computation_t>(adesc);
+    }
+  }
+
+  /// Function that refill tensor with new description or buffer
+  void reinit(const descriptor &adesc) {
+    reinit<utils::allocator, computation>(adesc);
+  }
+
   /// Empty construction
   ///
   param() {
-    init(descriptor(), invalid_buffer);
+    init(descriptor(), nullptr);
   }
 
   /// Constructs a param and allocating internal buffer.
@@ -666,13 +688,13 @@ public:
 
   /// Materialize API used internal only, we should deal with it
   inline bool materialized() const {
-    return (get_data_handle() != invalid_buffer);
+    return (get_data_handle() != nullptr);
   }
 
   void dematerialize() {
-    if (get_data_handle() != reinterpret_cast<void *>(invalid_buffer)) {
+    if (get_data_handle() != nullptr) {
       buffer_.reset();
-      set_data_handle(reinterpret_cast<void *>(invalid_buffer));
+      set_data_handle(nullptr);
     }
   }
 

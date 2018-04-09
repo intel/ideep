@@ -36,7 +36,7 @@ public:
   using scratch_allocator = ideep::utils::scratch_allocator;
   using tensor = ideep::tensor;
   using concat_forward = ideep::concat_forward;
-  using spliter = ideep::spliter;
+  using spliter = ideep::reorder;
 
   static mdarray Forward(std::vector<mdarray> inputs, int axis) {
     std::vector<tensor> inputs_;

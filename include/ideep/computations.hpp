@@ -2711,7 +2711,7 @@ public:
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
-      tensor& gradx, tensor& gradw, tensor& grad_shift, float epsilon) {
+      tensor& gradx, tensor& gradw, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
@@ -2721,9 +2721,27 @@ public:
     gradx.init<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
     gradw.init(comp.expected_gradw_descriptor());
+    comp.execute(
+        src, mean, variance, grady, scale, gradx, gradw);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src, const tensor& mean,
+      const tensor& variance, const tensor& grady, const tensor& scale,
+      tensor& gradx, tensor& grad_scale, tensor& grad_shift, float epsilon) {
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), epsilon);
+
+    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+        src.get_descriptor(), epsilon);
+
+    gradx.init<alloc, batch_normalization_backward>(
+        comp.expected_gradx_descriptor());
+    grad_scale.init(comp.expected_gradw_descriptor());
     grad_shift.init(mean.get_descriptor());
     comp.execute(
-        src, mean, variance, grady, scale, gradx, gradw, grad_shift);
+        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
+    grad_scale.set_descriptor(mean.get_descriptor());
   }
 private:
   tensor weights_;

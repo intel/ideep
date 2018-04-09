@@ -592,6 +592,14 @@ public:
     return descriptor(clone, public_format_);
   }
 
+  // Force a descriptor into param
+  void set_descriptor(const descriptor& new_desc) {
+    // Keep the original management
+    auto buf = std::move(buffer_);
+    init(new_desc, get_data_handle());
+    buffer_ = std::move(buf);
+  }
+
   view create_view(dims view_dims, dims offsets) const {
     return view(get_descriptor(), view_dims, offsets);
   }

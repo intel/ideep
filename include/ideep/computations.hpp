@@ -2872,7 +2872,7 @@ struct inner_product_forward: public computation,
         src_in.init({new_dims, src.get_data_type(), format::oi}, src.get_data_handle());
       else {
         src_in.init<alloc, inner_product_forward>(
-            src.get_dims(), src.get_data_type(), format::oihw);
+            {src.get_dims(), src.get_data_type(), format::oihw});
         reorder::compute(src, src_in);
         src_in.set_descriptor({new_dims, src.get_data_type(), format::oi});
       }

@@ -1041,7 +1041,13 @@ struct convolution_forward: public computation,
       reorder::compute(weights, weights_in);
     }
 
-    dst.init<alloc, convolution_forward>(comp.expected_dst_descriptor());
+    auto dst_desc = comp.expected_dst_descriptor();
+
+    // TODO: interface it
+    if (dst.get_size() >= dst_desc.get_size())
+      dst.set_descriptor(std::move(dst_desc));
+    else
+      dst.init<alloc, convolution_forward>(std::move(dst_desc));
     comp.execute(src_in, weights_in, bias, dst);
   }
 
@@ -1059,6 +1065,8 @@ struct convolution_forward: public computation,
     // Performance evaluation
     auto src_in = src;
     auto weights_in = weights;
+
+    // TODO: cut duplicated function call
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, convolution_forward>(
           comp.expected_src_descriptor());
@@ -1070,7 +1078,11 @@ struct convolution_forward: public computation,
       reorder::compute(weights, weights_in);
     }
 
-    dst.init<alloc, convolution_forward>(comp.expected_dst_descriptor());
+    auto dst_desc = comp.expected_dst_descriptor();
+    if (dst.get_size() >= dst_desc.get_size())
+      dst.set_descriptor(std::move(dst_desc));
+    else
+      dst.init<alloc, convolution_forward>(std::move(dst_desc));
     comp.execute(src_in, weights_in, dst);
   }
 

@@ -2667,7 +2667,6 @@ public:
         flags, aprop_kind);
     computation::init(batch_norm_backward);
     weights_.init(batch_norm_backward.expected_weights_descriptor());
-    gradw_.init(batch_norm_backward.expected_gradw_descriptor());
   }
 
   batch_normalization_backward() = default;
@@ -2688,18 +2687,16 @@ public:
 
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& grady, const tensor& scale, const tensor& gradx,
-      const tensor& grad_scale, const tensor& grad_shift) {
+      const tensor& gradw, const tensor& grad_shift) {
     // protect API integraty, should we use solid check instead of assert?
     assert(get_prop_kind() == prop_kind::backward);
     // We can sure that only scale is matter at this place
     // And single thread of memcpy should be fast enough
     std::memcpy(
         weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    computation::execute(src, mean, variance, grady, weights_, gradx, gradw_);
-    std::memcpy(grad_scale.get_data_handle(),
-        gradw_.get_data_handle(), grad_scale.get_size());
+    computation::execute(src, mean, variance, grady, weights_, gradx, gradw);
     std::memcpy(grad_shift.get_data_handle(),
-        (char *)gradw_.get_data_handle() + grad_scale.get_size(),
+        (char *)gradw.get_data_handle() + grad_shift.get_size(),
         grad_shift.get_size());
   }
 
@@ -2714,7 +2711,7 @@ public:
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
-      tensor& gradx, tensor& grad_scale, tensor& grad_shift, float epsilon) {
+      tensor& gradx, tensor& gradw, tensor& grad_shift, float epsilon) {
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
@@ -2723,13 +2720,13 @@ public:
 
     gradx.init<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
-    grad_scale.init(mean.get_descriptor());
+    gradw.init(comp.expected_gradw_descriptor());
     grad_shift.init(mean.get_descriptor());
     comp.execute(
-        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
+        src, mean, variance, grady, scale, gradx, gradw, grad_shift);
   }
 private:
-  tensor weights_, gradw_;
+  tensor weights_;
 };
 
 struct inner_product_forward: public computation,

@@ -43,7 +43,7 @@ protected:
 
     // auto dst_desc = tensor::descriptor(p.dst_cds, data_type, p.dst_format);
     auto dst = make_output();
-    concat_forward::compute(inputs, p.concat_dimension, dst);
+    concat::compute(inputs, p.concat_dimension, dst);
 
     check_data<data_t>(inputs, dst, static_cast<int>(p.concat_dimension));
 

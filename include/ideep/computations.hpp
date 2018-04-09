@@ -1612,6 +1612,33 @@ public:
     return compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
         strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src, const tensor& grady,
+      tensor::dims gradw_dims, tensor& gradw,
+      const tensor::dims strides, const tensor::dims padding_l,
+      const tensor::dims padding_r, int group,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    gradw_dims.insert(gradw_dims.begin(), group);
+    gradw_dims[1]/=group;
+    compute_impl<alloc>(src, grady, gradw_dims, gradw, strides,
+        padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src,
+      const tensor& grady, tensor::dims gradw_dims, tensor& gradw,
+      tensor& gradb, const tensor::dims strides,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      int group, algorithm aalgorithm = algorithm::convolution_direct,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    gradw_dims.insert(gradw_dims.begin(), group);
+    gradw_dims[1]/=group;
+    return compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
+        strides, padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
 };
 
 struct lrn_forward : public computation,
@@ -2170,8 +2197,8 @@ public:
   }
 };
 
-struct concat_forward : public computation,
-  public utils::computation_cache<concat_forward> {
+struct concat : public computation,
+  public utils::computation_cache<concat> {
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension,
         const std::vector<tensor::descriptor> &inputs) {
@@ -2207,9 +2234,9 @@ public:
     computation::init(forward_descriptor, inputs);
   }
 
-  concat_forward() = default;
+  concat() = default;
 
-  concat_forward(int concat_dimension,
+  concat(int concat_dimension,
       const std::vector<tensor::descriptor> &inputs) {
     init(concat_dimension, inputs);
   }
@@ -2238,7 +2265,7 @@ public:
     for (int i = 1; i <tdesc.size(); i++) {
       if (inputs_format[i] != inputs_format[0]) {
         auto src_in = inputs[i];
-        src_in.init<alloc, concat_forward>(
+        src_in.init<alloc, concat>(
             {inputs_dims[i], inputs_dt[i], inputs_format[0]});
         reorder::compute(inputs[i], src_in);
         inputs[i] = std::move(src_in);
@@ -2247,7 +2274,7 @@ public:
     }
 
     auto comp = fetch_or_create_m(key, axis, tdesc);
-    dst.init<alloc, concat_forward>(comp.expected_dst_descriptor());
+    dst.init<alloc, concat>(comp.expected_dst_descriptor());
     comp.execute(inputs, dst);
   }
 
@@ -2832,6 +2859,11 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& weights,
       const tensor& bias, tensor& dst) {
+    tensor src_in = src;
+
+    if (src.ndims() == 4 && weights.ndims() == 2) {
+    }
+
     tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src.get_data_type());
 
@@ -2841,7 +2873,6 @@ struct inner_product_forward: public computation,
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(), dst_desc);
 
-    auto src_in = src;
     auto weights_in = weights;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());

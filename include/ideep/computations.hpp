@@ -1638,7 +1638,6 @@ public:
     return compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
         strides, padding_l, padding_r, aalgorithm, apadding_kind);
   }
-
 };
 
 struct lrn_forward : public computation,
@@ -2862,6 +2861,21 @@ struct inner_product_forward: public computation,
     tensor src_in = src;
 
     if (src.ndims() == 4 && weights.ndims() == 2) {
+      //
+      // tricky procedure, we change src back to public format
+      // then we using another tensor with 2 dimension to describe the buffer
+      //
+      tensor::dims new_dims { src.get_dim(0),
+        src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
+
+      if (src.is_public_format())
+        src_in.init({new_dims, src.get_data_type(), format::oi}, src.get_data_handle());
+      else {
+        src_in.init<alloc, inner_product_forward>(
+            src.get_dims(), src.get_data_type(), format::oihw);
+        reorder::compute(src, src_in);
+        src_in.set_descriptor({new_dims, src.get_data_type(), format::oi});
+      }
     }
 
     tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};

@@ -2066,6 +2066,8 @@ public:
     computation::execute(x, grady, gradx);
   }
 
+  // If grady and x had different format, performance is bad.
+  // TODO: Seeking a single shot solution.
   template<class alloc, typename ...Ts>
   static void compute_impl(const tensor &src, const tensor &grady,
       tensor& gradx, Ts &&...args) {

@@ -5,7 +5,6 @@
 
 #include <ideep.hpp>
 #include "test_ideep_common.hpp"
-#include "jitprofiling.h"
 
 using namespace ideep;
 
@@ -43,6 +42,11 @@ protected:
 
     batch_normalization_forward_inference::compute(
         src_, mean_, variance_, scale_, shift_, dst, p.eps);
+
+    check_bnrm_fwd<data_t>(p, src_, mean_, variance_, scale_, shift_, dst,
+        batch_normalization_flag::use_scale_shift |
+        batch_normalization_flag::use_global_stats,
+        prop_kind::forward_inference);
   }
 
   void test_forward_training() {
@@ -56,6 +60,10 @@ protected:
     batch_normalization_forward_training::compute(
         src_, scale_, shift_, dst, mean, variance,
         running_mean, running_var, 0.9f, p.eps);
+
+    check_bnrm_fwd<data_t>(p, src_, mean, variance, scale_, shift_, dst,
+        batch_normalization_flag::use_scale_shift,
+        prop_kind::forward_training);
   }
 
   void test_backward() {
@@ -72,6 +80,10 @@ protected:
 
     batch_normalization_backward::compute(src_, mean_,
         variance_, grady_, scale_, gradx, gscale, gshift, p.eps);
+
+    check_bnrm_bwd<data_t>(p, src_, grady_, mean_, variance_, scale_,
+        gradx, gscale, gshift, batch_normalization_flag::use_scale_shift,
+        prop_kind::backward);
   }
 
   tensor::descriptor statistic_desc_;

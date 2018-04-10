@@ -2,6 +2,7 @@ add_subdirectory(googletest)
 add_subdirectory(rapidcheck)
 add_subdirectory(rapidcheck/extras/gtest)
 include(../cmake/settings.cmake)
+include(../cmake/profiling.cmake)
 
 include_directories(
   googletest/googletest/include
@@ -11,6 +12,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mkl-dnn/include
   ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtests
   ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtests/in
+  ${extra_include}
   )
 
 file(GLOB __native_test_src
@@ -34,10 +36,16 @@ file(GLOB __native_test_src
   test_ideep_allocator.cc
   )
 
+if ("${vtune_lib} ${vtune_include}")
+  file(GLOB __native_test_src
+    bench_ideep_batch_normalization.cc
+  )
+endif()
+
 foreach(__test_file ${__native_test_src})
   get_filename_component(__exe_file_name ${__test_file} NAME_WE)
   add_executable(${__exe_file_name} ${__test_file})
   target_link_libraries(${__exe_file_name}
-    mkldnn gtest gtest_main gmock rapidcheck_gtest)
+    mkldnn gtest gtest_main gmock rapidcheck_gtest ${EXTRA_LIBS})
   add_test(${__exe_file_name} ${__exe_file_name})
 endforeach()

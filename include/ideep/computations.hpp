@@ -613,6 +613,7 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     op(input, output);
   }
 
+  // TODO: make this right
   template <typename alloc = utils::allocator>
   static tensor compute(
       const tensor &input, const tensor::dims &volume, const tensor::dims &start) {
@@ -2306,7 +2307,7 @@ public:
 
     reorder reorder_;
     tensor::dims offset_dims(dst_dims.size(), 0);
-    dst.init({dst_dims, inputs[0].get_data_type(),
+    dst.reinit({dst_dims, inputs[0].get_data_type(),
         inputs[0].get_internal_format()});
     for (int i = 0; i < inputs.size(); ++i) {
       auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
@@ -2482,8 +2483,9 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
 
-    dst.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_dst_descriptor());
+    if (dst != src)
+      dst.reinit<alloc, batch_normalization_forward_inference>(
+          comp.expected_dst_descriptor());
     comp.execute(src, scale, shift, dst);
   }
 
@@ -2496,8 +2498,9 @@ public:
 
     auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
 
-    dst.init<alloc, batch_normalization_forward_inference>(
-        comp.expected_dst_descriptor());
+    if (dst != src)
+      dst.reinit<alloc, batch_normalization_forward_inference>(
+          comp.expected_dst_descriptor());
     comp.execute(src, mean, variance, scale, shift, dst);
   }
 private:
@@ -2594,10 +2597,10 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
-    dst.init<alloc, batch_normalization_forward_training>(
+    dst.reinit<alloc, batch_normalization_forward_training>(
         comp.expected_dst_descriptor());
-    mean.init(comp.expected_statistic_descriptor());
-    variance.init(comp.expected_statistic_descriptor());
+    mean.reinit(comp.expected_statistic_descriptor());
+    variance.reinit(comp.expected_statistic_descriptor());
 
     comp.execute(src, scale, shift, dst, mean, variance);
   }
@@ -2614,12 +2617,12 @@ public:
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     // TODO: Substitue running statistics calculation with lighter version
-    dst.init<alloc, batch_normalization_forward_training>(
+    dst.reinit<alloc, batch_normalization_forward_training>(
         comp.expected_dst_descriptor());
-    mean.init(comp.expected_statistic_descriptor());
-    variance.init(comp.expected_statistic_descriptor());
-    running_mean.init(comp.expected_statistic_descriptor());
-    running_var.init(comp.expected_statistic_descriptor());
+    mean.reinit(comp.expected_statistic_descriptor());
+    variance.reinit(comp.expected_statistic_descriptor());
+    running_mean.reinit(comp.expected_statistic_descriptor());
+    running_var.reinit(comp.expected_statistic_descriptor());
 
     comp.execute(src, scale, shift, dst, mean, variance);
     comp.running_statistic(mean, variance, running_mean, running_var);
@@ -2747,9 +2750,9 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
-    gradx.init<alloc, batch_normalization_backward>(
+    gradx.reinit<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
-    gradw.init(comp.expected_gradw_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(
         src, mean, variance, grady, scale, gradx, gradw);
   }
@@ -2764,10 +2767,10 @@ public:
     auto comp = fetch_or_create_m(key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
-    gradx.init<alloc, batch_normalization_backward>(
+    gradx.reinit<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
-    grad_scale.init(comp.expected_gradw_descriptor());
-    grad_shift.init(mean.get_descriptor());
+    grad_scale.reinit(comp.expected_gradw_descriptor());
+    grad_shift.reinit(mean.get_descriptor());
     comp.execute(
         src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
     grad_scale.set_descriptor(mean.get_descriptor());
@@ -2901,7 +2904,7 @@ struct inner_product_forward: public computation,
       reorder::compute(weights, weights_in);
     }
 
-    dst.init<alloc, inner_product_forward>(
+    dst.reinit<alloc, inner_product_forward>(
         comp.expected_dst_descriptor());
     comp.execute(src_in, weights_in, bias, dst);
   }
@@ -2948,7 +2951,7 @@ struct inner_product_forward: public computation,
       reorder::compute(weights, weights_in);
     }
 
-    dst.init<alloc, inner_product_forward>(
+    dst.reinit<alloc, inner_product_forward>(
         comp.expected_dst_descriptor());
     comp.execute(src_in, weights_in, dst);
   }
@@ -3028,7 +3031,7 @@ public:
       reorder::compute(weights, weights_in);
     }
 
-    gradx.init<alloc, inner_product_backward_data>(
+    gradx.reinit<alloc, inner_product_backward_data>(
         comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -3134,7 +3137,7 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    gradw.init<alloc, inner_product_backward_weights>(
+    gradw.reinit<alloc, inner_product_backward_weights>(
         comp.expected_gradw_descriptor());
     comp.execute(x_in, grady_in, gradw);
   }
@@ -3168,9 +3171,9 @@ public:
       reorder::compute(grady, grady_in);
     }
 
-    gradw.init<alloc, inner_product_backward_weights>(
+    gradw.reinit<alloc, inner_product_backward_weights>(
         comp.expected_gradw_descriptor());
-    gradb.init(comp.expected_gradb_descriptor());
+    gradb.reinit(comp.expected_gradb_descriptor());
     comp.execute(x_in, grady_in, gradw, gradb);
   }
 };

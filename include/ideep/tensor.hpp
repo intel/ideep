@@ -644,8 +644,11 @@ public:
   }
 
   inline int ndims() const {
-    const mkldnn_memory_desc_t *adesc = get_mkldnn_memory_desc_t();
-    return adesc->ndims;
+    return get_mkldnn_memory_desc_t()->ndims;
+  }
+
+  inline bool is_empty() const {
+    return ndims() == 0 && get_data_handle() == 0;
   }
 
   inline size_t get_size() const {

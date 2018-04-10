@@ -2069,6 +2069,7 @@ public:
 struct pooling_forward : public computation,
   public utils::computation_cache<pooling_forward> {
   struct descriptor : descriptor_group {
+    descriptor() = default;
     descriptor(
         const tensor::descriptor &x_desc,
         const tensor::descriptor &y_desc,
@@ -2205,17 +2206,39 @@ struct pooling_backward : public computation,
             const tensor::dims &padding_r,
             algorithm aalgorithm,
             const padding_kind apadding_kind = padding_kind::zero)
-      : hint_(gradx_desc, grady_desc, strides, kernel, padding_l,
-          padding_r, aalgorithm, prop_kind::forward, apadding_kind) {
+      : hint_([&]() {
+              mkldnn::memory::validate_dims(strides);
+              mkldnn::memory::validate_dims(kernel);
+              mkldnn::memory::validate_dims(padding_l);
+              mkldnn::memory::validate_dims(padding_r);
+              auto gradx_data = gradx_desc.format_any();
+              mkldnn_pooling_desc_t data;
+              error::wrap_c_api(mkldnn_pooling_forward_desc_init(&data,
+                    mkldnn::convert_to_c(prop_kind::forward),
+                    convert_to_c(aalgorithm),
+                    &gradx_data, grady_desc.get_mkldnn_memory_desc_t(),
+                    &strides[0], &kernel[0],
+                    &padding_l[0], &padding_r[0],
+                    mkldnn::convert_to_c(apadding_kind)),
+                  "could not init a forward pooling descriptor");
+              mkldnn_primitive_desc_t result;
+              error::wrap_c_api(mkldnn_primitive_desc_create(
+                    &result, &data, engine::cpu_engine().get(), nullptr),
+                  "could not create a forward pooling primitive descriptor");
+
+              pooling_forward::descriptor hint;
+              hint.reset(result);
+              return hint;
+            } ()) {
       mkldnn::memory::validate_dims(strides);
       mkldnn::memory::validate_dims(kernel);
       mkldnn::memory::validate_dims(padding_l);
       mkldnn::memory::validate_dims(padding_r);
+      auto gradx_data = gradx_desc.format_any();
       mkldnn_pooling_desc_t data;
       error::wrap_c_api(mkldnn_pooling_backward_desc_init(&data,
             convert_to_c(aalgorithm),
-            gradx_desc.get_mkldnn_memory_desc_t(),
-            grady_desc.get_mkldnn_memory_desc_t(),
+            &gradx_data, grady_desc.get_mkldnn_memory_desc_t(),
             &strides[0], &kernel[0],
             &padding_l[0], &padding_r[0],
             mkldnn::convert_to_c(apadding_kind)),
@@ -2279,12 +2302,20 @@ public:
       const tensor &x, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
-    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
-        grady.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
+    auto grady_in = grady;
+    // y is a scalar sometimes
+    if (y.ndims() > 0 &&
+        grady.get_descriptor() != y.get_descriptor()) {
+      grady_in.init<alloc, pooling_backward>(y.get_descriptor());
+      reorder::compute(grady, grady_in);
+    }
+
+    auto key = utils::create_key(grady_in.get_data_type(), grady_in.get_dims(),
+        grady_in.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
         padding_r, aalgorithm, apadding_kind);
 
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
-        grady.get_descriptor(), strides, kernel, padding_l, padding_r,
+        grady_in.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
 
     tensor gradx;

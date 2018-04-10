@@ -12,7 +12,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mkl-dnn/include
   ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtests
   ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtests/in
-  ${extra_include}
+  ${vtune_include}
   )
 
 file(GLOB __native_test_src
@@ -34,13 +34,8 @@ file(GLOB __native_test_src
   test_ideep_concat.cc
   test_ideep_reorder.cc
   test_ideep_allocator.cc
+  bench_ideep_batch_normalization.cc
   )
-
-if ("${vtune_lib} ${vtune_include}")
-  file(GLOB __native_test_src
-    bench_ideep_batch_normalization.cc
-  )
-endif()
 
 foreach(__test_file ${__native_test_src})
   get_filename_component(__exe_file_name ${__test_file} NAME_WE)

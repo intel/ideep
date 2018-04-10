@@ -35,5 +35,6 @@ else()
     endif()
 
     list(APPEND vtune_include "${VTUNEROOT}/include")
+    add_definitions(-DPROFILE_ENABLE)
     message(STATUS "VTune profiling environment is set")
 endif()

@@ -87,7 +87,7 @@ public:
   instruments::frame::mark_end(std::move(fr))
 #else
 class frame {};
-#define FRMAE_START() frame()
-#define FRMAE_END(fr)
+#define FRAME_START() frame()
+#define FRAME_END(fr) (void(fr))
 #endif
 #endif

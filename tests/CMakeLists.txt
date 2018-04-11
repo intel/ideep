@@ -41,6 +41,6 @@ foreach(__test_file ${__native_test_src})
   get_filename_component(__exe_file_name ${__test_file} NAME_WE)
   add_executable(${__exe_file_name} ${__test_file})
   target_link_libraries(${__exe_file_name}
-    mkldnn gtest gtest_main gmock rapidcheck_gtest ${itt_libname})
+    mkldnn gtest gtest_main gmock rapidcheck_gtest ${itt_libname} dl)
   add_test(${__exe_file_name} ${__exe_file_name})
 endforeach()

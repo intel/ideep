@@ -2587,6 +2587,8 @@ public:
     return output;
   }
 
+  // Just for specific requirements (dst format)
+  // Recommand the other API of `sum` to avoid performance drop
   template<class alloc = utils::allocator>
   static tensor compute(const std::vector<float> &scales,
       const std::vector<tensor> &inputs, void *raw_out,

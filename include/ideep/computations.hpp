@@ -54,6 +54,7 @@
 #include "tensor.hpp"
 #include "lru_cache.hpp"
 #include "scope_guard.hpp"
+#include "instruments.hpp"
 #include <mkl_vsl.h>
 #endif
 
@@ -492,12 +493,14 @@ protected:
     // if (need_reorder_input(3))
     //   execution_sequence.push_back(auxiliaries_[3].get());
 
+    auto fr = FRAME_START();
     error::wrap_c_api(
         mkldnn_stream_submit(parallel_control.get()
           , execution_sequence.size(), &execution_sequence[0]
           , &c_api_error_primitive)
         , "could not execute the computation"
         , &c_api_error_primitive);
+    FRAME_END(fr);
   }
 };
 
@@ -593,11 +596,13 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     std::vector<mkldnn_primitive_t> execution_sequence = {get()};
     mkldnn_primitive_t c_api_error_primitive;
 
+    auto fr = FRAME_START();
     error::wrap_c_api(
         mkldnn_stream_submit(stream::default_stream().get(),
           execution_sequence.size(), &execution_sequence[0],
           &c_api_error_primitive),
         "could not execute reorder", &c_api_error_primitive);
+    FRAME_END(fr);
   }
 
   static void compute(

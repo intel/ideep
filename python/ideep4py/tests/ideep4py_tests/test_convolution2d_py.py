@@ -6,7 +6,7 @@ import ideep4py
 from ideep4py import convolution2DParam
 from ideep4py import convolution2D
 
-from memory_profiler import profile
+# from memory_profiler import profile
 
 try:
     import testing
@@ -49,7 +49,7 @@ print('bs_list: ', bs_list)
 @testing.fix_random()
 class TestConvolution2DPyF32(unittest.TestCase):
 
-    @profile
+    # @profile
     def setUp(self):
         self.x_shape = (self.bs, self.channel, 224, 224)
         self.w_shape = (self.channel, self.channel, 3, 3)
@@ -92,7 +92,7 @@ class TestConvolution2DPyF32(unittest.TestCase):
         self.check_forward_options = {'atol': 1e-3, 'rtol': 1e-2}
         self.check_backward_options = {'atol': 1e-3, 'rtol': 1e-2}
 
-    @profile
+    # @profile
     def check_forward(self, x, w, b, cp):
         if self.with_bias:
             y_act = convolution2D.Forward(x, w, b, cp)
@@ -124,7 +124,7 @@ class TestConvolution2DPyF32(unittest.TestCase):
         print("w shape ", self.w.shape)
         self.check_forward(self.x, self.w, self.b, self.cp)
 
-    @profile
+    # @profile
     def check_backward_weights(self, x, w, b, cp, gy):
         gW_act, gB_act = convolution2D.BackwardWeightsBias(x, gy, cp)
         gW_act = numpy.array(gW_act, dtype=self.dtype)

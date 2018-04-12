@@ -3,9 +3,9 @@ from chainer import testing
 from chainer import utils  # NOQA
 import ideep4py
 
-from memory_profiler import profile
+# from memory_profiler import profile
 
-@profile
+# @profile
 def run():
     print('[1]')
     x = numpy.ndarray(shape=(256, 3, 224, 224), dtype=numpy.float32, order='C')

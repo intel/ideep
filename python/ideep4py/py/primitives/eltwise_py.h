@@ -39,16 +39,18 @@ public:
   using eltwise_backward = ideep::eltwise_backward;
 
   static mdarray Forward(mdarray &src) {
-    auto dst = eltwise_forward::compute<scratch_allocator>(
-                  *(src.get()), 0.0, 0.0);
+    tensor dst;
+    eltwise_forward::compute<scratch_allocator>(
+                  *(src.get()), dst);
 
     auto out = mdarray(dst);
     return out;
   }
 
   static mdarray Backward(mdarray &src, mdarray &grady) {
-    auto gradx = eltwise_backward::compute<scratch_allocator>(
-                  *(src.get()), *(grady.get()), 0.0, 0.0);
+    tensor gradx;
+    eltwise_backward::compute<scratch_allocator>(
+        *(src.get()), *(grady.get()), gradx);
 
     auto out = mdarray(gradx);
     return out;
@@ -66,17 +68,18 @@ public:
   using algorithm = ideep::algorithm;
 
   static mdarray Forward(mdarray &src) {
-    auto dst = eltwise_forward::compute<scratch_allocator>(
-                  *(src.get()), 0.0, 0.0, algorithm::eltwise_tanh);
+    tensor dst;
+    eltwise_forward::compute<scratch_allocator>(
+        *(src.get()), dst, algorithm::eltwise_tanh);
 
     auto out = mdarray(dst);
     return out;
   }
 
   static mdarray Backward(mdarray &src, mdarray &grady) {
-    auto gradx = eltwise_backward::compute<scratch_allocator>(
-                  *(src.get()), *(grady.get()), 0.0, 0.0,
-                  algorithm::eltwise_tanh);
+    tensor gradx;
+    eltwise_backward::compute<scratch_allocator>(
+        *(src.get()), *(grady.get()), gradx, algorithm::eltwise_tanh);
 
     auto out = mdarray(gradx);
     return out;

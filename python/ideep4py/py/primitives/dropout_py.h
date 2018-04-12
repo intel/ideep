@@ -38,21 +38,22 @@ public:
 
   static std::vector<mdarray> Forward(mdarray *src, float ratio) {
     std::vector<mdarray> outs;
-    auto tensors = dropout_forward::compute(*src->get(), ratio);
+    ideep::tensor dst, mask;
+    dropout_forward::compute(*src->get(), ratio, dst, mask);
 
-    outs.push_back(mdarray(tensors.first));
-    outs.push_back(mdarray(tensors.second));
+    outs.push_back(mdarray(dst));
+    outs.push_back(mdarray(mask));
 
     return outs;
   }
 
   static mdarray Backward(mdarray *mask, mdarray *grady) {
-    auto gradx = dropout_backward::compute(*mask->get(), *grady->get());
+    ideep::tensor gradx;
+    dropout_backward::compute(*mask->get(), *grady->get(), gradx);
 
     auto out = mdarray(gradx);
     return out;
   }
-
 };
 
 #endif // _DROPOUT_PY_H_

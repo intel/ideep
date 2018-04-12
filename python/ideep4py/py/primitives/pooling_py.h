@@ -44,14 +44,15 @@ public:
 
   static std::vector<mdarray> Forward(mdarray *src,
                                       pooling_param_t *pp) {
-    auto dst = pooling_forward::compute<scratch_allocator>(
-                  *(src->get()), pp->out_dims,
-                  tensor::dims {pp->sy, pp->sx},
-                  tensor::dims {pp->kh, pp->kw},
-                  tensor::dims {pp->pad_lh, pp->pad_lw},
-                  tensor::dims {pp->pad_rh, pp->pad_rw},
-                  pooling_algo_convert(pp->algo_kind),
-                  prop_kind::forward_training);
+    tensor dst;
+    pooling_forward::compute<scratch_allocator>(
+        *(src->get()), pp->out_dims, dst,
+        tensor::dims {pp->sy, pp->sx},
+        tensor::dims {pp->kh, pp->kw},
+        tensor::dims {pp->pad_lh, pp->pad_lw},
+        tensor::dims {pp->pad_rh, pp->pad_rw},
+        pooling_algo_convert(pp->algo_kind),
+        prop_kind::forward_training);
 
     std::vector<mdarray> outs;
     outs.push_back(mdarray(dst));
@@ -70,13 +71,14 @@ public:
     if (ws)
       dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
 
-    auto gx = pooling_backward::compute<scratch_allocator>(
-                  *grady->get(), dst, *src->get(),
-                  tensor::dims {pp->sy, pp->sx},
-                  tensor::dims {pp->kh, pp->kw},
-                  tensor::dims {pp->pad_lh, pp->pad_lw},
-                  tensor::dims {pp->pad_rh, pp->pad_rw},
-                  pooling_algo_convert(pp->algo_kind));
+    tensor gx;
+    pooling_backward::compute<scratch_allocator>(
+        *grady->get(), dst, *src->get(), gx,
+        tensor::dims {pp->sy, pp->sx},
+        tensor::dims {pp->kh, pp->kw},
+        tensor::dims {pp->pad_lh, pp->pad_lw},
+        tensor::dims {pp->pad_rh, pp->pad_rw},
+        pooling_algo_convert(pp->algo_kind));
 
     auto out = mdarray(gx);
     return out;
@@ -91,18 +93,19 @@ public:
     tensor dst;
 
     src.init({pp->out_dims, grady->get()->get_data_type(),
-              engine::default_format(pp->out_dims.size())}, invalid_buffer);
+              engine::default_format(pp->out_dims.size())}, nullptr);
 
     if (ws)
       dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
 
-    auto gx = pooling_backward::compute<scratch_allocator>(
-                  *grady->get(), dst, src,
-                  tensor::dims {pp->sy, pp->sx},
-                  tensor::dims {pp->kh, pp->kw},
-                  tensor::dims {pp->pad_lh, pp->pad_lw},
-                  tensor::dims {pp->pad_rh, pp->pad_rw},
-                  pooling_algo_convert(pp->algo_kind));
+    tensor gx;
+    pooling_backward::compute<scratch_allocator>(
+        *grady->get(), dst, src, gx,
+        tensor::dims {pp->sy, pp->sx},
+        tensor::dims {pp->kh, pp->kw},
+        tensor::dims {pp->pad_lh, pp->pad_lw},
+        tensor::dims {pp->pad_rh, pp->pad_rw},
+        pooling_algo_convert(pp->algo_kind));
 
     auto out = mdarray(gx);
     return out;

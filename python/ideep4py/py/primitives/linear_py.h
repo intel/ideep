@@ -44,11 +44,13 @@ public:
   static mdarray Forward(mdarray *src,
                          mdarray *weights,
                          mdarray *bias) {
-    auto dst = bias ?
-               inner_product_forward::compute<scratch_allocator>(
-                   *src->get(), *weights->get(), *bias->get()) :
-               inner_product_forward::compute<scratch_allocator>(
-                   *src->get(), *weights->get());
+    tensor dst;
+    if (bias)
+      inner_product_forward::compute<scratch_allocator>(
+          *src->get(), *weights->get(), *bias->get(), dst);
+    else
+      inner_product_forward::compute<scratch_allocator>(
+          *src->get(), *weights->get(), dst);
 
     auto out = mdarray(dst);
     return out;
@@ -56,21 +58,23 @@ public:
 
   static mdarray BackwardWeights(mdarray *src,
                                  mdarray *grady) {
-    auto gWb = inner_product_backward_weights::compute<scratch_allocator>(
-               *src->get(), *grady->get());
+    tensor gW;
+    inner_product_backward_weights::compute<scratch_allocator>(
+        *src->get(), *grady->get(), gW);
 
-    auto out = mdarray(gWb.first);
+    auto out = mdarray(gW);
     return out;
   }
 
   static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
                                                   mdarray *grady) {
-    auto gWb = inner_product_backward_weights::compute<scratch_allocator>(
-               *src->get(), *grady->get());
+    tensor gW, gb;
+    inner_product_backward_weights::compute<scratch_allocator>(
+        *src->get(), *grady->get(), gW, gb);
 
     std::vector<mdarray> outs;
-    outs.push_back(mdarray(gWb.first));
-    outs.push_back(mdarray(gWb.second));
+    outs.push_back(mdarray(gW));
+    outs.push_back(mdarray(gb));
     return outs;
   }
 
@@ -79,8 +83,10 @@ public:
     // TODO: only 2-D supported
     dims_t gradx_dims = {grady->get()->get_dims()[0],
                          weights->get()->get_dims()[1]};
-    auto gradx_tensor = inner_product_backward_data::compute<scratch_allocator>(
-              *grady->get(), *weights->get(), gradx_dims);
+
+    tensor gradx_tensor;
+    inner_product_backward_data::compute<scratch_allocator>(
+        *grady->get(), *weights->get(), gradx_dims, gradx_tensor);
 
     auto out = mdarray(gradx_tensor);
     return out;

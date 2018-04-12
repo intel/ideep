@@ -43,8 +43,9 @@ public:
   static std::vector<mdarray> Forward(mdarray *src, lrn_param_t *pp) {
     std::vector<mdarray> outs;
 
-    auto dst = lrn_forward::compute<scratch_allocator>(*src->get(), pp->n,
-                   pp->alpha, pp->beta, pp->k, lrn_algo_convert(pp->algo_kind));
+    tensor dst;
+    lrn_forward::compute<scratch_allocator>(*src->get(), dst, pp->n,
+        pp->alpha, pp->beta, pp->k, lrn_algo_convert(pp->algo_kind));
 
     outs.push_back(mdarray(dst));
     outs.push_back(mdarray(*dst.get_extra()));
@@ -57,9 +58,10 @@ public:
     if (ws)
       dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
 
-    auto gradx = lrn_backward::compute<scratch_allocator>(*src->get(), *grady->get(),
-                    dst, pp->n, pp->alpha, pp->beta, pp->k,
-                    lrn_algo_convert(pp->algo_kind));
+    tensor gradx;
+    lrn_backward::compute<scratch_allocator>(*src->get(), *grady->get(),
+        dst, gradx, pp->n, pp->alpha, pp->beta, pp->k,
+        lrn_algo_convert(pp->algo_kind));
 
     auto out = mdarray(gradx);
     return out;

@@ -77,7 +77,8 @@ public:
       inputs.push_back(*arrays[a]);
     }
 
-    auto output = sum::compute(scales, inputs);
+    tensor output;
+    sum::compute(scales, inputs, output);
     return mdarray(output);
   }
 };

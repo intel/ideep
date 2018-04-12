@@ -52,31 +52,29 @@ public:
     std::vector<mdarray> outs;
 
     if (mean) {
-      auto dst_ = batch_normalization_forward_inference::compute<scratch_allocator>(
+      tensor dst;
+      batch_normalization_forward_inference::compute<scratch_allocator>(
 		    *src->get(), *mean->get(), *variance->get(),
-            *scale->get(), *shift->get(), eps);
+            *scale->get(), *shift->get(), dst, eps);
 
-      outs.push_back(mdarray(dst_));
+      outs.push_back(mdarray(dst));
     } else {
-      auto tensors = batch_normalization_forward_training::compute<scratch_allocator>(
-		     *src->get(), *scale->get(), *shift->get(), 0, eps);
+      tensor dst, mean, variance;
+      batch_normalization_forward_training::compute<scratch_allocator>(
+		     *src->get(), *scale->get(), *shift->get(), dst, mean, variance, 0, eps);
 
-      auto dst_ = std::get<0>(tensors);
-      auto mean_ = std::get<1>(tensors);
-      auto variance_ = std::get<2>(tensors);
+      tensor inv;
+      inv.init<scratch_allocator, batch_normalization_forward_training>(
+                {variance.get_dims(), src->get()->get_data_type(),
+                descriptor::public_compatible_format(variance.get_descriptor())});
 
-      tensor inv_;
-      inv_.init<scratch_allocator, batch_normalization_forward_training>(
-                {variance_.get_dims(), src->get()->get_data_type(),
-                descriptor::public_compatible_format(variance_.get_descriptor())});
+      batch_normalization_inv((float *)variance.get_data_handle(), eps,
+          variance.get_nelems(), (float *)inv.get_data_handle());
 
-      batch_normalization_inv((float *)variance_.get_data_handle(), eps,
-                              variance_.get_nelems(), (float *)inv_.get_data_handle());
-
-      outs.push_back(mdarray(dst_));
-      outs.push_back(mdarray(mean_));
-      outs.push_back(mdarray(variance_));
-      outs.push_back(mdarray(inv_));
+      outs.push_back(mdarray(dst));
+      outs.push_back(mdarray(mean));
+      outs.push_back(mdarray(variance));
+      outs.push_back(mdarray(inv));
     }
 
     return outs;
@@ -87,21 +85,22 @@ public:
                                        mdarray *scale, float eps) {
     std::vector<mdarray> outs;
 
-    tensor scale_ = *scale->get();
+    tensor _scale = *scale->get();
     // For old framework compatibility
     // deprecated in new framewrok.
-    if (scale_.ndims() == 2) {
+    if (_scale.ndims() == 2) {
       // scale is weights (scale + shift).
       // cut half to scale.
-      scale_.init({{scale_.get_nelems() / 2}, scale_.get_data_type(), format::x},
-                  scale_.get_data_handle());
+      _scale.init({{_scale.get_nelems() / 2}, _scale.get_data_type(), format::x},
+                  _scale.get_data_handle());
     }
 
-    auto tensors = batch_normalization_backward::compute<scratch_allocator>(*src->get(),
-                       *mean->get(), *variance->get(), *grady->get(), scale_, eps);
+    tensor gscale, gshift;
+    batch_normalization_backward::compute<scratch_allocator>(*src->get(),
+        *mean->get(), *variance->get(), *grady->get(), _scale, gscale, gshift, eps);
 
-    outs.push_back(mdarray(std::get<0>(tensors)));
-    outs.push_back(mdarray(std::get<1>(tensors)));
+    outs.push_back(mdarray(gscale));
+    outs.push_back(mdarray(gshift));
 
     return outs;
   }
@@ -126,29 +125,27 @@ public:
                 (char *)weights_.get_data_handle() + weights_.get_size() / 2);
 
     if (mean) {
-      auto dst_ = batch_normalization_forward_inference::compute<scratch_allocator>(
-		  *src->get(), *mean->get(), *variance->get(), scale, shift, eps);
+      tensor dst_;
+      batch_normalization_forward_inference::compute<scratch_allocator>(
+		  *src->get(), *mean->get(), *variance->get(), scale, shift, dst_, eps);
 
       outs.push_back(mdarray(dst_));
     } else {
-      auto tensors = batch_normalization_forward_training::compute<scratch_allocator>(
-		     *src->get(), scale, shift, 0, eps);
-
-      auto dst_ = std::get<0>(tensors);
-      auto mean_ = std::get<1>(tensors);
-      auto variance_ = std::get<2>(tensors);
+      tensor dst, mean, variance;
+      batch_normalization_forward_training::compute<scratch_allocator>(
+		     *src->get(), scale, shift, dst, mean, variance, 0, eps);
 
       tensor inv_;
       inv_.init<scratch_allocator, batch_normalization_forward_training>(
-                {variance_.get_dims(), src->get()->get_data_type(),
-                descriptor::public_compatible_format(variance_.get_descriptor())});
+                {variance.get_dims(), src->get()->get_data_type(),
+                descriptor::public_compatible_format(variance.get_descriptor())});
 
-      batch_normalization_inv((float *)variance_.get_data_handle(), eps,
-                              variance_.get_nelems(), (float *)inv_.get_data_handle());
+      batch_normalization_inv((float *)variance.get_data_handle(), eps,
+          variance.get_nelems(), (float *)inv_.get_data_handle());
 
-      outs.push_back(mdarray(dst_));
-      outs.push_back(mdarray(mean_));
-      outs.push_back(mdarray(variance_));
+      outs.push_back(mdarray(dst));
+      outs.push_back(mdarray(mean));
+      outs.push_back(mdarray(variance));
       outs.push_back(mdarray(inv_));
     }
 

@@ -2112,7 +2112,7 @@ public:
         src.get_descriptor(), std::forward<Ts>(args)...);
 
     gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
-    comp.execute(src, grady, gradx);
+    comp.execute(src_in, grady, gradx);
   }
 
   template<class alloc = utils::allocator>

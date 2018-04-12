@@ -1,0 +1,4 @@
+[
+  "ideep4py/tests/ideep4py_tests/test_convolution2d_py.py::TestConvolution2DPyF32_param_1::test_forward_cpu", 
+  "ideep4py/tests/ideep4py_tests/test_convolution2d_py.py::TestConvolution2DPyF32_param_0::test_forward_cpu"
+]

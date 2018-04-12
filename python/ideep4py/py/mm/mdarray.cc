@@ -208,9 +208,7 @@ using descriptor = ideep::tensor::descriptor;
 
 template<class T>
 void mdarray::axpby(tensor &dst, T a, const tensor &x, T b, const tensor &y) {
-  auto dst_desc = dst.get_descriptor();
-  auto dst_raw = dst.get_data_handle();
-  sum::compute<scratch_allocator>({(float)a, (float)b}, {x, y}, dst_raw, &dst_desc);
+  sum::compute<scratch_allocator>({(float)a, (float)b}, {x, y}, dst);
   return;
 }
 

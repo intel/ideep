@@ -37,6 +37,7 @@ public:
   using tensor = ideep::tensor;
   using format = ideep::format;
   using alloc = ideep::utils::allocator;
+  using scratch_allocator = ideep::utils::scratch_allocator;
   using descriptor = ideep::param::descriptor;
   using batch_normalization_forward_training = ideep::batch_normalization_forward_training;
   using batch_normalization_forward_inference = ideep::batch_normalization_forward_inference;
@@ -51,24 +52,26 @@ public:
     std::vector<mdarray> outs;
 
     if (mean) {
-      auto dst_ = batch_normalization_forward_inference::compute(*src->get(),
-                  *mean->get(), *variance->get(), *scale->get(), *shift->get(), eps);
+      auto dst_ = batch_normalization_forward_inference::compute<scratch_allocator>(
+		    *src->get(), *mean->get(), *variance->get(),
+            *scale->get(), *shift->get(), eps);
 
       outs.push_back(mdarray(dst_));
     } else {
-      auto tensors = batch_normalization_forward_training::compute(*src->get(),
-                     *scale->get(), *shift->get(), 0, eps);
+      auto tensors = batch_normalization_forward_training::compute<scratch_allocator>(
+		     *src->get(), *scale->get(), *shift->get(), 0, eps);
 
       auto dst_ = std::get<0>(tensors);
       auto mean_ = std::get<1>(tensors);
       auto variance_ = std::get<2>(tensors);
 
       tensor inv_;
-      inv_.init({variance_.get_dims(), src->get()->get_data_type(),
+      inv_.init<scratch_allocator, batch_normalization_forward_training>(
+                {variance_.get_dims(), src->get()->get_data_type(),
                 descriptor::public_compatible_format(variance_.get_descriptor())});
 
-      batch_normalization_inv((float *)variance_.get_data_handle(), eps, variance_.get_nelems(),
-                              (float *)inv_.get_data_handle());
+      batch_normalization_inv((float *)variance_.get_data_handle(), eps,
+                              variance_.get_nelems(), (float *)inv_.get_data_handle());
 
       outs.push_back(mdarray(dst_));
       outs.push_back(mdarray(mean_));
@@ -94,9 +97,8 @@ public:
                   scale_.get_data_handle());
     }
 
-    auto tensors = batch_normalization_backward::compute(*src->get(),
-                       *mean->get(), *variance->get(), *grady->get(),
-                       scale_, eps);
+    auto tensors = batch_normalization_backward::compute<scratch_allocator>(*src->get(),
+                       *mean->get(), *variance->get(), *grady->get(), scale_, eps);
 
     outs.push_back(mdarray(std::get<0>(tensors)));
     outs.push_back(mdarray(std::get<1>(tensors)));
@@ -124,24 +126,25 @@ public:
                 (char *)weights_.get_data_handle() + weights_.get_size() / 2);
 
     if (mean) {
-      auto dst_ = batch_normalization_forward_inference::compute(*src->get(),
-                  *mean->get(), *variance->get(), scale, shift, eps);
+      auto dst_ = batch_normalization_forward_inference::compute<scratch_allocator>(
+		  *src->get(), *mean->get(), *variance->get(), scale, shift, eps);
 
       outs.push_back(mdarray(dst_));
     } else {
-      auto tensors = batch_normalization_forward_training::compute(*src->get(),
-                     scale, shift, 0, eps);
+      auto tensors = batch_normalization_forward_training::compute<scratch_allocator>(
+		     *src->get(), scale, shift, 0, eps);
 
       auto dst_ = std::get<0>(tensors);
       auto mean_ = std::get<1>(tensors);
       auto variance_ = std::get<2>(tensors);
 
       tensor inv_;
-      inv_.init({variance_.get_dims(), src->get()->get_data_type(),
+      inv_.init<scratch_allocator, batch_normalization_forward_training>(
+                {variance_.get_dims(), src->get()->get_data_type(),
                 descriptor::public_compatible_format(variance_.get_descriptor())});
 
-      batch_normalization_inv((float *)variance_.get_data_handle(), eps, variance_.get_nelems(),
-                              (float *)inv_.get_data_handle());
+      batch_normalization_inv((float *)variance_.get_data_handle(), eps,
+                              variance_.get_nelems(), (float *)inv_.get_data_handle());
 
       outs.push_back(mdarray(dst_));
       outs.push_back(mdarray(mean_));

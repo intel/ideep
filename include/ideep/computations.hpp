@@ -3035,9 +3035,15 @@ public:
     /* comp.weights_.init<alloc, batch_normalization_forward_training>(
         comp.expected_weights_descriptor()); */
 
-    tensor dst(comp.expected_dst_descriptor());
-    tensor mean(comp.expected_statistic_descriptor());
-    tensor variance(comp.expected_statistic_descriptor());
+    tensor dst;
+    tensor mean;
+    tensor variance;
+    dst.init<alloc, batch_normalization_forward_training>(
+        comp.expected_dst_descriptor());
+    mean.init<alloc, batch_normalization_forward_training>(
+        comp.expected_statistic_descriptor());
+    variance.init<alloc, batch_normalization_forward_training>(
+        comp.expected_statistic_descriptor());
 
     comp.execute(src, scale, shift, dst, mean, variance);
     return std::make_tuple(std::move(dst), std::move(mean),
@@ -3220,8 +3226,12 @@ public:
     comp.gradw_.init<alloc, batch_normalization_backward>(
         comp.expected_gradw_descriptor()); */
 
-    tensor gradx(comp.expected_gradx_descriptor());
-    tensor gradw(comp.expected_gradw_descriptor());
+    tensor gradx;
+    tensor gradw;
+    gradx.init<alloc, batch_normalization_backward>(
+        comp.expected_gradx_descriptor());
+    gradw.init<alloc, batch_normalization_backward>(
+        comp.expected_gradw_descriptor());
     comp.execute(
         src, mean, variance, grady, scale, gradx, gradw);
 

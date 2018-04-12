@@ -50,7 +50,7 @@ do {                                    \
         {                               \
             case ERROR:                 \
             {                           \
-                printf("%s: ERROR: (%ld): %s:%u " fmt "\n", time_buf, GET_TID(),   \
+                printf("%s: ERROR: (%ld): %s:%d " fmt "\n", time_buf, GET_TID(),   \
                        __FUNCTION__, __LINE__, ##__VA_ARGS__);                     \ 
                 break;                                                             \
             }                                                                      \
@@ -62,7 +62,7 @@ do {                                    \
             case DEBUG:                                                            \
             case TRACE:                                                            \
             {                                                                      \
-                printf("%s: (%ld): %s:%u " fmt "\n", time_buf, GET_TID(),          \
+                printf("%s: (%ld): %s:%d " fmt "\n", time_buf, GET_TID(),          \
                        __FUNCTION__, __LINE__, ##__VA_ARGS__);                     \
                 break;                                                             \
             }                                                                      \

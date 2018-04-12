@@ -25,6 +25,9 @@ bool test_decompress_buffer();
 
 bool test_compressed_buffer_reduce_sum();
 
+bool test_compressed_buffer_sum();
+
+#if 0
 void addVec(const float *vec1, const float *vec2, float *vec3, int count) {
     for (int i = 0; i < count; i++) {
         vec3[i] = vec1[i] + vec2[i];
@@ -38,7 +41,7 @@ void cmpVec(const float *vec1, const float *vec2, int count) {
         }
     }
 }
-
+#endif
 float getSum(const float *src, int count) {
     float sum = 0.0f;
     for (int i = 0; i < count; i++) {
@@ -47,11 +50,13 @@ float getSum(const float *src, int count) {
     return sum;
 }
 
+#if 0
 void dumpVec(const float *vec, int count) {
     for (int i = 0; i < count; i++) {
         printf("vec[%d] = %lf\n", i, vec[i]);
     }
 }
+#endif
 
 float sumVec(const float *vec1, const float *vec2, int count) {
     float sum = 0.0f;
@@ -62,6 +67,7 @@ float sumVec(const float *vec1, const float *vec2, int count) {
     return sum;
 }
 
+#if 0
 float sumVec2(const float *vec1, const float *vec2, int count) {
     float sum = 0.0f;
     for (int i = 0; i < count; i++) {
@@ -70,6 +76,7 @@ float sumVec2(const float *vec1, const float *vec2, int count) {
     }
     return sum;
 }
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -91,6 +98,12 @@ int main(int argc, char *argv[])
         printf("test_compressed_buffer_reduce_sum failure!\n");
     } else {
         printf("test_compressed_buffer_reduce_sum successful!\n");
+    }
+
+    if (!test_compressed_buffer_sum()) {
+        printf("test_compressed_buffer_sum failure!\n");
+    } else {
+        printf("test_compressed_buffer_sum successful!\n");
     }
 
     return 0;
@@ -290,4 +303,51 @@ bool test_compressed_buffer_reduce_sum()
     free(sum2);
     free(sum3);
     return true;
+}
+
+bool test_compressed_buffer_sum()
+{
+    float *tempData1 = (float *)malloc(sizeof(float) * DATA_LEN);
+    float *tempData2 = (float *)malloc(sizeof(float) * DATA_LEN);
+    float *sum1 = (float *)malloc(sizeof(float) * DATA_LEN);
+
+    memcpy(tempData1, data1, sizeof(float) * DATA_LEN);
+    memcpy(tempData2, data2, sizeof(float) * DATA_LEN);
+
+    dl_comp_get_sizeof_block(DL_COMP_FLOAT32,
+                             4,
+                             DL_COMP_DFP);
+    
+    dl_comp_return_t ret = dl_comp_compress_buffer((const void *)tempData1,
+                                                   tempData1,
+                                                   DATA_LEN,
+                                                   NULL,
+                                                   DL_COMP_FLOAT32,
+                                                   4,
+                                                   DL_COMP_DFP);
+
+    if (ret != DL_COMP_OK) {
+        printf("compress failed error = %d!\n", ret);
+        free(tempData1);
+        free(tempData2);
+        free(sum1);
+        return false;
+    }
+
+    dl_comp_compress_buffer_FLOAT32ToINT8((const void *)tempData2,
+                                          tempData2,
+                                          NULL,
+                                          DATA_LEN);
+
+    dl_comp_compressed_buffer_sum(tempData1,
+                                  tempData2,
+                                  DATA_LEN,
+                                  sum1);
+
+    dl_comp_get_elem_num_in_block();
+
+    dl_comp_decompress_buffer_INT8ToFLOAT32(sum1, sum1, DATA_LEN);
+
+    return true;
+            
 }

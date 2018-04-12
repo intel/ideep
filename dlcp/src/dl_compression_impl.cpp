@@ -66,7 +66,7 @@ dl_comp_return_t DLCompressDFP::compress_block(float *src, int8_t *dst, float *d
     // only handle float buffer as src and int8_t as dst
     float max_abs = 0.;
     float max_abs_log2 = 0.;
-    float round_value, d_value;
+    float d_value;
     int8_t decomp_value = 0;
 
     if (NULL != diff) {
@@ -97,7 +97,8 @@ dl_comp_return_t DLCompressDFP::compress_block(float *src, int8_t *dst, float *d
         // It's corner case that the result value of src[i]*pow2_scale will be
         // bigger than 127.5f. The value will rounded up to 128. This is out of range
         // of int8_t. (-128 - 127) So we set it as 127.
-        round_value = std::round(src[i]*pow2_scale);
+        
+        float round_value = std::round(src[i]*pow2_scale);
         if (round_value <= 127.0f) {
             decomp_value = (int8_t)round_value;
         } else {
@@ -184,8 +185,7 @@ dl_comp_return_t DLCompressDFP::compress_buffer(float *src, int8_t *dst, float *
     dl_comp_return_t ret    = DL_COMP_FAIL;
     dl_comp_head *compHead    = NULL;
     int scale               = 0;
-    size_t comp_block       = 0;
-    for (size_t i = 0; i < count; i += DL_COMP_BLOCK_NUM) {
+    for (size_t i = 0, comp_block = 0; i < count; i += DL_COMP_BLOCK_NUM) {
         comp_block = (i + DL_COMP_BLOCK_NUM) < count ? DL_COMP_BLOCK_NUM : (count - i);
         compHead = (dl_comp_head *)dst;
         if (!inPlace) {
@@ -226,8 +226,6 @@ dl_comp_return_t DLCompressDFP::decompress_buffer(const int8_t *src, float *dst,
 {
     dl_comp_head *compHead   = NULL;
     dl_comp_return_t ret;
-    size_t count;
-    int scale;
     const int8_t *origSrc = src;
     float *origDst = dst;
     int8_t decomp_block[DL_COMP_BLOCK_NUM];
@@ -244,8 +242,8 @@ dl_comp_return_t DLCompressDFP::decompress_buffer(const int8_t *src, float *dst,
         if (compHead->magic != DL_COMP_HEAD_MAGIC) {
             return DL_COMP_FAIL_INVALID_COMPRESSED_FORMAT;
         }
-        count = compHead->payloadLen;
-        scale = compHead->exponent; 
+        size_t count = compHead->payloadLen;
+        int scale = compHead->exponent; 
         if (blockCount == 1) {
             memcpy(decomp_block, src + sizeof(dl_comp_head), count);
         }
@@ -284,7 +282,7 @@ dl_comp_return_t DLCompressDFP::avx512_decompress_block(const int8_t *src, float
     // Do de-quantization
     float pow2_scale_inv = 1.0f / std::pow(2, scale);
     size_t group_size = 16;
-    size_t num_group = count / group_size;
+    //size_t num_group = count / group_size;
     __m512 scale_factor = _mm512_set1_ps(pow2_scale_inv);
 
 #ifdef _OPENMP
@@ -321,8 +319,8 @@ dl_comp_return_t DLCompressDFP::decompress_block(const int8_t *src, float *dst, 
     return DL_COMP_OK;
 }
 
+#if 0
 size_t DLCompressDFP::get_dataCount_in_compressed_buffer(const int8_t *src, size_t blockCount) {
-    size_t count = 0;
     size_t sum = 0;
     dl_comp_head *compHead = NULL;
 
@@ -333,7 +331,7 @@ size_t DLCompressDFP::get_dataCount_in_compressed_buffer(const int8_t *src, size
     do {
         compHead = (dl_comp_head *)src;
         DLCP_ASSERT(compHead->magic == DL_COMP_HEAD_MAGIC, "Invalid compHead!!!\n");
-        count = compHead->payloadLen;
+        size_t count = compHead->payloadLen;
         src += sizeof(dl_comp_head);
         src += count;
         sum += count;
@@ -342,7 +340,9 @@ size_t DLCompressDFP::get_dataCount_in_compressed_buffer(const int8_t *src, size
 
     return sum;
 }
+#endif
 
+#if 0
 dl_comp_return_t DLCompressDFP::compress_sum(const int8_t *invec, int8_t *inoutvec, size_t blockCount)
 {
     dl_comp_return_t ret      = DL_COMP_OK;
@@ -372,6 +372,7 @@ dl_comp_return_t DLCompressDFP::compress_sum(const int8_t *invec, int8_t *inoutv
 
     return ret; 
 }
+#endif
 
 dl_comp_return_t DLCompressDFP::compress_sum2(const int8_t *invec, int8_t *inoutvec, size_t blockCount)
 {
@@ -436,7 +437,7 @@ dl_comp_return_t DLCompressDFP::compress_block_sum(const int8_t *invec, int8_t *
     int minScale        = std::min(inScale, outScale);
     int inScaleGap      = inScale - minScale;
     int outScaleGap     = outScale - minScale;
-    int8_t left, right;
+    int8_t left;
     int max_abs = 0;
 
 
@@ -448,7 +449,7 @@ dl_comp_return_t DLCompressDFP::compress_block_sum(const int8_t *invec, int8_t *
 #endif
     for (size_t i = 0; i < count; i++) {
         left = invec[i] >> inScaleGap;
-        right = inoutvec[i] >> outScaleGap;
+        int8_t right = inoutvec[i] >> outScaleGap;
         resvec[i] = left + right;
         // This is for compensation of final right shift
         // To make it an unbiased estimator, we only 
@@ -520,7 +521,6 @@ dl_comp_return_t DLCompressDFP::compress_block_sum2(const int8_t *invec, int8_t 
     int minScale        = std::min(inScale, outScale);
     int inScaleGap      = inScale - minScale;
     int outScaleGap     = outScale - minScale;
-    int8_t left, right;
     int max_abs = 0;
     size_t group_size = 16;
     __mmask16 mask = _mm512_int2mask(0xFFFF);
@@ -575,12 +575,10 @@ dl_comp_return_t DLCompressDFP::compress_block_sum2(const int8_t *invec, int8_t 
     return DL_COMP_OK;
 }
 
+#if 0
 void DLCompressDFP::dump_compressed_buffer(const int8_t *src, size_t blockCount) 
 {
-    size_t count = 0;
     dl_comp_head *compHead = NULL;
-    int scale = 0; 
-    float pow2_scale = .0;
 
     if (blockCount == 0) return;
 
@@ -591,10 +589,10 @@ void DLCompressDFP::dump_compressed_buffer(const int8_t *src, size_t blockCount)
             DLCP_LOG(INFO, "Invalid compHead!!!\n");
             return;
         }
-        count = compHead->payloadLen;
-        scale = compHead->exponent;
-        DLCP_LOG(INFO, "count = %lu Scale = %d\n", count, scale);
-        pow2_scale = std::pow(2, scale);
+        size_t count = compHead->payloadLen;
+        int scale = compHead->exponent;
+        DLCP_LOG(INFO, "count = %lu Scale = %d\n", (unsigned long)count, scale);
+        float pow2_scale = std::pow(2, scale);
         src += sizeof(dl_comp_head);
         for (size_t i = 0; i < count; i++) {
             float d_value = ((float)src[i])/pow2_scale;
@@ -610,9 +608,6 @@ bool DLCompressDFP::check_compressed_buffer(const float *comp1, const int8_t *co
 {
     float epislon = 1e-9;
     dl_comp_head *compHead = NULL;
-    int scale = 0;
-    float pow2_scale = .0;
-    size_t count = 0;
 
     do {
         compHead = (dl_comp_head *)comp2;
@@ -620,10 +615,10 @@ bool DLCompressDFP::check_compressed_buffer(const float *comp1, const int8_t *co
             DLCP_LOG(ERROR, "Invalid compHead!!!\n");
             return false;
         }
-        count = compHead->payloadLen;
-        scale = compHead->exponent;
+        size_t count = compHead->payloadLen;
+        int scale = compHead->exponent;
         comp2 += sizeof(dl_comp_head);
-        pow2_scale = std::pow(2, scale);
+        float pow2_scale = std::pow(2, scale);
         for (size_t i = 0; i < count; i++) {
             float d_value = ((float)comp2[i])/pow2_scale;
             if (d_value * comp1[i] < 0.0f) {
@@ -647,12 +642,15 @@ dl_comp_return_t compress_helper(float *src, int8_t *dst, float *diff, dl_comp_m
     dl_comp_return_t ret = compInst->compress_buffer(src, dst, diff, count);
     return ret;
 }
+#endif
 
+#if 0
 dl_comp_return_t decompress_helper(const int8_t *src, float *dst, dl_comp_method_t method)
 {
     DLCompressBase *compInst = DLCompressBase::get_compression_instance(method);
     return compInst->decompress_buffer(src, dst, 0);
 }
+#endif
 
 void dl_comp_float_vector_add(const float* invec, float *inoutvec, size_t count)
 {

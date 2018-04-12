@@ -26,11 +26,11 @@
 
 int g_log_th = 0;
 
-void dl_comp_get_time(char* buf, size_t bufSize)
+void dl_comp_get_time(char* buf, size_t buf_size)
 {
     time_t timer;
-    struct tm* timeInfo = 0;
-    time(&timer);
-    timeInfo = localtime(&timer);
-    strftime(buf, bufSize, "%Y:%m:%d %H:%M:%S", timeInfo);
+    struct tm timeInfo;
+    timer = time(&timer);
+    localtime_r(&timer, &timeInfo);
+    strftime(buf, buf_size, "%Y:%m:%d %H:%M:%S", &timeInfo);
 }

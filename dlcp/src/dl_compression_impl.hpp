@@ -73,11 +73,11 @@ public:
     // Compress  without error feedback
     virtual dl_comp_return_t compress_buffer(float *src, int8_t *dst, size_t count, bool inPlace = false) = 0;
     virtual dl_comp_return_t decompress_buffer(const int8_t *src, float *dst, size_t blockCount) = 0;
-    virtual size_t get_dataCount_in_compressed_buffer(const int8_t *src, size_t blockCount) = 0;
-    virtual dl_comp_return_t compress_sum(const int8_t *invec, int8_t *inoutvec, size_t blockCount) = 0;
+    // virtual size_t get_dataCount_in_compressed_buffer(const int8_t *src, size_t blockCount) = 0;
+    // virtual dl_comp_return_t compress_sum(const int8_t *invec, int8_t *inoutvec, size_t blockCount) = 0;
     virtual dl_comp_return_t compress_sum2(const int8_t *invec, int8_t *inoutvec, size_t blockCount) = 0;
-    virtual void dump_compressed_buffer(const int8_t *src, size_t blockCount) = 0;
-    virtual bool check_compressed_buffer(const float *comp1, const int8_t *comp2, const float *diff, size_t blockCount) = 0;
+    // virtual void dump_compressed_buffer(const int8_t *src, size_t blockCount) = 0;
+    // virtual bool check_compressed_buffer(const float *comp1, const int8_t *comp2, const float *diff, size_t blockCount) = 0;
     virtual ~DLCompressBase(void) {};
 
 public:
@@ -95,22 +95,22 @@ public:
     virtual dl_comp_return_t compress_buffer(float *src, int8_t *dst, float *diff, size_t count, bool inPlace = false);
     virtual dl_comp_return_t compress_buffer(float *src, int8_t *dst, size_t count, bool inPlace = false);
     virtual dl_comp_return_t decompress_buffer(const int8_t *src, float *dst, size_t blockCount);
-    virtual size_t get_dataCount_in_compressed_buffer(const int8_t *src, size_t blockCount);
-    virtual dl_comp_return_t compress_sum(const int8_t *invec, int8_t *inoutvec, size_t blockCount);
+    // virtual size_t get_dataCount_in_compressed_buffer(const int8_t *src, size_t blockCount);
+    // virtual dl_comp_return_t compress_sum(const int8_t *invec, int8_t *inoutvec, size_t blockCount);
     virtual dl_comp_return_t compress_sum2(const int8_t *invec, int8_t *inoutvec, size_t blockCount);
-    virtual void dump_compressed_buffer(const int8_t *src, size_t blockCount);
-    virtual bool check_compressed_buffer(const float *comp1, const int8_t *comp2, const float *diff, size_t blockCount);
+    // virtual void dump_compressed_buffer(const int8_t *src, size_t blockCount);
+    // virtual bool check_compressed_buffer(const float *comp1, const int8_t *comp2, const float *diff, size_t blockCount);
+
+public:
+    static dl_comp_return_t compress_block(float *src, int8_t *dst, float *diff, size_t count, int *scale);
+    static dl_comp_return_t decompress_block(const int8_t *src, float *dst, size_t count, int scale);
+    static dl_comp_return_t compress_block_sum(const int8_t *invec, int8_t *inoutvec);
+    static dl_comp_return_t avx512_decompress_block(const int8_t *src, float *dst, size_t count, int scale);
+    static dl_comp_return_t avx512_compress_block(float *src, int8_t *dst, float *diff, size_t count, int *scale);
+    static dl_comp_return_t compress_block_sum2(const int8_t *invec, int8_t *inoutvec);
 
 private:
     DLCompressDFP(): avx512_enabled_(dl_comp_check_avx512_supported()) {};
-
-private:
-    dl_comp_return_t compress_block(float *src, int8_t *dst, float *diff, size_t count, int *scale);
-    dl_comp_return_t decompress_block(const int8_t *src, float *dst, size_t count, int scale);
-    dl_comp_return_t avx512_decompress_block(const int8_t *src, float *dst, size_t count, int scale);
-    dl_comp_return_t avx512_compress_block(float *src, int8_t *dst, float *diff, size_t count, int *scale);
-    dl_comp_return_t compress_block_sum(const int8_t *invec, int8_t *inoutvec);
-    dl_comp_return_t compress_block_sum2(const int8_t *invec, int8_t *inoutvec);
 
 private:
     bool avx512_enabled_;

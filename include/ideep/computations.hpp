@@ -1265,6 +1265,42 @@ struct convolution_forward: public computation,
     return compute_impl<alloc>(src, gweights, bias, result_dims, strides,
         padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
   }
+
+  static tensor::descriptor expected_weights_descriptor(
+      const tensor::dims weights_dims,
+      tensor::data_type dtype = tensor::data_type::f32) {
+    // Construct a dummy case
+    auto it = weights_dims.end();
+    auto o = *(it - 4), i = *(it - 3), h = *(it - 2), w = *(it - 1);
+    auto ndims = weights_dims.size();
+    auto g = ndims == 5 ? *(it - 5) : 1;
+    tensor::dims x_dims = { 1, i * g, h, w};
+    tensor::dims y_dims = { 1, o * g, 1, 1};
+    tensor::descriptor x_desc(x_dims, dtype, format::nchw);
+    tensor::descriptor y_desc(y_dims, dtype, format::nchw);
+    tensor::descriptor weights_desc(weights_dims, dtype,
+        ndims == 5 ? format::goihw : format::oihw);
+
+    //  Because of:
+    //        && implication(jcp.kw > 7, (jcp.t_pad == 0 && jcp.l_pad == 0)
+    //             || (jcp.stride_w == 1 && jcp.stride_h == 1))
+    //  We guess conservatively
+
+    if ( w > 7 ) {
+      return weights_desc;
+    }
+
+    tensor::dims strides = {1, 1};
+    tensor::dims dilates = {0, 0};
+    tensor::dims padding_l = {0, 0};
+    tensor::dims padding_r = {0, 0};
+
+    convolution_forward comp(x_desc, weights_desc, y_desc,
+        std::move(strides), std::move(dilates), std::move(padding_l),
+        std::move(padding_r));
+
+    return comp.expected_weights_descriptor();
+  }
 };
 
 struct convolution_backward_data : public computation,

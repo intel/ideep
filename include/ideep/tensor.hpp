@@ -312,6 +312,10 @@ public:
       return !operator==(other);
     }
 
+    format get_internal_format() const {
+      return static_cast<format>(this->get_mkldnn_memory_desc_t()->format);
+    }
+
     // oi, nc, oihw, nchw
     // TODO: other public compatible format, eg. iohw, nhwc.
     static inline format public_compatible_format(const descriptor &desc)

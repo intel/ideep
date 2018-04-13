@@ -1,12 +1,7 @@
-protobuf:
-  - 3.4.1
 numpy:
   - 1.13
 
 pin_run_as_build:
-  protobuf:
-    min_pin: x.x
-    max_pin: x.x
   numpy:
     min_pin: x.x
     max_pin: x.x

@@ -1,4 +1,4 @@
-{% set version = "1.0.3" %}
+{% set version = "1.0.4" %}
 
 package:
   name: ideep4py
@@ -13,31 +13,11 @@ build:
 
 requirements:
   build:
-    - cmake
-    - git
-    - curl
-    - pcre
-    - setuptools
     - numpy
-    - gflags
-    - opencv
     - python
-    - protobuf
-    - six
-    - openssl
   run:
-    - cmake
-    - git
-    - curl
-    - pcre
-    - setuptools
     - numpy
-    - gflags
-    - opencv
-    - protobuf
     - python
-    - six
-    - openssl
 
 test:
   imports:

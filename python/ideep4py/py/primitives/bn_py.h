@@ -95,12 +95,12 @@ public:
                   _scale.get_data_handle());
     }
 
-    tensor gscale, gshift;
+    tensor gx, gW;
     batch_normalization_backward::compute<scratch_allocator>(*src->get(),
-        *mean->get(), *variance->get(), *grady->get(), _scale, gscale, gshift, eps);
+        *mean->get(), *variance->get(), *grady->get(), _scale, gx, gW, eps);
 
-    outs.push_back(mdarray(gscale));
-    outs.push_back(mdarray(gshift));
+    outs.push_back(mdarray(gx));
+    outs.push_back(mdarray(gW));
 
     return outs;
   }

@@ -41,8 +41,8 @@ public:
     ideep::tensor dst, mask;
     dropout_forward::compute(*src->get(), ratio, dst, mask);
 
-    outs.push_back(mdarray(dst));
     outs.push_back(mdarray(mask));
+    outs.push_back(mdarray(dst));
 
     return outs;
   }

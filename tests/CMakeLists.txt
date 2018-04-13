@@ -1,3 +1,8 @@
+option(WITH_TEST "include tests" ON)
+if (NOT WITH_TEST)
+    return()
+endif()
+
 add_subdirectory(googletest)
 add_subdirectory(rapidcheck)
 add_subdirectory(rapidcheck/extras/gtest)

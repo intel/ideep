@@ -36,6 +36,16 @@ public:
     static auto *g_dm = __itt_domain_create("ideep.mkldnn");
     return g_dm;
   } */
+
+  static const __itt_domain *keygen();/* {
+    static const auto *g_dm = __itt_domain_create("ideep.keygen");
+    return g_dm;
+  } */
+
+  static const __itt_domain *fetch();/* {
+    static const auto *g_dm = __itt_domain_create("ideep.fetch");
+    return g_dm;
+  } */
 };
 
 class frame_impl {
@@ -79,15 +89,8 @@ public:
 };
 }
 }
-
-#define FRAME_START() \
-  instruments::frame::mark_start(instruments::domain::ideep())
-
-#define FRAME_END(fr) \
-  instruments::frame::mark_end(std::move(fr))
 #else
-class frame {};
-#define FRAME_START() frame()
-#define FRAME_END(fr) (void(fr))
+#define __itt_frame_begin_v3()
+#define __itt_frame_end_v3()
 #endif
 #endif

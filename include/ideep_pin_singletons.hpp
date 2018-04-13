@@ -21,6 +21,16 @@ const __itt_domain *domain::mkldnn() {
   static auto *g_dm = __itt_domain_create("ideep.mkldnn");
   return g_dm;
 }
+
+const __itt_domain *domain::keygen() {
+  static auto *g_dm = __itt_domain_create("ideep.keygen");
+  return g_dm;
+}
+
+const __itt_domain *domain::fetch() {
+  static auto *g_dm = __itt_domain_create("ideep.fetch");
+  return g_dm;
+}
 }
 #endif
 

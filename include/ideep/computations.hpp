@@ -494,7 +494,7 @@ protected:
           , &c_api_error_primitive)
         , "could not execute the computation"
         , &c_api_error_primitive);
-    __itt_frame_begin_v3(instruments::domain::ideep(), nullptr);
+    __itt_frame_end_v3(instruments::domain::ideep(), nullptr);
   }
 };
 

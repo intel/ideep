@@ -42,12 +42,6 @@
 #include <random>
 #include <atomic>
 #include <chrono>
-/*
-#ifdef _WIN32
-  #include <process.h>
-#else
-  #include <unistd.h>
-#endif*/
 
 #include "abstract_types.hpp"
 #include "fast_math.hpp"
@@ -3218,12 +3212,6 @@ public:
     const auto size = src.get_nelems();
     mask.init(src.get_descriptor());
     dst.init(src.get_descriptor());
-
-    /*
-    // TODO:
-    // replace with high-efficiency bernoulli distribution
-    std::bernoulli_distribution dist(1. - ratio);
-    std::mt19937 gen(randomNumberSeed());*/
 
     std::unique_ptr<int[]> bernouli_nums(new int[size]);
     bernoulli_generate(size, 1.0 - ratio, bernouli_nums.get());

@@ -49,13 +49,13 @@ public:
         = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
       if (perm == NULL)
           perm = id_perm;
-    
+
       auto ndims = adims.size();
       strides[(unsigned)perm[ndims - 1]] = 1;
       for (unsigned d = 1; d < ndims; ++d) {
           const int prev_idx = perm[ndims - d];
           const int curr_idx = perm[ndims - 1 - d];
-    
+
           strides[(unsigned)curr_idx] = adims[(unsigned)curr_idx] == 0
               ? 1
               : strides[(unsigned)prev_idx]
@@ -204,7 +204,7 @@ public:
       return data_type::data_undef;
     }
 
-    /// Returns C API mkldnn_memory_desc_t structure which had same 
+    /// Returns C API mkldnn_memory_desc_t structure which had same
     /// dimension and data type but without format constrain.
     mkldnn_memory_desc_t format_any() const {
       mkldnn_memory_desc_t any;
@@ -524,7 +524,6 @@ public:
     auto curr_size = get_size();
     auto new_size = adesc.get_size();
 
-    // TODO: 42 problem
     if (curr_size >= new_size ||
         (buffer_ == nullptr && get_data_handle() != nullptr)) {
       // We don't have to allocate new buffer or we don't manage the buffer

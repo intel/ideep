@@ -238,7 +238,10 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   }
 
   auto x = (reinterpret_cast<py_handle *>(oprd2))->get();
-  py_handle *output = new py_handle(new mdarray(x->get_descriptor()));
+  // cache dst tensor for performance
+  tensor dst;
+  dst.init<scratch_allocator, tensor>(x->get_descriptor());
+  py_handle *output = new py_handle(new mdarray(dst));
 
   /// Switch position for format consistency
   axpby(*output->get(), b, *x, a, *this);

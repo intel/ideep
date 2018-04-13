@@ -90,7 +90,7 @@ public:
 }
 }
 #else
-#define __itt_frame_begin_v3()
-#define __itt_frame_end_v3()
+#define __itt_frame_begin_v3(x, y)
+#define __itt_frame_end_v3(x, y)
 #endif
 #endif

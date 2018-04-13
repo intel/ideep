@@ -149,6 +149,7 @@ public:
   using error = mkldnn::error;
   using scratch_allocator = ideep::utils::scratch_allocator;
   using reorder = ideep::reorder;
+  using convolution_forward = ideep::convolution_forward;
 
   static constexpr int MAX_NDIM = 12; //XXX: For now
 
@@ -265,8 +266,29 @@ public:
               return std::shared_ptr<char>((char *)view->buf, [](char *p) {});
             }
           } ()), view_(view) {
-    /* TODO: input_type */
-    if (get_data_handle() != view->buf) {
+    // Init weight array in prefered format for CNN convolution
+    if (input_type == 'w' && ndims() == 4) {
+      auto desc_in = convolution_forward::
+          expected_weights_descriptor(get_dims(), get_data_type());
+      if (get_descriptor() != desc_in) {
+        auto buf = reinterpret_cast<void *>(
+            new scratch_allocator::byte<tensor>[get_size()]);
+        tensor wgt_in = tensor(desc_in, buf);
+        reorder::compute(*this, wgt_in);
+
+        init(wgt_in.get_descriptor(), wgt_in.get_data_handle());
+
+        buff_.reset();
+        buff_ = std::shared_ptr<char>((char *)buf, [](char *p) {
+              auto _p = reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
+              delete [] _p;
+            });
+
+        view_.reset();
+      }
+    }
+
+    if (view_.get() && get_data_handle() != view->buf) {
       view_.reset();
     }
   }

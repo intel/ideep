@@ -2099,14 +2099,21 @@ public:
   template<class alloc, typename ...Ts>
   static void compute_impl(const tensor &src, const tensor &grady,
       tensor& gradx, Ts &&...args) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), grady.get_internal_format(), args...);
+    // if grady is from outside, make it ours
+    tensor grady_in = grady;
+    if (grady.get_internal_format() != src.get_internal_format()) {
+      grady_in.init<alloc, eltwise_backward>(src.get_descriptor());
+      reorder::compute(grady, grady_in);
+    }
 
-    auto comp = fetch_or_create_m(key, grady.get_descriptor(),
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), args...);
+
+    auto comp = fetch_or_create_m(key, grady_in.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
 
     gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
-    comp.execute(src_in, grady, gradx);
+    comp.execute(src, grady_in, gradx);
   }
 
   template<class alloc = utils::allocator>

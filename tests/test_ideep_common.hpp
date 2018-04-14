@@ -1312,6 +1312,7 @@ void check_relu_bwd(data_t negative_slope, const tensor &src, const tensor &grad
 
   auto *src_d = src.get_mkldnn_memory_desc_t();
   auto *gradx_d = gradx.get_mkldnn_memory_desc_t();
+  auto *grady_d = grady.get_mkldnn_memory_desc_t();
 
   ASSERT_EQ(src.ndims(), 4);
   ASSERT_EQ(grady.ndims(), 4);
@@ -1320,7 +1321,7 @@ void check_relu_bwd(data_t negative_slope, const tensor &src, const tensor &grad
 
   for (size_t i = 0; i < src.get_size() / sizeof(data_t); ++i) {
     data_t ref_x = src_data[map_index(src_d, i)];
-    data_t ref_gy = grady_data[map_index(gradx_d, i)];
+    data_t ref_gy = grady_data[map_index(grady_d, i)];
     data_t ref_gx = ref_gy * ((ref_x > 0) ? data_t{1} : negative_slope);
     EXPECT_NEAR(gradx_data[map_index(gradx_d, i)], ref_gx, 1.e-7);
   }

@@ -33,7 +33,6 @@ protected:
         grady_.get_size() / sizeof(data_t),
         reinterpret_cast<data_t *>(grady_.get_data_handle()),
         data_t(0), data_t(1));
-
   }
 
   void Forward() {

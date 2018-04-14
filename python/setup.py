@@ -26,14 +26,14 @@ ideep_build_dir = cwd + '/../build'
 def install_mkldnn():
     print('Installing ...')
     if os_dist[0] == 'centos':
-        CMAKE='cmake3'
+        cmake='cmake3'
     else:
-        CMAKE='cmake'
+        cmake='cmake'
 
     os.system(
-      CMAKE + ' -DCMAKE_INSTALL_PREFIX=%s --build %s \
-              && cmake --build %s --target install' \
-              % (ideep4py_dir, ideep_build_dir, ideep_build_dir))
+      '%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
+              && %s --build %s --target install' \
+              % (cmake, ideep4py_dir, ideep_build_dir, cmake, ideep_build_dir))
 
 
 ###############################################################################
@@ -60,28 +60,9 @@ def clean_ext():
 ###############################################################################
 # Custom build commands
 ###############################################################################
-
-class build_deps(Command):
-    user_options = []
-
-    def initialize_options(self):
-        pass
-
-    def finalize_options(self):
-        pass
-
-    def run(self):
-        prepare_ext()
-
-
-class build(distutils.command.build.build):
-    sub_commands = [
-        ('build_deps', lambda self: True),
-    ] + distutils.command.build.build.sub_commands
-
-
 class build_ext(setuptools.command.build_ext.build_ext):
     def run(self):
+        prepare_ext()
         import numpy
         self.include_dirs.append(numpy.get_include())
         setuptools.command.build_ext.build_ext.run(self)
@@ -101,9 +82,7 @@ class clean(distutils.command.clean.clean):
 
 
 cmdclass = {
-    'build': build,
     'build_ext': build_ext,
-    'build_deps': build_deps,
     'install': install,
     'clean': clean,
 }

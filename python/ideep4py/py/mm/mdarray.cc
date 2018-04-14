@@ -206,14 +206,12 @@ using err_num_t = sum_array::err_num_t;
 using scratch_allocator = ideep::utils::scratch_allocator;
 using descriptor = ideep::tensor::descriptor;
 
-template<class T>
-void mdarray::axpby(tensor &dst, T a, const tensor &x, T b, const tensor &y) {
+void mdarray::axpby(tensor &dst, float a, const tensor &x, float b, const tensor &y) {
   sum::compute<scratch_allocator>({(float)a, (float)b}, {x, y}, dst);
   return;
 }
 
-template<class T>
-PyObject *mdarray::axpby(T a, T b, PyObject *o) {
+PyObject *mdarray::axpby(float a, float b, PyObject *o) {
   /// Resource manager, for GCC do not accept lambda
   struct py_decref {
     void operator () (PyObject *p) {
@@ -252,8 +250,7 @@ PyObject *mdarray::axpby(T a, T b, PyObject *o) {
   return resultobj;
 }
 
-template<class T>
-PyObject *mdarray::inplace_axpby(T a, PyObject *self, T b, PyObject *o) {
+PyObject *mdarray::inplace_axpby(float a, PyObject *self, float b, PyObject *o) {
   // Resource manager, for GCC do not accept lambda
   struct py_decref {
     void operator () (PyObject *p) {
@@ -545,8 +542,8 @@ PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool
   }
 
   case MULT_SCALAR: {
-    double a = PyInt_Check(o) ?
-               static_cast<double>(PyInt_AsLong(o)) :
+    float a = PyInt_Check(o) ?
+               static_cast<float>(PyInt_AsLong(o)) :
                PyFloat_AsDouble(o),
            b = 0.0;
 

@@ -1,5 +1,5 @@
 from setuptools import Command, distutils, Extension, setup
-from platform import system
+from platform import system, dist
 
 import sys
 import os
@@ -15,6 +15,7 @@ import distutils.command.clean
 # mkl-dnn preparation
 ###############################################################################
 os_name = system()
+os_dist = dist()
 
 MODULE_DESC = 'Intel mkl-dnn'
 cwd = os.path.split(os.path.realpath(__file__))[0]
@@ -24,10 +25,16 @@ ideep_build_dir = cwd + '/../build'
 
 def install_mkldnn():
     print('Installing ...')
+    if os_dist[0] == 'centos':
+        CMAKE='cmake3'
+    else:
+        CMAKE='cmake'
+
     os.system(
-      'cmake -DCMAKE_INSTALL_PREFIX=%s --build %s \
+      CMAKE + ' -DCMAKE_INSTALL_PREFIX=%s --build %s \
               && cmake --build %s --target install' \
               % (ideep4py_dir, ideep_build_dir, ideep_build_dir))
+
 
 ###############################################################################
 # External preparation

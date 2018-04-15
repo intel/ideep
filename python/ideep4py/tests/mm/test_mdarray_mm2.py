@@ -55,4 +55,3 @@ print('Del d')
 del d
 print('Del c')
 del c
-

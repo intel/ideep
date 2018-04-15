@@ -10,7 +10,7 @@ from ideep4py import convolution2D
 
 try:
     import testing
-    from testing import condition
+    # from testing import condition
     from testing.conv import im2col_cpu, col2im_cpu, get_conv_outsize
 except Exception as ex:
     print('*** testing directory is missing: %s' % ex)

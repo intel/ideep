@@ -327,7 +327,7 @@ public:
   PyObject *sum(std::vector<int> axis, bool keepdims);
 
   // PEP: 3118 Buffer Protocol Producer
-  virtual int getbuffer(PyObject *obj, Py_buffer *view, int flags);
+  virtual int getbuffer(PyObject *self, Py_buffer *view, int flags);
 
   PyObject *getattro(PyObject *self, PyObject *name);
 

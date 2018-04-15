@@ -1,4 +1,4 @@
-from setuptools import Command, distutils, Extension, setup
+from setuptools import distutils, Extension, setup
 from platform import system, dist
 
 import sys
@@ -23,16 +23,16 @@ cwd = os.path.split(os.path.realpath(__file__))[0]
 ideep4py_dir = cwd + '/ideep4py'
 ideep_build_dir = cwd + '/../build'
 
+
 def install_mkldnn():
     print('Installing ...')
     if os_dist[0] == 'centos':
-        cmake='cmake3'
+        cmake = 'cmake3'
     else:
-        cmake='cmake'
+        cmake = 'cmake'
 
-    os.system(
-      '%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
-              && %s --build %s --target install' \
+    os.system('%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
+              && %s --build %s --target install'
               % (cmake, ideep4py_dir, ideep_build_dir, cmake, ideep_build_dir))
 
 
@@ -43,6 +43,7 @@ def install_mkldnn():
 libdir = ideep4py_dir + '/lib'
 includedir = ideep4py_dir + '/include'
 sharedir = ideep4py_dir + '/share'
+
 
 def prepare_ext():
     install_mkldnn()
@@ -56,6 +57,7 @@ def clean_ext():
 #        shutil.rmtree(includedir)
     if os.path.exists(sharedir):
         shutil.rmtree(sharedir)
+
 
 ###############################################################################
 # Custom build commands
@@ -71,7 +73,7 @@ class build_ext(setuptools.command.build_ext.build_ext):
 class install(setuptools.command.install.install):
     def run(self):
         if not self.skip_build:
-            self.run_command('build_deps')
+            prepare_ext()
         setuptools.command.install.install.run(self)
 
 
@@ -96,14 +98,14 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep4py/py/mm',
              '-Iideep4py/py/primitives',
              '-Iideep4py/py/swig_utils',
-             # '-Iideep4py/py/dlcp',
-             '-Iideep4py/include/mm',
-             '-Iinclude']
+             # '-Iideep4py/py/dlcp'
+             ]
 
 if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']
 
-ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas', '-march=native', '-mtune=native']
+ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas',
+             '-march=native', '-mtune=native']
 
 if os_name == 'Darwin':
     link_opts = ['-Wl,-rpath,@loader_path/lib', '-Lideep4py/lib']
@@ -112,13 +114,11 @@ else:
 
 includes = ['ideep4py/include',
             'ideep4py/include/mklml',
-            'ideep4py/common',
-            'ideep4py/include/mm',
+            'ideep4py/include/ideep',
             'ideep4py/py/mm',
             'ideep4py/py/primitives',
-            # 'ideep4py/py/dlcp',
-            'ideep4py/include/blas',
-            'include', 'include/mklml', 'include/ideep']
+            # 'ideep4py/py/dlcp'
+            ]
 
 if os_name == 'Linux':
     libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
@@ -129,9 +129,8 @@ else:
     libraries = ['mkldnn', 'mklml']
 
 src = ['ideep4py/py/ideep4py.i',
-       # 'ideep4py/py/dlcp/dlcp_py.cc',
        'ideep4py/py/mm/mdarray.cc',
-       # 'ideep4py/blas/sum.cc',
+       # 'ideep4py/py/dlcp/dlcp_py.cc'
        ]
 
 ###############################################################################
@@ -168,7 +167,7 @@ setup(
     url='https://github.com/intel/ideep',
     license='MIT License',
     packages=packages,
-    package_data={'ideep4py' : ['lib/*']},
+    package_data={'ideep4py': ['lib/*']},
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     zip_safe=False,

@@ -38,4 +38,5 @@ class TestAccSum(unittest.TestCase):
         mx = ideep4py.multi_add((mx1, mx2, self.x3, self.x4))
         numpy.testing.assert_allclose(mx, x, **self.check_options)
 
+
 testing.run_module(__name__, __file__)

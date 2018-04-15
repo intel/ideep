@@ -245,10 +245,9 @@ public:
             return ndims2format(view->ndim, input_type);
           } ()}, [&]() {
             void *buf = view->buf;
-            if ((uint64_t)buf & (SYS_MEMORY_ALIGNMENT - 1)) {
+            if ((uint64_t)buf & (16 - 1)) {
               buf = reinterpret_cast<void *>(
                   new scratch_allocator::byte<tensor>[view->len]);
-              // TODO: 4k per thread
               fast_memcpy((char *)buf, (char *)view->buf, view->len);
             }
             return buf;

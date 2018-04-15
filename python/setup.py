@@ -122,7 +122,7 @@ includes = ['ideep4py/include',
 
 if os_name == 'Linux':
     libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
-    ccxx_opts += ['-fopenmp', '-D_SYS_MEMORY_ALIGNMENT_=32']
+    ccxx_opts += ['-fopenmp', '-D_TENSOR_MEM_ALIGNMENT_=4096']
     libraries += ['m']
     link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']
 else:

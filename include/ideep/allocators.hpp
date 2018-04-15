@@ -32,49 +32,26 @@
 namespace ideep {
 
 #ifdef _SYS_MEMORY_ALIGNMENT_
-#define SYS_MEMORY_ALIGNMENT _SYS_MEMORY_ALIGNMENT_
+#define SYS_MEMORY_ALIGNMENT _TENSOR_MEM_ALIGNMENT_
 #else
-#define DFT_MEMORY_ALIGNMENT 64
-#define SYS_MEMORY_ALIGNMENT DFT_MEMORY_ALIGNMENT
+#define SYS_MEMORY_ALIGNMENT 4096
 #endif
-
-// struct computation;
-// struct convolution_forward;
-// struct convolution_backward_data;
-// struct convolution_backward_weights;
-// struct lrn_forward;
-// struct lrn_backward;
-// struct pooling_forward;
-// struct pooling_backward;
-// struct eltwise_forward;
-// struct eltwise_backward;
-// struct sum;
-// struct concat;
-// struct softmax_forward;
-// struct softmax_backward;
-// struct batch_normalization_forward_inference;
-// struct batch_normalization_forward_training;
-// struct batch_normalization_backward;
-// struct inner_product_forward;
-// struct inner_product_backward_data;
-// struct inner_product_backward_weights;
-// struct eltwise_binary;
-// struct reorder;
 
 namespace utils {
 
 class allocator {
 public:
+  constexpr static size_t tensor_memalignment = SYS_MEMORY_ALIGNMENT;
   allocator() = default;
 
   template<class computation_t = void>
   static char *malloc(size_t size) {
     void *ptr;
 #ifdef _WIN32
-    ptr = _aligned_malloc(size, SYS_MEMORY_ALIGNMENT);
+    ptr = _aligned_malloc(size, tensor_memalignment);
     int rc = ((ptr)? 0 : errno);
 #else
-    int rc = ::posix_memalign(&ptr, SYS_MEMORY_ALIGNMENT, size);
+    int rc = ::posix_memalign(&ptr, tensor_memalignment, size);
 #endif /* _WIN32 */
     return (rc == 0) ? (char*)ptr : nullptr;
   }

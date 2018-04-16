@@ -490,7 +490,7 @@ private:
   }
 
   struct view_manager {
-    void operator() (const Py_buffer *view) {
+    void operator() (const Py_buffer *view) const {
       PyBuffer_Release(const_cast<Py_buffer *>(view));
       delete view;
     }

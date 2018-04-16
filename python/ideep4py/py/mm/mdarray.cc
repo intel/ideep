@@ -214,7 +214,7 @@ void mdarray::axpby(tensor &dst, float a, const tensor &x, float b, const tensor
 PyObject *mdarray::axpby(float a, float b, PyObject *o) {
   /// Resource manager, for GCC do not accept lambda
   struct py_decref {
-    void operator () (PyObject *p) {
+    void operator () (PyObject *p) const {
       Py_DECREF(p);
     }
   };
@@ -253,7 +253,7 @@ PyObject *mdarray::axpby(float a, float b, PyObject *o) {
 PyObject *mdarray::inplace_axpby(float a, PyObject *self, float b, PyObject *o) {
   // Resource manager, for GCC do not accept lambda
   struct py_decref {
-    void operator () (PyObject *p) {
+    void operator () (PyObject *p) const {
       Py_DECREF(p);
     }
   };
@@ -381,7 +381,7 @@ void plain_div(const T *a, const T *b, T *o, int size) {
 enum {mmult, mdiv};
 PyObject *mdarray::m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool inplace) {
   struct py_decref {
-    void operator () (PyObject *p) {
+    void operator () (PyObject *p) const {
       Py_DECREF(p);
     }
   };
@@ -874,8 +874,7 @@ PyObject *mdarray::flat() {
       break;
   }
 
-  PyObject *plain_arr = nullptr;
-  plain_arr = PyArray_SimpleNewFromData(1, dims, typenum, this->get_data_handle());
+  PyObject *plain_arr = PyArray_SimpleNewFromData(1, dims, typenum, this->get_data_handle());
   if (!plain_arr)
     PyErr_SetString(PyExc_ValueError, "Can't create plain array with format from mdarray");
 

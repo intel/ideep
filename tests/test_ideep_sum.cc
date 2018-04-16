@@ -18,7 +18,7 @@ struct sum_test_params {
 template <typename data_t, typename acc_t>
 class sum_test: public ::testing::TestWithParam<sum_test_params> {
   void check_data(const std::vector<tensor> &srcs,
-                  const std::vector<float> scale,
+                  const std::vector<float> &scale,
                   const tensor &dst)
   {
     const data_t *dst_data = (const data_t *)dst.get_data_handle();
@@ -107,14 +107,6 @@ protected:
     // query dst format
     tensor dst2;
     auto test2 = [&](){
-      const size_t sz = srcs[0].get_size() / sizeof(data_t);
-      data_t *dst_data = new data_t[sz];
-      // overwriting dst to prevent false positives for test cases.
-#     pragma parallel for
-      for (size_t i = 0; i < sz; i++) {
-        dst_data[i] = -32;
-      }
-
       sum::compute(p.scale, srcs, dst2);
     };
 

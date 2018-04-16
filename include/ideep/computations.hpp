@@ -651,7 +651,7 @@ public:
     tensor::dims offset_dims(output_dims.size(), 0);
     IDEEP_ENFORCE(axis < input.ndims(), "invalid axis in split");
 
-    for (int i = 0; i < axis_info.size(); ++i) {
+    for (unsigned i = 0; i < axis_info.size(); ++i) {
       output_dims[axis] = axis_info[i];
       auto view = input.create_view(output_dims, offset_dims);
       tensor output(view.expected_dst_descriptor());
@@ -2295,7 +2295,7 @@ public:
         "invalid axis in concat");
     for (int i = 0; i <inputs[0].ndims(); i++) {
       if (i == axis && !add_axis) continue;
-      for (int j = 1; j <inputs.size(); j++) {
+      for (unsigned j = 1; j <inputs.size(); j++) {
         IDEEP_ENFORCE(inputs[j].get_dim(i) == inputs[0].get_dim(i),
           "invalid input dims in concat");
       }
@@ -2303,7 +2303,7 @@ public:
 
     int32_t dst_channels = 0;
     std::vector<int32_t> axis_info(inputs.size(), 0);
-    for (int k = 0; k <inputs.size(); k++) {
+    for (unsigned k = 0; k <inputs.size(); k++) {
       axis_info[k] = add_axis ? 1 : inputs[k].get_dim(axis);
       dst_channels += axis_info[k];
     }
@@ -2318,7 +2318,7 @@ public:
     tensor::dims offset_dims(dst_dims.size(), 0);
     dst.reinit({dst_dims, inputs[0].get_data_type(),
         inputs[0].get_internal_format()});
-    for (int i = 0; i < inputs.size(); ++i) {
+    for (unsigned i = 0; i < inputs.size(); ++i) {
       auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
       if (add_axis) {
         tensor::dims in_dims(inputs[i].get_dims());
@@ -3785,9 +3785,10 @@ private:
   static inline tensor::dims get_dst_dims(tensor::dims src_dims,
       std::vector<int> axis) {
     tensor::dims dst_dims;
-    for (int d = 0; d < src_dims.size(); d++) {
-      unsigned a = 0; for (; a < axis.size(); a++) {
-        if (d == axis[a])
+    for (unsigned d = 0; d < src_dims.size(); d++) {
+      unsigned a = 0;
+      for (; a < axis.size(); a++) {
+        if (d == (unsigned)axis[a])
           break;
       }
 

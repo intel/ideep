@@ -414,7 +414,7 @@ private:
     }
 
     size_t nelems = 1;
-    for (int d = 0; d < dims.size(); d++)
+    for (unsigned d = 0; d < dims.size(); d++)
       nelems *= dims[d];
 
     return nelems * itemsize;

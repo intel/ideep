@@ -63,7 +63,7 @@ static inline bool is_mdarray_supported(PyObject *self, PyObject *o) {
     // if size not equal, mean array broadcast
     if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type) {
         if ((size_t)PyArray_SIZE(reinterpret_cast<PyArrayObject *>(o))
-                != self_mdarray->get_nelems() ||
+                != (size_t)self_mdarray->get_nelems() ||
                 !PyArray_ISFLOAT(reinterpret_cast<PyArrayObject *>(o))) {
             return false;
         }
@@ -903,7 +903,7 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
         }
     }
     if (idx_unknown == -1) {
-        if (size != this->get_nelems()) {
+        if (size != (size_t)this->get_nelems()) {
             PyErr_SetString(PyExc_ValueError,"Wrong dimension to reshape");
             return nullptr;
         }

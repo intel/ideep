@@ -67,7 +67,7 @@ public:
     if (!ret)
       return gxs;
 
-    for (int i = 0; i < axis_len.size(); i++) {
+    for (unsigned i = 0; i < axis_len.size(); i++) {
       gradx_dims[axis] = axis_len[i];
 
       auto gradx = spliter::compute<scratch_allocator>(*grady->get(),
@@ -86,7 +86,7 @@ private:
         std::vector<int> &axis_len, int axis) {
     int min_value = -1;
     std::vector<int> valid_offsets;
-    for (int i = 0; i < offsets.size(); i++) {
+    for (unsigned i = 0; i < offsets.size(); i++) {
       if (offsets[i] < 0)
           offsets[i] += grady_dims[axis];
 
@@ -109,7 +109,7 @@ private:
       return false;
 
     // push dim len along axis
-    for (int i = 0; i < valid_offsets.size(); i++) {
+    for (unsigned i = 0; i < valid_offsets.size(); i++) {
       if (i == 0)
         axis_len.push_back(valid_offsets[i]);
       else

@@ -57,7 +57,7 @@ public:
   static PyObject *copyto(mdarray *dst, Py_buffer *view) {
     tensor dst_ = *dst->get();
 
-    if (dst_.get_size() != view->len) {
+    if (dst_.get_size() != (unsigned)view->len) {
       throw error(mkldnn_invalid_arguments,
             std::string("mismatch src and dst mdarray"));
       return nullptr;
@@ -72,7 +72,7 @@ public:
   static mdarray acc_sum(std::vector<mdarray> arrays) {
     std::vector<float> scales;
     std::vector<tensor> inputs;
-    for (int a = 0; a < arrays.size(); a++) {
+    for (unsigned a = 0; a < arrays.size(); a++) {
       scales.push_back(1.0);
       inputs.push_back(*arrays[a]);
     }

@@ -245,7 +245,7 @@ public:
             return ndims2format(view->ndim, input_type);
           } ()}, [&]() {
             void *buf = view->buf;
-            if ((uint64_t)buf & (16 - 1)) {
+            if ((uint64_t)buf & (_TENSOR_MEM_ALIGNMENT_ - 1)) {
               buf = reinterpret_cast<void *>(
                   new scratch_allocator::byte<tensor>[view->len]);
               fast_memcpy((char *)buf, (char *)view->buf, view->len);

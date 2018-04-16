@@ -40,6 +40,7 @@ file(GLOB __native_test_src
   test_ideep_reorder.cc
   test_ideep_allocator.cc
   bench_ideep_batch_normalization.cc
+  bench_ideep_pooling_forward.cc
   )
 
 foreach(__test_file ${__native_test_src})

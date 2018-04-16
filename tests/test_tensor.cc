@@ -77,6 +77,8 @@ RC_GTEST_FIXTURE_PROP(tensor_tests, TestBasic,
   EXPECT_TRUE(memcmp(rraw, rraw_.get(), 64) == 0);
   EXPECT_TRUE(odims == odims_);
   EXPECT_TRUE(rdims == rdims_);
+
+  reorder::compute(tensor(), tensor());
 }
 
 // int main() {

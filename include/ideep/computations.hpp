@@ -602,6 +602,9 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
   static void compute(
       const tensor& input, const tensor& output,
       const descriptor::attr_t attr = descriptor::attr_t()) {
+    if (input.is_empty() || output.is_empty())
+      return;
+
     auto key = utils::create_key(input.get_dims(), input.get_data_type(),
         input.get_internal_format(), output.get_dims(), output.get_data_type(),
         output.get_internal_format(), attr);

@@ -15,6 +15,9 @@ using error = mkldnn::error;
         ? mkldnn_success : mkldnn_invalid_arguments, (message));  \
   } while(false) \
 
+#define IDEEP_STD_EQUAL(v, i) \
+  std::all_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k == i;})
+
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance
 template <typename T, typename traits = mkldnn::handle_traits<T>>

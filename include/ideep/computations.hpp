@@ -1085,14 +1085,32 @@ struct convolution_forward: public computation,
   static void compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, tensor& dst, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
-      const tensor::dims padding_r,
+      const tensor::dims padding_r, const int group = 1,
       const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, weights, result_dims, dst, strides,
-        dilates, padding_l, padding_r,
-        attr, aalogorithm, aprop_kind, appading_kind);
+
+    auto weights_in = weights;
+    if (group > 1) {
+      auto gw_dims = weights.get_dims();
+      gw_dims.insert(gw_dims.begin(), group);
+      gw_dims[1] = gw_dims[1] / group;
+      weights_in.init(
+          tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
+          weights.get_data_handle());
+    }
+
+    if (dilates.empty() ||
+        IDEEP_STD_EQUAL(dilates, 1) ||
+        IDEEP_STD_EQUAL(dilates, 0)) {
+      compute_impl<alloc>(src, weights_in, result_dims, dst, strides,
+          padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    } else {
+      compute_impl<alloc>(src, weights_in, result_dims, dst, strides,
+          dilates, padding_l, padding_r,
+          attr, aalogorithm, aprop_kind, appading_kind);
+    }
   }
 
   template<class alloc = utils::allocator>
@@ -1100,55 +1118,32 @@ struct convolution_forward: public computation,
       const tensor& bias, const tensor::dims result_dims,
       tensor& dst, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
-      const tensor::dims padding_r,
+      const tensor::dims padding_r, const int group = 1,
       const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, weights, bias, result_dims, dst, strides,
-        dilates, padding_l, padding_r,
-        attr, aalogorithm, aprop_kind, appading_kind);
-  }
 
-  // This two interface will be remove due to no further optimization
-  template<class alloc = utils::allocator>
-  MKLDNN_DEPRECATED
-  static void compute(const tensor &src, const tensor& weights,
-      const tensor::dims result_dims, tensor& dst,
-      const tensor::dims strides, const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
-      const descriptor::attr_t attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward,
-      const padding_kind appading_kind = padding_kind::zero) {
-    auto gw_dims = weights.get_dims();
-    gw_dims.insert(gw_dims.begin(), group);
-    gw_dims[1] = gw_dims[1] / group;
-    auto gweights = tensor(
-        tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-        weights.get_data_handle());
-    compute_impl<alloc>(src, gweights, result_dims, dst, strides,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
-  }
+    auto weights_in = weights;
+    if (group > 1) {
+      auto gw_dims = weights.get_dims();
+      gw_dims.insert(gw_dims.begin(), group);
+      gw_dims[1] = gw_dims[1] / group;
+      weights_in.init(
+          tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
+          weights.get_data_handle());
+    }
 
-  template<class alloc = utils::allocator>
-  MKLDNN_DEPRECATED
-  static void compute(const tensor &src, const tensor& weights,
-      const tensor& bias, const tensor::dims result_dims, tensor& dst,
-      const tensor::dims strides, const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
-      const descriptor::attr_t attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward,
-      const padding_kind appading_kind = padding_kind::zero) {
-    auto gw_dims = weights.get_dims();
-    gw_dims.insert(gw_dims.begin(), group);
-    gw_dims[1] = gw_dims[1] / group;
-    auto gweights = tensor(
-        tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-        weights.get_data_handle());
-    compute_impl<alloc>(src, gweights, bias, result_dims, dst, strides,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    if (dilates.empty() ||
+        IDEEP_STD_EQUAL(dilates, 1) ||
+        IDEEP_STD_EQUAL(dilates, 0)) {
+      compute_impl<alloc>(src, weights_in, bias, result_dims, dst, strides,
+          padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    } else {
+      compute_impl<alloc>(src, weights_in, bias, result_dims, dst, strides,
+          dilates, padding_l, padding_r,
+          attr, aalogorithm, aprop_kind, appading_kind);
+    }
   }
 
   static tensor::descriptor expected_weights_descriptor(
@@ -1316,45 +1311,32 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  MKLDNN_DEPRECATED
-  static void compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx, const tensor::dims strides,
-      const tensor::dims padding_l,
-      const tensor::dims padding_r,
-      algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides,
-        padding_l, padding_r, aalgorithm, apadding_kind);
-  }
-
-  template<class alloc = utils::allocator>
   static void compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, tensor& gradx, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
-      const tensor::dims padding_r,
+      const tensor::dims padding_r, const int group = 1,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides,
-        dilates, padding_l, padding_r, aalgorithm, apadding_kind);
-  }
 
-  template<class alloc = utils::allocator>
-  MKLDNN_DEPRECATED
-  static void compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx,
-      const tensor::dims strides,
-      const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
-      algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    auto gw_dims = weights.get_dims();
-    gw_dims.insert(gw_dims.begin(), group);
-    gw_dims[1] = gw_dims[1] / group;
-    auto gweights = tensor(
-        tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-        weights.get_data_handle());
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides,
-        padding_l, padding_r, aalgorithm, apadding_kind);
+    auto weights_in = weights;
+    if (group > 1) {
+      auto gw_dims = weights.get_dims();
+      gw_dims.insert(gw_dims.begin(), group);
+      gw_dims[1] = gw_dims[1] / group;
+      weights_in.init(
+          tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
+          weights.get_data_handle());
+    }
+
+    if (dilates.empty() ||
+        IDEEP_STD_EQUAL(dilates, 1) ||
+        IDEEP_STD_EQUAL(dilates, 0)) {
+      compute_impl<alloc>(grady, weights_in, gradx_dims, gradx, strides,
+          padding_l, padding_r, aalgorithm, apadding_kind);
+    } else {
+      compute_impl<alloc>(grady, weights_in, gradx_dims, gradx, strides,
+          dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+    }
   }
 };
 
@@ -1601,10 +1583,24 @@ public:
       const tensor::dims& gradw_dims, tensor& gradw,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
-      algorithm aalgorithm = algorithm::convolution_direct,
+      const int group = 1, algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, grady, gradw_dims, gradw, strides,
-        dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+
+    auto gw_dims_in = gradw_dims;
+    if (group > 1) {
+      gw_dims_in.insert(gw_dims_in.begin(), group);
+      gw_dims_in[1] /= group;
+    }
+
+    if (dilates.empty() ||
+        IDEEP_STD_EQUAL(dilates, 1) ||
+        IDEEP_STD_EQUAL(dilates, 0)) {
+      compute_impl<alloc>(src, grady, gw_dims_in, gradw, strides,
+          padding_l, padding_r, aalgorithm, apadding_kind);
+    } else {
+      compute_impl<alloc>(src, grady, gw_dims_in, gradw, strides,
+          dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+    }
   }
 
   template<class alloc = utils::allocator>
@@ -1612,36 +1608,24 @@ public:
       const tensor& grady, const tensor::dims& gradw_dims, tensor& gradw,
       tensor& gradb, const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
-      algorithm aalgorithm = algorithm::convolution_direct,
+      const int group = 1, algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
-        strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
-  }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& grady,
-      tensor::dims gradw_dims, tensor& gradw,
-      const tensor::dims strides, const tensor::dims padding_l,
-      const tensor::dims padding_r, int group,
-      algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    gradw_dims.insert(gradw_dims.begin(), group);
-    gradw_dims[1]/=group;
-    compute_impl<alloc>(src, grady, gradw_dims, gradw, strides,
-        padding_l, padding_r, aalgorithm, apadding_kind);
-  }
+    auto gw_dims_in = gradw_dims;
+    if (group > 1) {
+      gw_dims_in.insert(gw_dims_in.begin(), group);
+      gw_dims_in[1] /= group;
+    }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor& src,
-      const tensor& grady, tensor::dims gradw_dims, tensor& gradw,
-      tensor& gradb, const tensor::dims strides,
-      const tensor::dims padding_l, const tensor::dims padding_r,
-      int group, algorithm aalgorithm = algorithm::convolution_direct,
-      const padding_kind apadding_kind = padding_kind::zero) {
-    gradw_dims.insert(gradw_dims.begin(), group);
-    gradw_dims[1]/=group;
-    compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
-        strides, padding_l, padding_r, aalgorithm, apadding_kind);
+    if (dilates.empty() ||
+        IDEEP_STD_EQUAL(dilates, 1) ||
+        IDEEP_STD_EQUAL(dilates, 0)) {
+      compute_impl<alloc>(src, grady, gw_dims_in, gradw, gradb,
+          strides, padding_l, padding_r, aalgorithm, apadding_kind);
+    } else {
+      compute_impl<alloc>(src, grady, gw_dims_in, gradw, gradb,
+          strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+    }
   }
 };
 

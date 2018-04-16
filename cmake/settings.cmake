@@ -7,7 +7,7 @@ set(__settings_included)
 add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
-set(__cxx_flags "-std=c++11 -fvisibility-inlines-hidden -Wall -Werror -Wno-sign-compare -Wno-unknown-pragmas -fvisibility-inlines-hidden -march=core-avx2 -pthread -fopenmp")
+set(__cxx_flags "-std=c++11 -fvisibility-inlines-hidden -Wall -Werror -Wno-sign-compare -Wno-unknown-pragmas -fvisibility-inlines-hidden -march=native -mtune=native -pthread -fopenmp")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${__cxx_flags}")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")

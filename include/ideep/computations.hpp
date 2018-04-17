@@ -3243,14 +3243,19 @@ public:
     switch(src.get_data_type()) {
     case tensor::data_type::f32:
       compute_impl<alloc, float>(src, ratio, dst, mask);
+      break;
     case tensor::data_type::s32:
       compute_impl<alloc, int32_t>(src, ratio, dst, mask);
+      break;
     case tensor::data_type::s16:
       compute_impl<alloc, int16_t>(src, ratio, dst, mask);
+      break;
     case tensor::data_type::s8:
       compute_impl<alloc, int8_t>(src, ratio, dst, mask);
+      break;
     case tensor::data_type::u8:
       compute_impl<alloc, uint8_t>(src, ratio, dst, mask);
+      break;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }
@@ -3281,14 +3286,19 @@ public:
     switch(gy.get_data_type()) {
     case tensor::data_type::f32:
       compute_impl<alloc, float>(mask, gy, gx);
+      break;
     case tensor::data_type::s32:
       compute_impl<alloc, int32_t>(mask, gy, gx);
+      break;
     case tensor::data_type::s16:
       compute_impl<alloc, int16_t>(mask, gy, gx);
+      break;
     case tensor::data_type::s8:
       compute_impl<alloc, int8_t>(mask, gy, gx);
+      break;
     case tensor::data_type::u8:
       compute_impl<alloc, uint8_t>(mask, gy, gx);
+      break;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }

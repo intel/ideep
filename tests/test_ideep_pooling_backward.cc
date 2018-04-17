@@ -43,17 +43,16 @@ protected:
     auto p = ::testing::TestWithParam<pool_bwd_test_params>::GetParam();
     auto pd = p.test_pd;
 
-    auto test = [&]() {
-      TestCommon();
+ //   auto test = [&]() {
       pooling_forward::compute(x_, tensor::dims {pd.mb, pd.c, pd.oh, pd.ow},
           y_, tensor::dims {pd.strh, pd.strw},
           tensor::dims {pd.kh, pd.kw}, tensor::dims {pd.padt, pd.padl},
           padR_, p.aalgorithm,
           prop_kind::forward_training, padding_kind::zero);
-    };
+ //   };
 
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-        return;
+ //   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+ //       return;
 
     check_pool_fwd<data_t>(p, x_, y_);
   }
@@ -63,14 +62,14 @@ protected:
     auto pd = p.test_pd;
 
     tensor gradx;
-    auto test = [&]() {
+//    auto test = [&]() {
       pooling_backward::compute(grady_, y_, x_, gradx,
           {pd.strh, pd.strw}, {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR_,
           p.aalgorithm, padding_kind::zero);
-    };
+//    };
 
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-      return;
+//    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+//      return;
 
     check_pool_bwd<data_t>(p, gradx, grady_, y_);
   }
@@ -80,8 +79,14 @@ using pooling_bwd_test_float = pooling_bwd_test<float>;
 using pool_bwd_test_params_float = pool_bwd_test_params;
 
 TEST_P(pooling_bwd_test_float, TestsPoolingBackward) {
-    Forward();
-    Backward();
+    auto p = ::testing::TestWithParam<pool_bwd_test_params>::GetParam();
+    auto testcommon = [&] () {
+      TestCommon();
+      Forward();
+      Backward();
+    };
+    if (catch_expected_failures(testcommon, p.expect_to_fail, p.expected_status))
+        return;
 }
 
 namespace mkldnn {

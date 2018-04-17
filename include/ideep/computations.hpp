@@ -1636,7 +1636,7 @@ public:
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    return compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
+    compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb,
         strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 

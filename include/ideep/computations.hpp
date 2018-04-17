@@ -3242,15 +3242,15 @@ public:
       tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
     case tensor::data_type::f32:
-      return compute_impl<alloc, float>(src, ratio, dst, mask);
+      compute_impl<alloc, float>(src, ratio, dst, mask);
     case tensor::data_type::s32:
-      return compute_impl<alloc, int32_t>(src, ratio, dst, mask);
+      compute_impl<alloc, int32_t>(src, ratio, dst, mask);
     case tensor::data_type::s16:
-      return compute_impl<alloc, int16_t>(src, ratio, dst, mask);
+      compute_impl<alloc, int16_t>(src, ratio, dst, mask);
     case tensor::data_type::s8:
-      return compute_impl<alloc, int8_t>(src, ratio, dst, mask);
+      compute_impl<alloc, int8_t>(src, ratio, dst, mask);
     case tensor::data_type::u8:
-      return compute_impl<alloc, uint8_t>(src, ratio, dst, mask);
+      compute_impl<alloc, uint8_t>(src, ratio, dst, mask);
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }
@@ -3280,15 +3280,15 @@ public:
   static void compute(const tensor &mask, const tensor &gy, tensor& gx) {
     switch(gy.get_data_type()) {
     case tensor::data_type::f32:
-      return compute_impl<alloc, float>(mask, gy, gx);
+      compute_impl<alloc, float>(mask, gy, gx);
     case tensor::data_type::s32:
-      return compute_impl<alloc, int32_t>(mask, gy, gx);
+      compute_impl<alloc, int32_t>(mask, gy, gx);
     case tensor::data_type::s16:
-      return compute_impl<alloc, int16_t>(mask, gy, gx);
+      compute_impl<alloc, int16_t>(mask, gy, gx);
     case tensor::data_type::s8:
-      return compute_impl<alloc, int8_t>(mask, gy, gx);
+      compute_impl<alloc, int8_t>(mask, gy, gx);
     case tensor::data_type::u8:
-      return compute_impl<alloc, uint8_t>(mask, gy, gx);
+      compute_impl<alloc, uint8_t>(mask, gy, gx);
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }

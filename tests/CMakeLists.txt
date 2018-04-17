@@ -10,13 +10,13 @@ include(../cmake/settings.cmake)
 include(../cmake/profiling.cmake)
 
 include_directories(
+  in
   googletest/googletest/include
   googletest/googlemock/include
   rapidcheck/include
   rapidcheck/extras/gtest/include
   ${PROJECT_SOURCE_DIR}/mkl-dnn/include
   ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtests
-  ${PROJECT_SOURCE_DIR}/mkl-dnn/tests/gtests/in
   ${vtune_include}
   )
 

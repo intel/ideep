@@ -38,14 +38,13 @@ protected:
   void Forward() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor dst;
-    auto test = [&]() {
-      TestCommon();
+    // auto test = [&]() {
       eltwise_forward::compute(src_, dst,
           algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
-    };
+    // };
 
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-      return;
+    // if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    //   return;
 
     check_relu_fwd(p.negative_slope, src_, dst);
   }
@@ -53,13 +52,13 @@ protected:
   void Backward() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor gradx;
-    auto test = [&]() {
+    // auto test = [&]() {
       eltwise_backward::compute(src_, grady_, gradx,
           algorithm::eltwise_relu, p.negative_slope, 0.0);
-    };
+    // };
 
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-      return;
+    // if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    //   return;
 
     check_relu_bwd(p.negative_slope, src_, grady_, gradx);
   }
@@ -69,8 +68,15 @@ using relu_test_float = relu_tests<float>;
 using relu_test_params_float = relu_test_params<float>;
 
 TEST_P(relu_test_float, TestsRelu) {
-  Forward();
-  Backward();
+  auto p = ::testing::TestWithParam<relu_test_params<float>>::GetParam();
+  tensor gradx;
+  auto test = [&]() {
+    TestCommon();
+    Forward();
+    Backward();
+  };
+  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    return;
 }
 
 #define EXPAND_SIZES(mb, c, h, w) { mb, c, h, w }

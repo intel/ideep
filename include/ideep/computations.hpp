@@ -637,9 +637,12 @@ protected:
   param in, out;
 };
 
-class direct_copy : public reorder {
+struct direct_copy : public reorder {
+public:
+  using reorder::reorder;
+
   template <typename alloc = utils::allocator>
-  static void compute(const tensor& input, const tensor& output) {
+  static void compute(const tensor& input, tensor& output) {
     if (input.is_empty())
       return;
 

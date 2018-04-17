@@ -1695,7 +1695,8 @@ public:
     if (dst != src) { // not inplace
       dst.reinit<alloc, lrn_forward>(comp.expected_dst_descriptor());
       if (with_workspace)
-        dst.init_extra(comp.expected_workspace_descriptor());
+        dst.init_extra<alloc, lrn_forward>(
+            comp.expected_workspace_descriptor());
     }
 
     comp.execute(src, dst);
@@ -1852,9 +1853,10 @@ public:
         && aalgorithm == mkldnn::pooling_max;
 
     if (dst != src) {
-      dst.reinit<alloc, lrn_backward>(comp.expected_dst_descriptor());
+      dst.reinit<alloc, pooling_forward>(comp.expected_dst_descriptor());
       if (with_workspace)
-        dst.init_extra(comp.expected_workspace_descriptor());
+        dst.init_extra<alloc, pooling_forward>(
+            comp.expected_workspace_descriptor());
     }
 
     comp.execute(src, dst);

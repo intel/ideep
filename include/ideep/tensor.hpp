@@ -786,8 +786,11 @@ class tensor : public param {
 public:
   using param::param;
 
+  template<class alloc = utils::allocator, class computation_t = computation>
   void init_extra(const descriptor &workspace) {
-    twin_.reset(new tensor(workspace));
+    auto twin = new tensor();
+    twin->init<alloc, computation_t>(workspace);
+    twin_.reset(twin);
   }
 
   void init_extra(const descriptor &workspace, void *handle) {

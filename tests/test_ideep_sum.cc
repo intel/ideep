@@ -76,20 +76,20 @@ protected:
     ASSERT_TRUE(p.engine_kind == mkldnn::engine::kind::cpu);
 
     std::vector<tensor> srcs;
-    for (size_t i = 0; i < num_srcs; i++) {
-      tensor src;
-      tensor::descriptor src_desc(static_cast<tensor::dims>(p.dims),
-          data_traits<data_t>::data_type, static_cast<format>(p.srcs_format[i]));
-      src.init(src_desc);
-
-      fill_data<data_t>(src.get_size() / sizeof(data_t),
-          reinterpret_cast<data_t *>(src.get_data_handle()));
-      srcs.push_back(src);
-    }
-
     // specify dst format
     tensor dst1;
     auto test1 = [&](){
+      for (size_t i = 0; i < num_srcs; i++) {
+        tensor src;
+        tensor::descriptor src_desc(static_cast<tensor::dims>(p.dims),
+            data_traits<data_t>::data_type, static_cast<format>(p.srcs_format[i]));
+        src.init(src_desc);
+
+        fill_data<data_t>(src.get_size() / sizeof(data_t),
+            reinterpret_cast<data_t *>(src.get_data_handle()));
+        srcs.push_back(src);
+      }
+
       tensor::descriptor dst_desc(static_cast<tensor::dims>(p.dims),
           data_traits<data_t>::data_type, static_cast<format>(p.dst_format));
       dst1.init(dst_desc);

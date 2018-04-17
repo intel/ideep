@@ -14,6 +14,9 @@ class convolution_forward_tests :
   public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
   virtual void SetUp() {
+  }
+
+  void TestCommon() {
     test_convolution_params_t p =
       ::testing::TestWithParam<test_convolution_params_t>::GetParam();
     test_convolution_sizes_t cd = p.sizes;
@@ -81,38 +84,9 @@ using convolution_test =
     convolution_forward_tests<float, float, float, float>;
 
 // Test for moving, copy, cache behavior
-TEST_P(convolution_test, TestWeightsDeduction) {
-  convolution_forward empty;
-  tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());
-  test_convolution_params_t p =
-    ::testing::TestWithParam<test_convolution_params_t>::GetParam();
-  test_convolution_sizes_t cd = p.sizes;
-  auto key = utils::create_key(src_.get_data_type(), src_.get_dims(),
-      weights_.get_dims(), bias_.get_dims(), dst_dims_);
-
-  convolution_forward comp;
-  auto test = [&]() {
-    comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
-        weights_.get_descriptor(), dst_desc, tensor::dims {cd.strh, cd.strw},
-        tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
-
-  };
-
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
-    return;
-
-  // We expect the guessings are right.
-  auto guess =
-    convolution_forward::expected_weights_descriptor(weights_.get_dims());
-  if (guess.get_internal_format() != oihw &&
-      guess.get_internal_format() != goihw)
-    EXPECT_TRUE(comp.expected_weights_descriptor() == guess);
-}
-
 // Test for moving, copy, cache behavior
 TEST_P(convolution_test, TestManipulation) {
   convolution_forward empty;
-  tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());
   test_convolution_params_t p =
     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
   test_convolution_sizes_t cd = p.sizes;
@@ -121,6 +95,8 @@ TEST_P(convolution_test, TestManipulation) {
 
   convolution_forward comp;
   auto test = [&]() {
+    TestCommon();
+    tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());
     comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
         weights_.get_descriptor(), dst_desc, tensor::dims {cd.strh, cd.strw},
         tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
@@ -138,6 +114,7 @@ TEST_P(convolution_test, TestManipulation) {
   // EXPECT_TRUE(comp.need_reorder_input(1) == false);
 
   // Get back old one
+  tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());
   auto comp1 = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
       weights_.get_descriptor(), dst_desc, tensor::dims {cd.strh, cd.strw},
       tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
@@ -160,6 +137,7 @@ TEST_P(convolution_test, TestCompute) {
   auto dst = make_output();
 
   auto test = [&]() {
+    TestCommon();
     if(with_bias_)
       convolution_forward::compute(src_, weights_, bias_, dst_dims_, dst,
           tensor::dims {cd.strh, cd.strw },
@@ -183,6 +161,34 @@ TEST_P(convolution_test, TestCompute) {
 
   compare_tensor<float>(ref_dst, dst);
 }
+
+// TEST_P(convolution_test, TestWeightsDeduction) {
+//   convolution_forward empty;
+//   tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());
+//   test_convolution_params_t p =
+//     ::testing::TestWithParam<test_convolution_params_t>::GetParam();
+//   test_convolution_sizes_t cd = p.sizes;
+//   auto key = utils::create_key(src_.get_data_type(), src_.get_dims(),
+//       weights_.get_dims(), bias_.get_dims(), dst_dims_);
+//
+//   convolution_forward comp;
+//   auto test = [&]() {
+//     comp = convolution_forward::fetch_or_create(key, src_.get_descriptor(),
+//         weights_.get_descriptor(), dst_desc, tensor::dims {cd.strh, cd.strw},
+//         tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
+//
+//   };
+//
+//   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+//     return;
+//
+//   // We expect the guessings are right.
+//   auto guess =
+//     convolution_forward::expected_weights_descriptor(weights_.get_dims());
+//   if (guess.get_internal_format() != oihw &&
+//       guess.get_internal_format() != goihw)
+//     EXPECT_TRUE(comp.expected_weights_descriptor() == guess);
+// }
 
 #define FP32
 #define DIRECTION_FORWARD

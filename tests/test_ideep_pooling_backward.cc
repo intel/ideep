@@ -12,7 +12,7 @@ private:
   mkldnn::memory::dims padR_;
 
 protected:
-  virtual void SetUp() {
+  void TestCommon() {
     auto p = ::testing::TestWithParam<pool_bwd_test_params>::GetParam();
     auto pd = p.test_pd;
 
@@ -44,6 +44,7 @@ protected:
     auto pd = p.test_pd;
 
     auto test = [&]() {
+      TestCommon();
       pooling_forward::compute(x_, tensor::dims {pd.mb, pd.c, pd.oh, pd.ow},
           y_, tensor::dims {pd.strh, pd.strw},
           tensor::dims {pd.kh, pd.kw}, tensor::dims {pd.padt, pd.padl},

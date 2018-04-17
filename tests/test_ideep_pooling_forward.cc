@@ -8,7 +8,7 @@ using namespace ideep;
 template <typename data_t>
 class pooling_forward_test : public ::testing::TestWithParam<pool_test_params> {
 protected:
-  virtual void SetUp() {
+  void TestCommon() {
     pool_test_params p
             = ::testing::TestWithParam<pool_test_params>::GetParam();
 
@@ -48,7 +48,8 @@ protected:
 
     auto dst = make_output();
     auto test = [&]() {
-       pooling_forward::compute(src_,
+      TestCommon();
+      pooling_forward::compute(src_,
           {pd.mb, pd.c, pd.oh, pd.ow}, dst, {pd.strh, pd.strw},
           {pd.kh, pd.kw}, {pd.padt, pd.padl}, padR, p.aalgorithm,
           p.aprop_kind, padding_kind::zero);

@@ -14,7 +14,7 @@ private:
   tensor grady_;
 
 protected:
-  virtual void SetUp() {
+  void TestCommon() {
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor::descriptor src_desc(static_cast<tensor::dims>(p.dims),
         data_traits<data_t>::data_type, static_cast<format>(p.data_format));
@@ -39,6 +39,7 @@ protected:
     auto p = ::testing::TestWithParam<relu_test_params<data_t>>::GetParam();
     tensor dst;
     auto test = [&]() {
+      TestCommon();
       eltwise_forward::compute(src_, dst,
           algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
     };

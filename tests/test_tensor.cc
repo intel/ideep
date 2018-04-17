@@ -14,7 +14,7 @@ class tensor_tests : public ::testing::Test {
 protected:
   void SetUp() override {
      const auto dim = *gen::element(1, 2, 4);
-     dims_ = *gen::container<tensor::dims>(dim, gen::inRange(0, 10));
+     dims_ = *gen::container<tensor::dims>(dim, gen::inRange(1, 10));
 
      // Generate by generator in the future
      type_ = tensor::data_type::f32;

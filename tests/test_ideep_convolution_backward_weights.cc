@@ -13,7 +13,8 @@ template <typename data_t>
 class convolution_backward_weights_test
   : public ::testing::TestWithParam<test_convolution_params_t> {
 protected:
-  virtual void SetUp() {
+  virtual void SetUp() {}
+  void TestCommon() {
     auto p = ::testing::TestWithParam<test_convolution_params_t>::GetParam();
     auto cd = p.sizes;
 
@@ -70,6 +71,7 @@ TEST_P(convolution_test, TestCompute) {
   auto gradw = make_output();
   auto gradb = make_output();
   auto test = [&]() {
+    TestCommon();
     convolution_backward_weights::compute(src_, grady_,
         gradw_dims_, gradw, gradb,
         tensor::dims {cd.strh, cd.strw}, tensor::dims {cd.dilh, cd.dilw},

@@ -6,11 +6,9 @@ import ideep4py
 from ideep4py import convolution2DParam
 from ideep4py import convolution2D
 
-# from memory_profiler import profile
-
 try:
     import testing
-    # from testing import condition
+    from testing import condition
     from testing.conv import im2col_cpu, col2im_cpu, get_conv_outsize
 except Exception as ex:
     print('*** testing directory is missing: %s' % ex)
@@ -35,33 +33,24 @@ print('bs_list: ', bs_list)
 
 
 @testing.parameterize(*testing.product({
-    # 'dtype': [numpy.float32, ],
-    # 'cover_all': [False, True],
-    # 'channel': [1, 2, 4, 8, 10, ],
-    # 'bs': bs_list,
-    # 'with_bias': [True, ],
     'dtype': [numpy.float32, ],
-    'cover_all': [True],
-    'channel': [8, 32],
-    'bs': [16, ],
+    'cover_all': [False, True],
+    'channel': [1, 2, 4, 8, 10, ],
+    'bs': bs_list,
     'with_bias': [True, ],
 }))
 @testing.fix_random()
 class TestConvolution2DPyF32(unittest.TestCase):
 
-    # @profile
     def setUp(self):
         self.x_shape = (self.bs, self.channel, 224, 224)
         self.w_shape = (self.channel, self.channel, 3, 3)
         self.b_shape = self.channel
 
-        print('SetUp alloc x')
         self.x = numpy.random.uniform(-1, 1, self.x_shape).astype(self.dtype)
         self.x = ideep4py.mdarray(self.x)
-        print('SetUp alloc w')
         self.w = numpy.random.uniform(-1, 1, self.w_shape).astype(self.dtype)
         self.w = ideep4py.mdarray(self.w)
-        print('SetUp alloc b')
         self.b = numpy.random.uniform(-1, 1, self.b_shape).astype(self.dtype)
         self.b = ideep4py.mdarray(self.b)
 
@@ -86,13 +75,11 @@ class TestConvolution2DPyF32(unittest.TestCase):
         self.gy = numpy.random.uniform(
             -1, 1,
             (self.n, self.outc, self.outh, self.outw)).astype(self.dtype)
-        print('SetUp alloc gy')
         self.gy = ideep4py.mdarray(self.gy)
 
         self.check_forward_options = {'atol': 1e-3, 'rtol': 1e-2}
         self.check_backward_options = {'atol': 1e-3, 'rtol': 1e-2}
 
-    # @profile
     def check_forward(self, x, w, b, cp):
         if self.with_bias:
             y_act = convolution2D.Forward(x, w, b, cp)
@@ -100,11 +87,8 @@ class TestConvolution2DPyF32(unittest.TestCase):
             y_act = convolution2D.Forward(x, w, None, cp)
         y_act = numpy.array(y_act, dtype=self.dtype)
 
-        print("check forward free x")
         x = numpy.array(x, dtype=self.dtype)
-        print("check forward free w")
         w = numpy.array(w, dtype=self.dtype)
-        print("check forward free b")
         b = numpy.array(b, dtype=self.dtype)
         kh, kw = w.shape[2:]
         col = im2col_cpu(
@@ -119,12 +103,8 @@ class TestConvolution2DPyF32(unittest.TestCase):
             y_act, y_expect, **self.check_forward_options)
 
     def test_forward_cpu(self):
-        print("forward cpu")
-        print("x shape ", self.x.shape)
-        print("w shape ", self.w.shape)
         self.check_forward(self.x, self.w, self.b, self.cp)
 
-    # @profile
     def check_backward_weights(self, x, w, b, cp, gy):
         gW_act, gB_act = convolution2D.BackwardWeightsBias(x, gy, cp)
         gW_act = numpy.array(gW_act, dtype=self.dtype)
@@ -143,18 +123,17 @@ class TestConvolution2DPyF32(unittest.TestCase):
         numpy.testing.assert_allclose(
             gW_act, gW_expect, **self.check_backward_options)
 
-    # @condition.retry(3)
-    # def test_backward_cpu_weights(self):
-    #     print("test_backward_cpu_weights")
-    #     cp = convolution2DParam(self.w_shape,
-    #                             1, 1,
-    #                             1, 1,
-    #                             1, 1,
-    #                             1, 1)
+    @condition.retry(3)
+    def test_backward_cpu_weights(self):
+        print("test_backward_cpu_weights")
+        cp = convolution2DParam(self.w_shape,
+                                1, 1,
+                                1, 1,
+                                1, 1,
+                                1, 1)
 
-    #     self.check_backward_weights(self.x, self.w, self.b, cp, self.gy)
+        self.check_backward_weights(self.x, self.w, self.b, cp, self.gy)
 
-    # @profile
     def check_backward_data(self, x, w, b, cp):
         out_c, in_c, kh, kw = w.shape
         n, out_c, in_h, in_w = x.shape
@@ -195,8 +174,9 @@ class TestConvolution2DPyF32(unittest.TestCase):
         numpy.testing.assert_allclose(
             y_act, y_expect, **self.check_backward_options)
 
-    # @condition.retry(3)
-    # def test_backward_cpu_data(self):
+    @condition.retry(3)
+    def test_backward_cpu_data(self):
+        print("test_backward_cpu_data")
         self.check_backward_data(self.x, self.w, self.b, self.cp)
 
 

@@ -55,7 +55,7 @@
 %enddef
 
 %define %buffer_protocol_typemap(VIEW)
-%typemap(typecheck) (VIEW) {
+%typemap(typecheck, precedence=SWIG_TYPECHECK_POINTER) (VIEW) {
   $1 = PyObject_CheckBuffer($input);
 }
 

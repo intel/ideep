@@ -121,9 +121,9 @@ INST_TEST_CASE(SimpleSmall_Depthwise_Blocked,
     PARAMS(FMT_DATA_BLOCKED, Goihw8g, FMT_BIAS, FMT_DATA_BLOCKED,
         1, 24, 24, 32, 16, 24, 16, 14, 3, 3, 1, 0, 2, 1),
     PARAMS(FMT_DATA_BLOCKED, Goihw8g, FMT_BIAS, FMT_DATA_BLOCKED,
-        1, 16, 16, 32, 16, 16, 18, 16, 3, 3, 2, 1, 2, 1),
+        1, 16, 16, 32, 16, 16, 18, 16, 3, 3, 2, 1, 2, 1)/*,
     PARAMS(FMT_DATA_BLOCKED, Goihw8g, FMT_BIAS, FMT_DATA_BLOCKED,
-        1, 8, 8, 500, 500, 8, 698, 698, 3, 3, 100, 100, 1, 1)
+        1, 8, 8, 500, 500, 8, 698, 698, 3, 3, 100, 100, 1, 1)*/
 );
 
 INST_TEST_CASE(SimpleSmall_Depthwise_Blocked16,
@@ -144,7 +144,7 @@ INST_TEST_CASE(SimpleSmall_Depthwise_Blocked16,
     PARAMS(FMT_DATA_BLOCKED16, Goihw16g, FMT_BIAS, FMT_DATA_BLOCKED16,
         1, 32, 32, 32, 16, 32, 16, 14, 3, 3, 1, 0, 2, 1),
     PARAMS(FMT_DATA_BLOCKED16, Goihw16g, FMT_BIAS, FMT_DATA_BLOCKED16,
-        1, 16, 16, 32, 16, 16, 18, 16, 3, 3, 2, 1, 2, 1),
+        1, 16, 16, 32, 16, 16, 18, 16, 3, 3, 2, 1, 2, 1)/*,
     PARAMS(FMT_DATA_BLOCKED16, Goihw16g, FMT_BIAS, FMT_DATA_BLOCKED16,
-        1, 16, 16, 500, 500, 16, 698, 698, 3, 3, 100, 100, 1, 1)
+        1, 16, 16, 500, 500, 16, 698, 698, 3, 3, 100, 100, 1, 1)*/
 );

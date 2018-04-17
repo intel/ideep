@@ -89,4 +89,4 @@ TEST_P(convolution_test, TestCompute) {
 #define FP32
 #define DIRECTION_BACKWARD_DATA
 #include "convolution_common.h"
-#include "diluted_convolution.h"
+// #include "dilated_convolution.h"

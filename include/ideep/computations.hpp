@@ -3268,8 +3268,8 @@ public:
       tensor& dst, tensor& mask) {
     const auto scale = 1.0 / (1.0 - ratio);
     const auto size = src.get_nelems();
-    mask.init(src.get_descriptor());
-    dst.init(src.get_descriptor());
+    mask.reinit<alloc, dropout_forward>(src.get_descriptor());
+    dst.reinit<alloc, dropout_forward>(src.get_descriptor());
 
     std::unique_ptr<int[]> bernouli_nums(new int[size]);
     bernoulli_generate(size, 1.0 - ratio, bernouli_nums.get());
@@ -3317,7 +3317,7 @@ public:
   template<class alloc, class T>
   static void compute_impl(const tensor &mask, const tensor &gy, tensor& gx) {
     const auto size = mask.get_nelems();
-    gx.init(gy.get_descriptor());
+    gx.reinit<alloc, dropout_backward>(gy.get_descriptor());
 
     const auto mask_data = static_cast<T *>(mask.get_data_handle());
     const auto gy_data = static_cast<T *>(gy.get_data_handle());

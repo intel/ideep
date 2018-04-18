@@ -637,7 +637,16 @@ protected:
   param in, out;
 };
 
-using direct_copy = reorder;
+class direct_copy : public reorder {
+  template <typename alloc = utils::allocator>
+  static void compute(const tensor& input, const tensor& output) {
+    if (input.is_empty())
+      return;
+
+    output.reinit<alloc, direct_copy>(input.get_descriptor());
+    reorder::compute(input, output);
+  }
+};
 
 struct spliter : public reorder {
 public:

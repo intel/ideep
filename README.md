@@ -51,7 +51,8 @@ pip install -U setuptools
 Install iDeep python package(ideep4py) from the source code:
 
 ```
-git submodule update --init && mkdir build && cmake .. 
+git submodule update --init && mkdir build && cd cmake && cmake ..
+cd ../python
 python setup.py install
 ```
 

@@ -1,47 +1,46 @@
-# ideep: Intel deep learning extension for python
+# iDeep: Intel Deep Learning Extension Package
 
-Intel deep learning extension for python is a python module for collection of accelerated deep learning operations like convolution, deconvolution, relu etc. It uses intel MKL and MKL-DNN as acceleration engine. The operator object called Compute Complex (CC), each operator are implemented as one Compute Complex, and its tensor oprand is called 'MD-Array'. 'MD-Array' supports python new buffer protocol and operates compatibily with NumPY ND-Array.
+Intel Deep Learning Extension Package is a module for collection of accelerated deep learning operations like convolution, deconvolution, relu etc. It uses Intel MKL-DNN as acceleration engine.
 
-Refer example and tests directories for more information
 
 ## Requirements
 
-This preview version of ideep is tested on Ubuntu 14.04 and OS X, and examples are implemented as a suggestion for its integration of chainer v3.0.0.
+This preview version of iDeep is tested on Ubuntu 16.04 and OS X.
 
 Minimum requirements:
-- Python 2.7.6+, 3.6.0+
-- Chainer v3.0.0
-- Numpy 1.9+
-- Six 1.9+
-- MKL 2018 Initial Release 
-- MKL-DNN 0.1+
-- Swig 3.0.12
-- Glog 0.3.5
-- Cmake 2.8.0
-- Doxygen 1.8.5
+- Cmake3
+- GCC 5.3+
 - C++ compiler with C++11 standard support
+- MKL-DNN 0.1+
+- Python 2.7.6+, 3.5.2+, 3.6.0+
+- Numpy 1.13
+- Swig 3.0.12
+- Doxygen 1.8.5
 
-Requirements for some features:
+
+Other requirements:
 - Testing utilities
-  - Mock
-  - Nose
+  - Gtest
+  - pytest
 
 ## Installation
-### Source intel mkl library environment
+
+### iDeep Cpp API
+
+Head file mode to introduce iDeep Cpp APIs:
 
 ```
-. /opt/intel/mkl/bin/mklvar.sh intel64
+#include "ideep.hpp"
 ```
 
-### Install MKL
+Pin singleton head file to one Cpp file of your project to instance iDeep singletons.
 
-Download and install intel MKL at https://software.intel.com/en-us/mkl
+```
+@@ main.cc
+#include "ideep_pin_singletons.hpp"
+```
 
-### Install MKL-DNN
-
-Refer https://github.com/01org/mkl-dnn for install instruction
-
-### Install ideep
+### Install iDeep python package
 
 If you use old ``setuptools``, upgrade it:
 
@@ -49,21 +48,17 @@ If you use old ``setuptools``, upgrade it:
 pip install -U setuptools
 ```
 
-Then, install ideep via PyPI:
-```
-pip install ideep
-```
+Install iDeep python package(ideep4py) from the source code:
 
-You can also install ideep from the source code:
 ```
+git submodule update --init && mkdir build && cmake .. 
 python setup.py install
 ```
 
 ## More information
-- MKL site: https://software.intel.com/en-us/mkl
 - MKL-DNN github: https://github.com/01org/mkl-dnn
-- ideep github: https://github.com/intel/ideep.git
-- Chainer github: https://github.com/pfnet/chainer
+- iDeep github: https://github.com/intel/ideep.git
+- Chainer github: https://github.com/chainer/chainer
 
 ## License
 MIT License (see `LICENSE` file).

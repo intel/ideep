@@ -3,6 +3,10 @@
 *.pyc
 *.pyo
 *.cpp
+!dlcp/test/main.cpp
+!dlcp/src/dl_compression_impl.cpp
+!dlcp/src/dl_compression.cpp
+!dlcp/src/dl_compression_util.cpp
 *.so
 cscope.*
 tags

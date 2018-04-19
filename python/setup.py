@@ -105,7 +105,8 @@ if sys.version_info.major < 3:
     swig_opts += ['-DNEWBUFFER_ON']
 
 ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas',
-             '-march=native', '-mtune=native']
+             '-march=native', '-mtune=native',
+             '-D_TENSOR_MEM_ALIGNMENT_=4096']
 
 if os_name == 'Darwin':
     link_opts = ['-Wl,-rpath,@loader_path/lib', '-Lideep4py/lib']
@@ -122,7 +123,7 @@ includes = ['ideep4py/include',
 
 if os_name == 'Linux':
     libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
-    ccxx_opts += ['-fopenmp', '-D_TENSOR_MEM_ALIGNMENT_=4096']
+    ccxx_opts += ['-fopenmp']
     libraries += ['m']
     link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']
 else:

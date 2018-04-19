@@ -17,10 +17,23 @@ protected:
     auto data_type = data_traits<data_t>::data_type;
     auto bs = p.sizes;
 
-    tensor::descriptor src_desc({bs.mb, bs.c, bs.h, bs.w}, data_type,
-        static_cast<format>(p.formats.data_format));
-    tensor::descriptor grady_desc({bs.mb, bs.c, bs.h, bs.w}, data_type,
-        static_cast<format>(p.formats.diff_format));
+    auto src_desc = (p.ndims == 5) ?
+      tensor::descriptor ({bs.mb, bs.c, bs.d, bs.h, bs.w}, data_type,
+        static_cast<format>(p.formats.data_format)) :
+        p.formats.data_format != format::nc ?
+        tensor::descriptor ({bs.mb, bs.c, bs.h, bs.w}, data_type,
+            static_cast<format>(p.formats.data_format)) :
+          tensor::descriptor ({bs.mb, bs.c}, data_type,
+              static_cast<format>(p.formats.data_format));
+    auto grady_desc = p.ndims == 5 ?
+      tensor::descriptor ({bs.mb, bs.c, bs.d, bs.h, bs.w}, data_type,
+        static_cast<format>(p.formats.diff_format)) :
+        p.formats.data_format != format::nc ?
+        tensor::descriptor ({bs.mb, bs.c, bs.h, bs.w}, data_type,
+          static_cast<format>(p.formats.diff_format)) :
+          tensor::descriptor ({bs.mb, bs.c}, data_type,
+              static_cast<format>(p.formats.data_format));
+
     statistic_desc_ = tensor::descriptor ({bs.c}, data_type);
 
     src_.init(src_desc);
@@ -105,7 +118,8 @@ TEST_P(bnrm_test_float, TestsBackward) {
 }
 
 #define EXPAND_ARGS(args) args
-#define EXPAND_SIZES(mb, c, h, w) { mb, c, h, w }
+#define EXPAND_SIZES_3D(...) { __VA_ARGS__ }
+#define EXPAND_SIZES(mb, c, h, w) { mb, c, 1, h, w }
 #define EXPAND_FORMATS(data, diff) \
     { static_cast<format>(mkldnn::memory::format::data), \
       static_cast<format>(mkldnn::memory::format::diff) }
@@ -117,12 +131,33 @@ TEST_P(bnrm_test_float, TestsBackward) {
     test_bnrm_params_t { ENGINE, \
     EXPAND_FORMATS(data, diff), EXPAND_SIZES(mb, c, h, w), eps }
 
+#define PARAMS_3D(data, diff, mb, c, d, h, w, eps) \
+    test_bnrm_params_t { ENGINE, \
+    EXPAND_FORMATS(data, diff), EXPAND_SIZES_3D(mb, c, d, h, w), eps, 5 }
+
+#define PARAMS_N_3D(...) EXPAND_ARGS(PARAMS_3D(ncdhw, ncdhw, __VA_ARGS__))
 #define PARAMS_N(...) EXPAND_ARGS(PARAMS(nchw, nchw, __VA_ARGS__))
+#define PARAMS_NHWC(...) EXPAND_ARGS(PARAMS(NHWC, NHWC, __VA_ARGS__))
+#define PARAMS_NC(...) EXPAND_ARGS(PARAMS(nc, nc, __VA_ARGS__))
 #define PARAMS_B8(...) EXPAND_ARGS(PARAMS(nChw8c, nChw8c, __VA_ARGS__))
 #define PARAMS_B16(...) EXPAND_ARGS(PARAMS(nChw16c, nChw16c, __VA_ARGS__))
 
 #define INST_TEST_CASE(str, ...) INSTANTIATE_TEST_CASE_P( \
         str, bnrm_test_float, ::testing::Values(__VA_ARGS__))
+
+INST_TEST_CASE(Simple_NC,
+    PARAMS_NC(2, 8, 1, 1, EPS),
+    PARAMS_NC(2, 10, 1, 1, EPS),
+    PARAMS_NC(2, 8, 1, 1, EPS),
+    PARAMS_NC(2, 10, 1, 1, EPS)
+);
+
+INST_TEST_CASE(Simple_NCDHW,
+    PARAMS_N_3D(2, 8, 1, 1, 1, EPS),
+    PARAMS_N_3D(2, 10, 1, 1, 1, EPS),
+    PARAMS_N_3D(2, 8, 4, 4, 4, EPS),
+    PARAMS_N_3D(2, 10, 4, 4, 4, EPS)
+);
 
 INST_TEST_CASE(Simple_NCHW,
     PARAMS_N(2, 8, 1, 1, EPS),

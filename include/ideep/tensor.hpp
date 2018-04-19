@@ -336,6 +336,11 @@ public:
       case mkldnn_nChw16c:
         ret = format::nchw;
         break;
+      case mkldnn_ncdhw:
+      case mkldnn_ndhwc:
+      case mkldnn_nCdhw16c:
+        ret = format::ncdhw;
+        break;
       case mkldnn_oihw:
       case mkldnn_ihwo:
       case mkldnn_hwio:

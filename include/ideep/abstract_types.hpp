@@ -99,6 +99,7 @@ using round_mode = mkldnn::round_mode;
 enum format {
   format_undef = mkldnn_format_undef,
   any = mkldnn_any,
+  blocked = mkldnn_blocked,
   x = mkldnn_x,
   nc = mkldnn_nc,
   io = mkldnn_io,
@@ -106,11 +107,17 @@ enum format {
   nchw = mkldnn_nchw,
   nhwc = mkldnn_nhwc,
   chwn = mkldnn_chwn,
+  ncdhw = mkldnn_ncdhw,
+  ndhwc = mkldnn_ndhwc,
   oihw = mkldnn_oihw,
   ihwo = mkldnn_ihwo,
   hwio = mkldnn_hwio,
+  oidhw = mkldnn_oidhw,
   goihw = mkldnn_goihw,
-  blocked = mkldnn_blocked,
+  hwigo = mkldnn_hwigo,
+  ntc = mkldnn_ntc,
+  tnc = mkldnn_tnc,
+  format_last = mkldnn_format_last
 };
 
 /// cpu execution engine only.
@@ -140,7 +147,7 @@ struct engine: public mkldnn::engine {
     case 4:
       return format::nchw;
     case 5:
-      return format::goihw;
+      return format::ncdhw;
     default:
       return format::format_undef;
     }

@@ -25,12 +25,13 @@ class sum_test: public ::testing::TestWithParam<sum_test_params> {
     const auto &dst_d =
         mkldnn::memory::desc(*dst.get_mkldnn_memory_desc_t());
     const auto dst_dims = dst.get_dims();
+    const auto *dst_dims_r = dst_dims.data();
 
 #   pragma omp parallel for collapse(4) schedule(static)
-    for (auto n = 0; n < dst_dims[0]; n++)
-    for (auto c = 0; c < dst_dims[1]; c++)
-    for (auto h = 0; h < dst_dims[2]; h++)
-    for (auto w = 0; w < dst_dims[3]; w++) {
+    for (auto n = 0; n < dst_dims_r[0]; n++)
+    for (auto c = 0; c < dst_dims_r[1]; c++)
+    for (auto h = 0; h < dst_dims_r[2]; h++)
+    for (auto w = 0; w < dst_dims_r[3]; w++) {
       acc_t src_sum = 0.0;
       for (size_t num = 0; num < srcs.size(); num++) {
         const data_t *src_data =
@@ -96,7 +97,7 @@ protected:
       data_t *dst_data = (data_t *)dst1.get_data_handle();
       const size_t sz = dst1.get_size() / sizeof(data_t);
       // overwriting dst to prevent false positives for test cases.
-#     pragma parallel for
+#     pragma omp parallel for
       for (size_t i = 0; i < sz; i++) {
         dst_data[i] = -32;
       }

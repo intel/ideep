@@ -331,7 +331,7 @@ public:
     // Empty
   }
 
-  static lru_cache<key_t, value_t> &t_store() {
+  static inline lru_cache<key_t, value_t> &t_store() {
     static thread_local lru_cache<key_t, value_t> t_store_(capacity);
     return t_store_;
   }

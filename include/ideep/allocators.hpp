@@ -91,6 +91,20 @@ public:
       (reinterpret_cast<t*>(reinterpret_cast<size_t>(p) + \
       static_cast<size_t>(offset)))
 
+  static bool is_enabled() {
+    static bool enabled = true;
+    static bool checked = false;
+
+    // Set by first run. Could not be adjusted dynamically.
+    if (!checked) {
+      char *env = getenv("DISABLE_MEM_CACHE_OPT");
+      if (env && *env != '0')
+        enabled = false;
+      checked = true;
+    }
+    return enabled;
+  }
+
   class mpool {
   public:
     mpool() : alloc_size_(0), free_size_(0),
@@ -172,12 +186,18 @@ public:
 
   template<class computation_t = void>
   static char *malloc(size_t size) {
-    return static_cast<char *>(get_mpool<computation_t>()->malloc(size));
+    if (!is_enabled())
+      return static_cast<char *>(allocator::malloc(size));
+    else
+      return static_cast<char *>(get_mpool<computation_t>()->malloc(size));
   }
 
   template<class computation_t = void>
   static void free(void *p) {
-    return get_mpool<computation_t>()->free(p);
+    if (!is_enabled())
+      allocator::free(p);
+    else
+      get_mpool<computation_t>()->free(p);
   }
 
   template<class computation_t = void>

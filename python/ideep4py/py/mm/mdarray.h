@@ -497,7 +497,6 @@ private:
 
   };
 
-  // FIXME: --> char[]
   std::shared_ptr<char> buff_;
   std::unique_ptr<const Py_buffer, view_manager> view_;
 };

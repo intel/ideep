@@ -18,9 +18,4 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 install(DIRECTORY include/ DESTINATION include)
 
-function(install)
-endfunction()
 add_subdirectory(tests)
-function(install)
-  _install(${ARGN})
-endfunction()

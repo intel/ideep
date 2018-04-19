@@ -3,9 +3,9 @@ if (NOT WITH_TEST)
     return()
 endif()
 
-add_subdirectory(googletest)
-add_subdirectory(rapidcheck)
-add_subdirectory(rapidcheck/extras/gtest)
+add_subdirectory(googletest EXCLUDE_FROM_ALL)
+add_subdirectory(rapidcheck EXCLUDE_FROM_ALL)
+add_subdirectory(rapidcheck/extras/gtest EXCLUDE_FROM_ALL)
 include(../cmake/settings.cmake)
 include(../cmake/profiling.cmake)
 

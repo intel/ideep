@@ -1,0 +1,9 @@
+[submodule "mkl-dnn"]
+	path = mkl-dnn
+	url = https://github.com/01org/mkl-dnn.git
+[submodule "tests/rapidcheck"]
+	path = tests/rapidcheck
+	url = https://github.com/emil-e/rapidcheck.git
+[submodule "tests/googletest"]
+	path = tests/googletest
+	url = https://github.com/google/googletest.git

@@ -1675,6 +1675,16 @@ public:
       compute_impl<alloc>(src, grady, gw_dims_in, gradw, strides,
           dilates, padding_l, padding_r, aalgorithm, apadding_kind);
     }
+
+    if (group > 1) {
+      IDEEP_ENFORCE(group == gradw.get_dim(0),
+          "invalid dim 0 in grouped gradw");
+      IDEEP_ENFORCE(gradw_dims[0] == group * gradw.get_dim(1),
+          "invalid dim 0 in grouped gradw");
+      IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1,
+          "invalid ndim in grouped gradw");
+      gradw.reshape(gradw_dims);
+    }
   }
 
   template<class alloc = utils::allocator>
@@ -1699,6 +1709,16 @@ public:
     } else {
       compute_impl<alloc>(src, grady, gw_dims_in, gradw, gradb,
           strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+    }
+
+    if (group > 1) {
+      IDEEP_ENFORCE(group == gradw.get_dim(0),
+          "invalid dim 0 in grouped gradw");
+      IDEEP_ENFORCE(gradw_dims[0] == group * gradw.get_dim(1),
+          "invalid dim 0 in grouped gradw");
+      IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1,
+          "invalid ndim in grouped gradw");
+      gradw.reshape(gradw_dims);
     }
   }
 };

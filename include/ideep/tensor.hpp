@@ -546,6 +546,15 @@ public:
     reinit<utils::allocator, computation>(adesc);
   }
 
+  template<class alloc = utils::allocator, class computation_t = computation>
+  void reinit_like(const param &aparam) {
+    reinit<alloc, computation_t>(aparam.get_descriptor());
+  }
+
+  void reinit_like(const param &aparam) {
+    reinit<utils::allocator, computation>(aparam.get_descriptor());
+  }
+
   /// Empty construction
   ///
   param() {

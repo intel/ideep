@@ -2376,17 +2376,21 @@ public:
 
     reorder reorder_;
     tensor::dims offset_dims(dst_dims.size(), 0);
-    dst.reinit({dst_dims, inputs[0].get_data_type(),
-        inputs[0].get_internal_format()});
+    if (add_axis)
+      dst.reinit({dst_dims, inputs[0].get_data_type()});
+    else
+      dst.reinit({dst_dims, inputs[0].get_data_type(),
+          inputs[0].get_internal_format()});
     for (unsigned i = 0; i < inputs.size(); ++i) {
-      auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
       if (add_axis) {
         tensor::dims in_dims(inputs[i].get_dims());
         in_dims.insert(in_dims.begin() + axis, 1);
         tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
+        auto view = dst.create_view(in_dims, offset_dims);
         reorder_.init(in_desc, view, dst.get_descriptor());
         reorder_({in_desc, inputs[i].get_data_handle()}, dst);
       } else {
+        auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
         reorder_.init(inputs[i].get_descriptor(), view, dst.get_descriptor());
         reorder_(inputs[i], dst);
       }

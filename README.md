@@ -9,7 +9,7 @@ This preview version of iDeep is tested on Ubuntu 16.04 and OS X.
 
 Minimum requirements:
 - Cmake3
-- GCC 5.3+
+- GCC 5.3+ required if you want to build test cases
 - C++ compiler with C++11 standard support
 - MKL-DNN 0.1+
 - Python 2.7.6+, 3.5.2+, 3.6.0+

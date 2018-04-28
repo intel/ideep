@@ -421,6 +421,9 @@ using bytestring = std::string;
 
 
 inline bytestring to_bytes(const int arg) {
+  if (arg == 0)
+    return bytestring();
+
   auto as_cstring = reinterpret_cast<const char *>(&arg);
   auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
 

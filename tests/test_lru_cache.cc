@@ -57,8 +57,9 @@ void test_to_bytestring() {
   tensor::dims B {2, 8, 22, 23};
   tensor::dims C {32, 2, 33, 445};
   tensor::dims D {64, 224, 224, 5};
+  tensor::dims E {0, 0, 0, 0};
 
-  auto key = to_bytes(A, B, C, D);
+  auto key = to_bytes(A, B, C, D, E);
 
   std::string partial = to_bytes(A);
   partial += '*';
@@ -67,6 +68,8 @@ void test_to_bytestring() {
   partial += to_bytes(C);
   partial += '*';
   partial += to_bytes(D);
+  partial += '*';
+  partial += to_bytes(E);
 
   for (int i = 0; i < key.size(); i ++) {
     std::cout<<static_cast<int>(key[i]);

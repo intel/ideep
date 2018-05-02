@@ -421,11 +421,17 @@ using bytestring = std::string;
 
 
 inline bytestring to_bytes(const int arg) {
+  auto as_cstring = reinterpret_cast<const char *>(&arg);
+#ifndef __AVX__
   if (arg == 0)
     return bytestring();
 
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
   auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
+#else
+  unsigned int lz;
+  asm volatile ("lzcntl %1, %0": "=r" (lz): "r" (arg));
+  auto len = sizeof(int) - lz / 8;
+#endif
 
   return bytestring(as_cstring, len);
 }

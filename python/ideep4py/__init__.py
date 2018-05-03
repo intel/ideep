@@ -28,6 +28,7 @@ from ideep4py._ideep4py import basic_copyto  # NOQA
 # ------------------------------------------------------------------------------
 # ideep4py.mdarray allocation
 # ------------------------------------------------------------------------------
+
 dat_array = 'd'  # data array
 wgt_array = 'w'  # weight array
 
@@ -112,6 +113,10 @@ def all_ready(inputs, supported_ndim=(2, 4)):
         return check_type(inputs)
 
 
+# ------------------------------------------------------------------------------
+# ideep4py tensor ops
+# ------------------------------------------------------------------------------
+
 def split(x, indices_or_sections, axis=0):
     if all_ready((x,)):
         offsets = intVector()
@@ -181,6 +186,10 @@ def multi_add(xs):
     y = basic_acc_sum(xs)
     return y
 
+
+# ------------------------------------------------------------------------------
+# ideep4py DNN APIs
+# ------------------------------------------------------------------------------
 
 def convolution2DParam(out_dims, dy, dx, sy, sx, ph, pw, pd, pr):
     cp = conv2DParam()

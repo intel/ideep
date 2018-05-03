@@ -8,7 +8,7 @@ from ideep4py._ideep4py import mdarrayVector  # NOQA
 
 from ideep4py._ideep4py import batchNormalization  # NOQA
 from ideep4py._ideep4py import concat  # NOQA
-from ideep4py._ideep4py import convolution2D  # NOQA
+from ideep4py._ideep4py import convolution2D as _convolution2D  # NOQA
 from ideep4py._ideep4py import convolution2DParam as conv2DParam  # NOQA
 from ideep4py._ideep4py import dropout  # NOQA
 from ideep4py._ideep4py import linear  # NOQA
@@ -94,7 +94,7 @@ def all_ready(inputs, supported_ndim=(2, 4)):
     The function checks ``inputs`` info and ``supported_ndim``.
 
     Args:
-        inputs (numpy.ndarray, ideep.mdarray):
+        inputs (numpy.ndarray, ideep4py.mdarray):
             ``inputs`` to be checked including array type, dimension
             and data type.
         supported_ndim: A tuple of ndim. ideep supports array dimension
@@ -190,6 +190,98 @@ def multi_add(xs):
 # ------------------------------------------------------------------------------
 # ideep4py DNN APIs
 # ------------------------------------------------------------------------------
+
+class convolution2D(object):
+    """ convolution2D APIs
+
+    """
+
+    @classmethod
+    def Forward(cls, src, weights, bias, cp):
+        """convolution2D forward propagation
+
+        Args:
+            src (ideep4py.mdarray):
+                ``src`` feature maps of convolution2D forward propagation.
+            weights (ideep4py.mdarray):
+                ``weights`` filters of convolution2D forward propagation.
+            biass (ideep4py.mdarray):
+                ``biass`` bias of convolution2D forward propagation.
+            cp (ideep4py.convolution2DParam):
+                ``cp`` convolution2D parameters (stride, padding,
+                output dimension, dilatation).
+
+        Returns:
+            ideep4py.mdarray: dst of convolution2D forward propagation.
+
+        """
+        return _convolution2D.Forward(src, weights, bias, cp)
+
+    @classmethod
+    def BackwardWeights(cls, src, grady, cp):
+        """backward propagation on convolution2D weights
+
+        Args:
+            src (ideep4py.mdarray):
+                ``src`` feature maps in corresponding convolution2D
+                forward propagation.
+            grady (ideep4py.mdarray):
+                ``grady`` differential passed from last backward propagation
+                layer.
+            cp (ideep4py.convolution2DParam):
+                ``cp`` convolution2D parameters (stride, padding,
+                output dimension, dilatation).
+
+        Returns:
+            ideep4py.mdarray: weights differential of convolution2D
+            backward propagation.
+
+        """
+        return _convolution2D.BackwardWeights(src, grady, cp)
+
+    @classmethod
+    def BackwardWeightsBias(cls, src, grady, cp):
+        """backward propagation on convolution2D weights and bias
+
+        Args:
+            src (ideep4py.mdarray):
+                ``src`` feature maps in corresponding convolution2D
+                forward propagation.
+            grady (ideep4py.mdarray):
+                ``grady`` differential passed from last backward propagation
+                layer.
+            cp (ideep4py.convolution2DParam):
+                ``cp`` convolution2D parameters (stride, padding,
+                output dimension, dilatation).
+
+        Returns:
+            ideep4py.mdarray: weights and bias differential of convolution2D
+            backward propagation.
+
+        """
+        return _convolution2D.BackwardWeightsBias(src, grady, cp)
+
+    @classmethod
+    def BackwardData(cls, weights, grady, cp):
+        """backward propagation on convolution2D feature maps input
+
+        Args:
+            weights (ideep4py.mdarray):
+                ``weights`` filters of convolution2D forward propagation.
+            grady (ideep4py.mdarray):
+                ``grady`` differential passed from last backward propagation
+                layer.
+            cp (ideep4py.convolution2DParam):
+                ``cp`` convolution2D parameters (stride, padding,
+                output dimension, dilatation).
+
+        Returns:
+            ideep4py.mdarray: feature maps differential of convolution2D
+            backward propagation.
+
+        """
+        return _convolution2D.BackwardData(weights, grady, cp)
+
 
 def convolution2DParam(out_dims, dy, dx, sy, sx, ph, pw, pd, pr):
     cp = conv2DParam()

@@ -103,11 +103,11 @@ public:
 
 
   static mdarray BackwardData(mdarray *weights,
-                              mdarray *diff_dst,
+                              mdarray *grady,
                               conv_param_t *cp) {
     tensor gx;
     convolution_backward_data::compute<scratch_allocator>(
-        *(diff_dst->get()), *(weights->get()), cp->out_dims, gx,
+        *(grady->get()), *(weights->get()), cp->out_dims, gx,
         tensor::dims {cp->sy, cp->sx},
         tensor::dims {cp->dilate_y, cp->dilate_x},
         tensor::dims {cp->pad_lh, cp->pad_lw},

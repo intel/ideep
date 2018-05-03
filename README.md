@@ -8,10 +8,8 @@ Intel Deep Learning Extension Package is a module for collection of accelerated 
 This preview version of iDeep is tested on Ubuntu 16.04 and OS X.
 
 Minimum requirements:
-- Cmake3
-- GCC 5.3+
-- C++ compiler with C++11 standard support
-- MKL-DNN 0.1+
+- cmake 3.0.0+
+- C++ compiler with C++11 standard support (GCC 5.3+ if you want to build tests)
 - Python 2.7.6+, 3.5.2+, 3.6.0+
 - Numpy 1.13
 - Swig 3.0.12

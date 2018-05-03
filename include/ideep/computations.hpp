@@ -2419,7 +2419,6 @@ public:
 
     return axis_info;
   }
-
 };
 
 struct softmax_forward : public computation {

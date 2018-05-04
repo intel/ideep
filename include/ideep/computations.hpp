@@ -3633,7 +3633,7 @@ public:
       tail *= src_dims[d];
 
     bool along_mb = false;
-    for (int a = 0; a < axis.size(); a++) {
+    for (unsigned int a = 0; a < axis.size(); a++) {
       if (axis[a] == 0) {
         along_mb = true;
         break;
@@ -3642,7 +3642,7 @@ public:
 
     int gbl_ws_size = 1;
     for (int d = 1; d < src_ndims; d++) {
-      int a = 0;
+      unsigned int a = 0;
       for (; a < axis.size(); a++)
         if (d == axis[a])
           break;
@@ -3680,19 +3680,19 @@ public:
           cur_dims.push_back(src_dims[d]);
 
         std::vector<int> cur_axis;
-        for (int a = 0; a < axis.size(); a++)
+        for (unsigned int a = 0; a < axis.size(); a++)
           if (axis[a] != 0)
             cur_axis.insert(cur_axis.begin(), axis[a]);
 
         // Sum along axis[a]
-        for (int a = 0; a < cur_axis.size(); a++) {
+        for (unsigned int a = 0; a < cur_axis.size(); a++) {
 
           int cur_fore = 1;
           for (int d = 1; d < cur_axis[a]; d++)
             cur_fore *= cur_dims[d];
 
           int cur_tail = 1;
-          for (int d = cur_axis[a] + 1; d < cur_dims.size(); d++)
+          for (unsigned int d = cur_axis[a] + 1; d < cur_dims.size(); d++)
             cur_tail *= cur_dims[d];
 
           int cur_ws_size = cur_fore * cur_tail;
@@ -3715,7 +3715,7 @@ public:
 
           // adjust dims and cur_axis for sum in next axis
           cur_dims.erase(cur_dims.begin() + cur_axis[a]);
-          for (int _a = a + 1; _a < cur_axis.size(); _a++) {
+          for (unsigned int _a = a + 1; _a < cur_axis.size(); _a++) {
             if (cur_axis[_a] > cur_axis[a])
               cur_axis[_a] -= 1;
           }

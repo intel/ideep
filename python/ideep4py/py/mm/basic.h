@@ -46,7 +46,7 @@ public:
       return nullptr;
     }
 
-    fast_memcpy((char *)dst_.get_data_handle(),
+    ideep::utils::fast_memcpy((char *)dst_.get_data_handle(),
                 (char *)src_.get_data_handle(), src_.get_size());
 
     dst_.init(src_.get_descriptor(), dst_.get_data_handle());
@@ -63,7 +63,7 @@ public:
       return nullptr;
     }
 
-    fast_memcpy((char *)dst_.get_data_handle(),
+    ideep::utils::fast_memcpy((char *)dst_.get_data_handle(),
                 (char *)view->buf, view->len);
 
     Py_RETURN_NONE;

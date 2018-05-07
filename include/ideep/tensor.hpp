@@ -7,6 +7,7 @@
 #include <cassert>
 #include "abstract_types.hpp"
 #include "allocators.hpp"
+#include "web.hpp"
 
 namespace ideep {
 struct computation;
@@ -629,6 +630,14 @@ public:
     init(adesc, ahandle);
   }
 
+  /// Operator "==" override
+  ///
+  /// @param right operand.
+  bool operator ==(const param& p) {
+    return get_descriptor() == p.get_descriptor() &&
+        get_data_handle() == p.get_data_handle() ? true : false;
+  }
+
   /// Recreate a param with completely different content from old one
   /// but reuse the param shell. Notice that after resize, its format
   /// is undefined
@@ -637,32 +646,6 @@ public:
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
     init(adesc);
-  }
-
-  /// Reshape a param, reorder might happen if its format is internal
-  /// @param new_dims New dimension
-  /// @result Return new param reference
-  param &reshape(dims new_dims) {
-    if (!get_descriptor().is_shape_compatible(new_dims)) {
-      throw error(mkldnn_runtime_error, "reshape to incompatible shape");
-    } else if (new_dims != get_dims()) {
-      if (!is_public_format()) {
-        param p;
-        p.init<utils::scratch_allocator>({get_dims(), get_data_type()});
-        reorder_to(p);
-        buffer_ = p.get_tensor_buffer();
-        set_data_handle(p.get_data_handle());
-      }
-
-      set_descriptor({new_dims, get_data_type()});
-    }
-
-    return *this;
-  }
-
-  // XXX: ???
-  param &_reshape(dims new_dims) {
-    return reshape(new_dims);
   }
 
   /// Returns pointer to structure of primitive descriptor.
@@ -915,7 +898,9 @@ public:
   }
 
   inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }
-  inline void set_tensor_buffer(std::shared_ptr<char>& buffer) {buffer_ = buffer;}
+  inline void set_tensor_buffer(
+      const std::shared_ptr<char>& buffer) {buffer_ = buffer;}
+
 private:
   // mirror descriptor's same information
   format public_format_;
@@ -925,7 +910,8 @@ private:
 /// Tensor that describes data buffer and its explanation.
 /// It also integrates an optional tensor as an intemediate results, used in
 /// Pooling/LRN
-class tensor : public param {
+class tensor : public param,
+  public utils::computation_web::parameter<tensor> {
 public:
   using param::param;
 
@@ -991,18 +977,21 @@ public:
   }
 
   /// Copy constructor
-  tensor (const tensor& t) : param(t) {
+  tensor(const tensor& t) : param(t),
+    utils::computation_web::parameter<tensor>(t) {
     twin_ = t.twin_;
   }
 
   /// Move constructor
-  tensor (tensor&& movable) : param(std::move(movable)) {
+  tensor(tensor&& movable) : param(std::move(movable)),
+    utils::computation_web::parameter<tensor>(std::move(movable)) {
     twin_ = std::move(movable.twin_);
   }
 
   /// Assignment operator
   tensor &operator = (const tensor& t) {
     param::operator = (t);
+    parameter<tensor>::operator = (t);
     twin_ = t.twin_;
     return *this;
   }
@@ -1010,6 +999,7 @@ public:
   /// Move assignment operator
   tensor &operator = (tensor&& movable) {
     param::operator = (std::move(movable));
+    parameter<tensor>::operator = (std::move(movable));
     twin_ = std::move(movable.twin_);
     return *this;
   }
@@ -1036,6 +1026,56 @@ public:
       ret.set_descriptor(get_descriptor().as_weights_format());
     return ret;
   }
+
+  /// Returns a handle of the data contained in the param. On
+  /// the CPU engine, this is a pointer to the allocated memory.
+  template<bool data_materialized = true>
+  inline void *get_data_handle() const {
+    if (data_materialized == true)
+      // computation_param_materialize();
+      utils::computation_web::template parameter<tensor>::
+          computation_param_materialize(*this);
+    void *handle;
+    error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle),
+            "could not get native handle");
+    return handle;
+  }
+
+  /// Reshape a param, reorder might happen if its format is internal
+  /// @param new_dims New dimension
+  /// @result Return new param reference
+  tensor& reshape(dims new_dims) {
+    if (!get_descriptor().is_shape_compatible(new_dims)) {
+      throw error(mkldnn_runtime_error, "reshape to incompatible shape");
+    } else if (new_dims != get_dims()) {
+      if (!is_public_format()) {
+        utils::computation_web::template parameter<tensor>::
+            computation_param_materialize(*this);
+        tensor p;
+        p.init<utils::scratch_allocator>({get_dims(), get_data_type()});
+        reorder_to(p);
+        set_data_handle(p.get_data_handle());
+        set_tensor_buffer(p.get_tensor_buffer());
+      }
+
+      set_descriptor({new_dims, get_data_type()});
+    }
+
+    return *this;
+  }
+
+  // XXX: ???
+  tensor& _reshape(dims new_dims) {
+    return reshape(new_dims);
+  }
+
+public:
+  virtual bool computation_param_own_of_memory() const {
+    if (get_tensor_buffer().get() == nullptr)
+      return false;
+    return true;
+  }
+
 protected:
   std::shared_ptr<tensor> twin_;
 };

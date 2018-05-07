@@ -8,6 +8,7 @@
 #include <intrin.h>
 #endif
 #include "tensor.hpp"
+#include "utils.hpp"
 
 namespace ideep {
 namespace utils {
@@ -417,62 +418,6 @@ template <typename T, typename ...Ts>
 inline std::string to_string(T&& arg, Ts&&... args) {
   return to_string(std::forward<T>(arg)) +
     '*' + to_string(std::forward<Ts>(args)...);
-}
-
-// Fast alternative to heavy string method
-using bytestring = std::string;
-
-
-inline bytestring to_bytes(const int arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
-#if defined(WIN32)
-  auto len = sizeof(arg) - __lzcnt(arg) / 8;
-#else
-# if !defined(__AVX__)
-  if (arg == 0)
-    return bytestring();
-
-  auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
-# else
-  unsigned int lz;
-  asm volatile ("lzcntl %1, %0": "=r" (lz): "r" (arg));
-  auto len = sizeof(int) - lz / 8;
-# endif
-#endif
-
-  return bytestring(as_cstring, len);
-}
-
-inline bytestring to_bytes(const float arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
-  return bytestring(as_cstring, sizeof(float));
-}
-
-template <typename T>
-inline bytestring to_bytes(const std::vector<T> arg) {
-  bytestring bytes;
-  bytes.reserve(arg.size() * sizeof(T));
-
-  for (T elems : arg) {
-    bytes.append(to_bytes(elems));
-    bytes.append(1, 'x');
-  }
-
-  bytes.pop_back();
-
-  return bytes;
-}
-
-template <typename T, typename =
-  typename std::enable_if<std::is_enum<T>::value>::type>
-inline bytestring to_bytes(T arg) {
-  return std::to_string(static_cast<int>(arg));
-}
-
-template <typename T, typename =
-  typename std::enable_if< std::is_class<T>::value>::type, typename = void>
-inline bytestring to_bytes(const T arg) {
-  return arg.to_bytes();
 }
 
 template <typename T, typename ...Ts>

@@ -6,6 +6,7 @@
 
 #include <ideep.hpp>
 #include <ideep_pin_singletons.hpp>
+#include <string>
 
 namespace ideep {
 
@@ -1288,6 +1289,11 @@ static void compare_tensor(const tensor& ref, const tensor& dst) {
     }
   }
 }
+
+template <typename data_t>
+struct async_test_params {
+  std::string name;
+};
 
 template <typename data_t>
 struct relu_test_params {

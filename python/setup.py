@@ -116,6 +116,17 @@ ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas',
              '-march=native', '-mtune=native',
              '-D_TENSOR_MEM_ALIGNMENT_=4096']
 
+env = os.environ
+if env.get('WEB_OPT') is not None and env['WEB_OPT'].isdigit():
+    ideep4py_web_opt = int(env['WEB_OPT'])
+else:
+    ideep4py_web_opt = 0
+
+if ideep4py_web_opt != 0:
+    ccxx_opts += ['-D_IDEEP4PY_WEB_OPT_=true']
+else:
+    ccxx_opts += ['-D_IDEEP4PY_WEB_OPT_=false']
+
 if os_name == 'Darwin':
     link_opts = ['-Wl,-rpath,@loader_path/lib', '-Lideep4py/lib']
 else:

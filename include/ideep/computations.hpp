@@ -48,7 +48,11 @@
 #include "lru_cache.hpp"
 #include "scope_guard.hpp"
 #include "instruments.hpp"
+#include "web.hpp"
+#include "utils.hpp"
+#include <mkl.h>
 #include <mkl_vsl.h>
+#include <mkl_vml_functions.h>
 #include <bitset>
 #include "fast_math.hpp"
 #endif
@@ -456,7 +460,7 @@ public:
 
 protected:
   void create_reorder_for(unsigned index
-      , const descriptor_group &g, param& in, param& out) {
+      , const descriptor_group &g, tensor& in, tensor& out) {
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
     const_mkldnn_primitive_t outputs[] = { out.get() };
@@ -543,7 +547,8 @@ protected:
 };
 
 struct reorder: public c_wrapper<mkldnn_primitive_t>,
-  public utils::computation_cache<reorder> {
+  public utils::computation_cache<reorder>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
     using attr_t = descriptor_group::attr_t;
     using post_ops = descriptor_group::post_ops;
@@ -560,7 +565,11 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     }
   };
 
+public:
   reorder() = default;
+
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   void init(const tensor::descriptor& src_desc,
       const tensor::descriptor& dst_desc,
@@ -643,8 +652,13 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     __itt_frame_end_v3(instruments::domain::ideep(), nullptr);
   }
 
+  void do_compute(const tensor& input, tensor& output) {
+    this->operator()(input, output);
+  }
+
+  template<bool sync_reorder = true, bool web_opt = false>
   static void compute(
-      const tensor& input, const tensor& output,
+      const tensor& input, tensor& output,
       const descriptor::attr_t attr = descriptor::attr_t()) {
     if (input.is_empty() || output.is_empty())
       return;
@@ -656,11 +670,26 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     fetch_or_create_m(op, key, input.get_descriptor(),
         output.get_descriptor(), attr);
 
-    op(input, output);
+    if (web_opt && !sync_reorder) {
+      auto cn = utils::computation_web::template computation_node<
+          reorder, tensor>::create(op, prop_kind_t::CN_PROP_NA, output);
+      if (cn->build_deps(input)) {
+        utils::computation_web::template computation_node<
+            reorder, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    op.do_compute(input, output);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], tars[0]);
   }
 
   // TODO: make this right
-  template <typename alloc = utils::allocator>
+  template<typename alloc = utils::allocator>
   static tensor compute(
       const tensor &input, const tensor::dims &volume, const tensor::dims &start) {
     auto key = utils::create_key(input.get_dims(), input.get_data_type(),
@@ -678,20 +707,20 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
   }
 
 protected:
-  param in, out;
+  tensor in, out;
 };
 
 struct direct_copy : public reorder {
 public:
   using reorder::reorder;
 
-  template <typename alloc = utils::allocator>
+  template<typename alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& input, tensor& output) {
     if (input.is_empty() || input == output)
       return;
 
     output.reinit<alloc, direct_copy>(input.get_descriptor());
-    reorder::compute(input, output);
+    reorder::compute<false, web_opt>(input, output);
   }
 };
 
@@ -744,7 +773,7 @@ struct computation : public primitive_group {
     // dummy, do nothing
   }
 
-  template <typename... Ts>
+  template<typename... Ts>
   void connect_reorder_for(int index, const descriptor_group &adesc,
       const tensor::descriptor& first, const Ts&... rest) {
     connect_reorder_for(index, adesc, first);
@@ -754,7 +783,7 @@ struct computation : public primitive_group {
   void connect_reorder_for(int index, const descriptor_group &adesc,
       const tensor::descriptor &desc) {
     if (adesc.need_reorder_input(index)) {
-      inouts_[index] = param { desc, nullptr };
+      inouts_[index] = tensor { desc, nullptr };
       create_reorder_for(
           (unsigned)index, adesc, inouts_[(unsigned)index],
           primitive_inputs_[(unsigned)index]);
@@ -764,8 +793,8 @@ struct computation : public primitive_group {
   inline void init_internal(
       const descriptor_group &adesc, int n_inputs, int n_outputs) {
     // init contents
-    primitive_inputs_ = std::vector<param>((unsigned)n_inputs);
-    inouts_ = std::vector<param>((unsigned)(n_inputs + n_outputs));
+    primitive_inputs_ = std::vector<tensor>((unsigned)n_inputs);
+    inouts_ = std::vector<tensor>((unsigned)(n_inputs + n_outputs));
 
     std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [n_inputs]);
     for (int i =0; i < n_inputs; i ++) {
@@ -800,7 +829,7 @@ struct computation : public primitive_group {
     connect_reorder_for(adesc, args);
   }
 
-  template <typename... Ts>
+  template<typename... Ts>
   void init(const descriptor_group &adesc, const Ts&... args) {
     auto n_inputs = adesc.num_of_inputs();
     auto n_outputs = adesc.num_of_outputs();
@@ -808,7 +837,7 @@ struct computation : public primitive_group {
     connect_reorder_for(0, adesc, args...);
   }
 
-  void connect_handle_for(int index, const param& atensor) {
+  void connect_handle_for(int index, const tensor& atensor) {
     if ((unsigned)index < primitive_inputs_.size() &&
         inouts_[index] != primitive_inputs_[index]) {
       // Connect inputs
@@ -831,12 +860,12 @@ struct computation : public primitive_group {
       // Connect outputs
       assert(inouts_.at((unsigned)index).get_descriptor()
           == atensor.get_descriptor());
-      inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle());
+      inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle<false>());
     }
   }
 
   void connect_handle_for(const std::vector<tensor>& inputs,
-      const param& output) {
+      const tensor& output) {
     int i = 0;
     for(; (unsigned)i < inputs.size(); i++){
       connect_handle_for(i, inputs[(unsigned)i]);
@@ -844,8 +873,8 @@ struct computation : public primitive_group {
     connect_handle_for(i, output);
   }
 
-  template <typename ...Params>
-  void connect_handle_for(int index, const param& first,
+  template<typename ...Params>
+  void connect_handle_for(int index, const tensor& first,
       const Params&... rest) {
     connect_handle_for(index, first);
     connect_handle_for(index + 1, rest...);
@@ -858,7 +887,7 @@ struct computation : public primitive_group {
   }
 
   template<typename ...Params>
-  void execute(const param& arg0, const Params&... args) {
+  void execute(const tensor& arg0, const Params&... args) {
     connect_handle_for(0, arg0, args...);
     stream parallel_control = stream::default_stream();
     primitive_group::execute(parallel_control);
@@ -875,14 +904,141 @@ struct computation : public primitive_group {
 private:
   // outputs after inputs
   // TODO: turn in into share_ptr
-  std::vector<param> inouts_;
-  std::vector<param> primitive_inputs_;
+  std::vector<tensor> inouts_;
+  std::vector<tensor> primitive_inputs_;
+};
+
+struct sum : public computation,
+  public utils::computation_cache<sum>,
+  public utils::computation_web::node<tensor> {
+  struct descriptor : public descriptor_group {
+    descriptor(const std::vector<float> &scales,
+        const std::vector<tensor::descriptor> &inputs) {
+      mkldnn_primitive_desc_t result;
+      auto c_api_inputs = cpp_to_c(inputs);
+      error::wrap_c_api(mkldnn_sum_primitive_desc_create(
+              &result, nullptr,
+              (int)c_api_inputs.size(),
+              &scales[0], &c_api_inputs[0]),
+          "could not create a sum primitive descriptor");
+      reset(result);
+    }
+
+    descriptor(const std::vector<float> &scales,
+        const std::vector<tensor::descriptor> &inputs,
+        const tensor::descriptor output_desc) {
+      mkldnn_primitive_desc_t result;
+      auto c_api_inputs = cpp_to_c(inputs);
+      error::wrap_c_api(mkldnn_sum_primitive_desc_create(
+              &result, output_desc.get_mkldnn_memory_desc_t(),
+              (int)c_api_inputs.size(),
+              &scales[0], &c_api_inputs[0]),
+          "could not create a sum primitive descriptor");
+      reset(result);
+    }
+  };
+public:
+  using computation::execute;
+  using computation::expected_dst_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
+
+  void init(const std::vector<float> &scales,
+      const std::vector<tensor::descriptor> &inputs) {
+    descriptor forward_descriptor(scales, inputs);
+    computation::init(forward_descriptor, inputs);
+  }
+
+  void init(const std::vector<float> &scales,
+      const std::vector<tensor::descriptor> &inputs,
+      const tensor::descriptor output) {
+    descriptor forward_descriptor(scales, inputs, output);
+    computation::init(forward_descriptor, inputs);
+  }
+
+  sum() = default;
+
+  sum(const std::vector<float> &scales,
+      const std::vector<tensor::descriptor> &inputs_desc,
+      const tensor::descriptor output_desc) {
+    init(scales, inputs_desc, output_desc);
+  }
+
+  sum(const std::vector<float>& scales,
+      const std::vector<tensor::descriptor>& inputs_desc) {
+    init(scales, inputs_desc);
+  }
+
+  void execute(const std::vector<tensor>& inputs, const tensor& output) {
+    computation::execute(inputs, output);
+  }
+
+  void do_compute(const std::vector<tensor>& inputs, tensor& output) {
+    // materialize all inputs
+    for (auto i : inputs)
+      (void)i.get_data_handle();
+    execute(inputs, output);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const std::vector<float> &scales,
+      const std::vector<tensor>& inputs, tensor& output) {
+    std::vector<tensor::descriptor> inputs_desc;
+    for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
+        inputs_desc.push_back(in.get_descriptor());
+        });
+
+    bool inplace = false;
+    for (auto i : inputs) {
+      if (i.template get_data_handle<false>() ==
+          output.template get_data_handle<false>())
+        inplace = true;
+    }
+
+    if (output != inputs[0]) {
+      sum comp(scales, inputs_desc);
+      output.reinit<alloc, sum>(comp.expected_dst_descriptor());
+      // TODO: support inplace in web optimization
+      if (web_opt && !inplace) {
+        auto cn = utils::computation_web::template computation_node<
+            sum, tensor>::create(comp, prop_kind_t::CN_PROP_NA, output);
+        if (cn->build_deps(inputs)) {
+          utils::computation_web::template computation_node<
+              sum, tensor>::enqueue(cn);
+          return;
+        }
+      }
+      comp.do_compute(inputs, output);
+    } else {
+      sum comp(scales, inputs_desc, output.get_descriptor());
+      if (web_opt && !inplace) {
+        auto fattr = inputs.size() == 2 ?
+            fusion_attr_t{ fusion_type_t::CN_FUSION_SUM, {scales[0]}, {}  } :
+            fusion_attr_t{ fusion_type_t::CN_FUSION_NA, {}, {} };
+
+        auto cn = utils::computation_web::template computation_node<
+            sum, tensor>::create(comp, prop_kind_t::CN_PROP_NA, fattr, output);
+        if (cn->build_deps(inputs)) {
+          utils::computation_web::template computation_node<
+              sum, tensor>::enqueue(cn);
+          return;
+        }
+      }
+      comp.do_compute(inputs, output);
+    }
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps, tars[0]);
+  }
 };
 
 /// Convolution forward computation, this class represent a MKL-DNN
 /// convolution forward process, also manage old computation instances.
 struct convolution_forward: public computation,
-  public utils::computation_cache<convolution_forward> {
+  public utils::computation_cache<convolution_forward>,
+  public utils::computation_web::node<tensor> {
   /// Descriptor class for describing convolution forward process
   ///
   struct descriptor : public descriptor_group {
@@ -1003,8 +1159,15 @@ struct convolution_forward: public computation,
   using computation::expected_input_descriptor;
   using computation::expected_dst_descriptor;
   using computation::expected_weights_descriptor;
+  using cn_t = typename utils::computation_web::node<tensor>::cn_t;
+  using fusion_attr_t =
+      typename utils::computation_web::node<tensor>::fusion_attr_t;
+  using fusion_type_t =
+      typename utils::computation_web::node<tensor>::fusion_type_t;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename T, typename ...Ts,
+  template<typename T, typename ...Ts,
            typename = typename std::enable_if<
              std::is_same<T, tensor::descriptor>::value>::type>
   void init(const tensor::descriptor &src_desc,
@@ -1016,7 +1179,7 @@ struct convolution_forward: public computation,
     computation::init(forward_descriptor, src_desc, weights_desc, bias);
   }
 
-  template <typename T, typename ...Ts,
+  template<typename T, typename ...Ts,
            typename  = typename std::enable_if<
              std::is_same<T, tensor::dims>::value>::type>
   void init(const tensor::descriptor &src_desc,
@@ -1031,7 +1194,7 @@ struct convolution_forward: public computation,
 
   convolution_forward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   convolution_forward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -1045,77 +1208,365 @@ struct convolution_forward: public computation,
     computation::execute(src, weights, bias, dst);
   }
 
-  template <class alloc, typename ...Ts>
-  static void compute_impl(const tensor& src,
-      const tensor& weights, const tensor& bias,
-      const tensor::dims& dst_dims, tensor& dst, Ts&&... args) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        weights.get_dims(), bias.get_dims(), dst_dims, args...);
+  template<typename data_type_t>
+  static std::vector<tensor> bn_folding(const tensor& weights,
+      std::vector<tensor>& bn_attrs, float epsilon) {
+    auto& var = bn_attrs[1];
+    auto& scale = bn_attrs[2];
 
-    fetch_or_create_m(comp, key, src.get_descriptor(),
-        weights.get_descriptor(), bias.get_descriptor(),
-        tensor::descriptor {dst_dims, src.get_data_type()},
-        std::forward<Ts>(args)...);
+    tensor factor, tmp;
+    factor.init<utils::scratch_allocator, convolution_forward>(
+        var.get_descriptor());
+    utils::fast_memcpy((char *)factor.get_data_handle(),
+        (char *)var.get_data_handle(), factor.get_size());
+    tmp.init<utils::scratch_allocator, convolution_forward>(
+        var.get_descriptor());
+    utils::fast_memset((float *)tmp.get_data_handle(),
+        (float)(1.0), tmp.get_nelems());
+    // var + eps
+    cblas_saxpy(factor.get_nelems(), epsilon,
+        reinterpret_cast<data_type_t *>(tmp.get_data_handle()), 1,
+        reinterpret_cast<data_type_t *>(factor.get_data_handle()), 1);
+    // sqr_root(var + eps)
+    vsSqrt(factor.get_nelems(),
+        reinterpret_cast<const data_type_t *>(factor.get_data_handle()),
+        reinterpret_cast<data_type_t *>(factor.get_data_handle()));
+    // scale / sqr_root(var + eps)
+    vsDiv(factor.get_nelems(),
+        reinterpret_cast<const data_type_t *>(scale.get_data_handle()),
+        reinterpret_cast<const data_type_t *>(factor.get_data_handle()),
+        reinterpret_cast<data_type_t *>(factor.get_data_handle()));
 
-    // XXX: Performance evaluation
-    // TODO: Custom allocator support
-    auto src_in = src;
+    tensor _weights;
+    _weights.init<utils::scratch_allocator, convolution_forward>(
+        {weights.get_dims(), weights.get_data_type(),
+        param::descriptor::public_compatible_format(
+        weights.get_descriptor())});
+    reorder::compute(weights, _weights);
 
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<alloc, convolution_forward>(
-          comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
+    size_t blk = _weights.get_dims().at(1) *
+        _weights.get_dims().at(2) *
+        _weights.get_dims().at(3);
+    auto w_base = reinterpret_cast<data_type_t *>(_weights.get_data_handle());
+    auto f_base = reinterpret_cast<data_type_t *>(factor.get_data_handle());
+    for (ssize_t o = 0; o < _weights.get_dims().at(0); o++)
+      cblas_sscal(blk, f_base[o], w_base + o * blk, 1);
+
+    tensor _weights_res = _weights;
+    if (_weights.get_internal_format() != weights.get_internal_format()) {
+      _weights_res.init<utils::scratch_allocator, convolution_forward>(
+          weights.get_descriptor());
+      reorder::compute(_weights, _weights_res);
     }
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<alloc, convolution_forward>(
-          comp.expected_weights_descriptor());
-      reorder::compute(_weights, weights_in);
-    }
 
-    auto dst_desc = comp.expected_dst_descriptor();
-    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
-    comp.execute(src_in, weights_in, bias, dst);
+    std::vector<tensor> res;
+    res.push_back(factor);
+    res.push_back(_weights_res);
+    return res;
   }
 
-  template <class alloc, typename ...Ts>
+  template<typename data_type_t>
+  static std::vector<tensor> bn_folding(const tensor& weights,
+      const tensor& bias, std::vector<tensor>& bn_attrs, float epsilon) {
+    auto folding_weights = bn_folding<data_type_t>(weights, bn_attrs, epsilon);
+    auto& factor = folding_weights[0];
+    auto& mean = bn_attrs[0];
+    auto& shift = bn_attrs[3];
+
+    tensor _bias;
+    _bias.init<utils::scratch_allocator, convolution_forward>(
+        bias.get_descriptor());
+    // bias - mean
+    ideep::sum::compute<utils::scratch_allocator, false>(
+        {(float)(1.0), (float)(-1.0)}, {bias, mean}, _bias);
+    // scale / sqr_root(var + eps) * (bias - mean)
+    vsMul(_bias.get_nelems(),
+        reinterpret_cast<const data_type_t *>(_bias.get_data_handle()),
+        reinterpret_cast<const data_type_t *>(factor.get_data_handle()),
+        reinterpret_cast<data_type_t *>(_bias.get_data_handle()));
+    // scale / sqr_root(var + eps) * (bias - mean) + shift
+    ideep::sum::compute<utils::scratch_allocator, false>(
+        {(float)(1.0), (float)(1.0)}, {_bias, shift}, _bias);
+
+    folding_weights.push_back(_bias);
+    return folding_weights;
+  }
+
+  template<class alloc, bool web_opt>
+  void init_web_opt_fusion(const tensor& src, const tensor& weights,
+      const tensor& bias, const tensor::dims& dst_dims,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalogorithm, prop_kind aprop_kind,
+      const padding_kind appading_kind) {
+    auto conv_fuse = [src, weights, bias, dst_dims, strides, dilates,
+        padding_l, padding_r, aalogorithm, aprop_kind, appading_kind] (
+        tensor& dst, descriptor::attr_t _attr) -> cn_t {
+      tensor _weights, src_in, weights_in;
+      auto fused_comp = convolution_forward::create_computation<alloc,
+          web_opt>(src, weights, bias, dst_dims, dst, _weights,
+          src_in, weights_in, strides, dilates, padding_l, padding_r,
+          _attr, aalogorithm, aprop_kind, appading_kind);
+      auto fused_cn = utils::computation_web::template computation_node<
+          convolution_forward, tensor>::create(
+          fused_comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (fused_cn->build_deps(src, _weights, bias, src_in, weights_in))
+        return fused_cn;
+      else
+        return nullptr;
+    };
+
+    conv_fuse_ = std::make_shared<std::function<
+        cn_t(tensor&, descriptor::attr_t)>>(conv_fuse);
+  }
+
+  template<class alloc, bool web_opt>
+  void init_web_opt_folding(const tensor& src, const tensor& weights,
+      const tensor& bias, const tensor::dims& dst_dims, tensor& src_in,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalogorithm, prop_kind aprop_kind,
+      const padding_kind appading_kind) {
+    // TODO: unify fuse and folding lambda to reduce memory overhead
+    auto conv_bn_folding = [src, weights, bias, dst_dims, src_in,
+        strides, dilates, padding_l, padding_r, aalogorithm,
+        aprop_kind, appading_kind] (
+        std::shared_ptr<utils::computation_web::node<tensor>> pre_comp,
+        tensor& dst, std::vector<tensor>& deps, float epsilon) mutable -> cn_t {
+      std::vector<tensor> folded_wb;
+      tensor folded_w, folded_b;
+      // XXX: conv->bn->bn
+      if (weights.has_opts() &&
+          weights.opts()->at(2).get_data_handle<false>() ==
+          deps[2].get_data_handle<false>()) {
+        folded_w = weights.opts()->at(0);
+        folded_b = weights.opts()->at(1);
+      } else {
+        switch (weights.get_data_type()) {
+        // XXX: support float32 for now
+        case tensor::data_type::f32:
+        default:
+          folded_wb = bn_folding<float>(weights, bias, deps, epsilon);
+          break;
+        }
+        folded_w = folded_wb[1];
+        folded_b = folded_wb[2];
+
+        // XXX: hint
+        tensor *weights_non_const = const_cast<tensor *>(&weights);
+        weights_non_const->set_opts(folded_w);
+        weights_non_const->set_opts(folded_b);
+        weights_non_const->set_opts(deps[2]);
+      }
+
+      auto comp = dynamic_cast<convolution_forward *>(pre_comp.get());
+      auto weights_in = folded_w;
+      if (folded_w.get_descriptor() != comp->expected_weights_descriptor())
+        weights_in.init<utils::scratch_allocator, convolution_forward>(
+            comp->expected_weights_descriptor());
+
+      comp->init_web_opt_fusion<alloc, web_opt>(
+          src, folded_w, folded_b, dst_dims, strides, dilates,
+          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+      auto fused_cn = utils::computation_web::template computation_node<
+          convolution_forward, tensor>::create(
+          pre_comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (fused_cn->build_deps(src, folded_w, folded_b, src_in, weights_in))
+        return fused_cn;
+      else
+        return nullptr;
+    };
+
+    conv_bn_folding_ = std::make_shared<std::function<
+        cn_t(std::shared_ptr<utils::computation_web::node<tensor>>,
+        tensor&, std::vector<tensor>&, float)>>(conv_bn_folding);
+  }
+
+  template<class alloc, bool web_opt>
+  static convolution_forward create_computation(const tensor& src,
+      const tensor& weights, const tensor::dims& dst_dims, tensor& dst,
+      tensor& _weights, tensor& src_in, tensor& weights_in,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      descriptor::attr_t attr,
+      algorithm aalogorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind appading_kind = padding_kind::zero) {
+    convolution_forward comp;
+    tensor::descriptor result_desc(dst_dims, src.get_data_type());
+    if (web_opt) {
+      tensor::dims bias_dims = {weights.get_dims().at(0)};
+      tensor::descriptor bias_desc = {bias_dims, weights.get_data_type()};
+      std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
+          weights.get_dims(), bias_dims, dst_dims, strides, dilates, padding_l,
+          padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+
+      fetch_or_create_m(_comp, key, src.get_descriptor(),
+          weights.get_descriptor(), bias_desc, result_desc, strides,
+          dilates, padding_l, padding_r, attr, aalogorithm,
+          aprop_kind, appading_kind);
+      comp = _comp;
+    } else {
+      std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
+          weights.get_dims(), dst_dims, strides, dilates, padding_l,
+          padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+
+      fetch_or_create_m(_comp, key, src.get_descriptor(),
+          weights.get_descriptor(), result_desc, strides,
+          dilates, padding_l, padding_r, attr, aalogorithm,
+          aprop_kind, appading_kind);
+      comp = _comp;
+    }
+
+    src_in = src;
+    if (src.get_descriptor() != comp.expected_src_descriptor())
+      src_in.init<utils::scratch_allocator, convolution_forward>(
+          comp.expected_src_descriptor());
+
+    // solve the problem that slow reorder from nchw
+    _weights = weights.as_weights();
+    weights_in = _weights;
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor())
+      weights_in.init<utils::scratch_allocator, convolution_forward>(
+          comp.expected_weights_descriptor());
+
+    auto dst_desc = comp.expected_dst_descriptor();
+    dst.reinit<utils::scratch_allocator,
+        convolution_forward>(std::move(dst_desc));
+
+    if (web_opt) {
+      comp.init_web_opt_fusion<alloc, web_opt>(
+          src, _weights, comp.zero_bias(), dst_dims, strides, dilates,
+          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+      comp.init_web_opt_folding<alloc, web_opt>(
+          src, _weights, comp.zero_bias(), dst_dims, src_in, strides, dilates,
+          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+    }
+
+    return comp;
+  }
+
+  template<class alloc, bool web_opt>
+  static convolution_forward create_computation(const tensor& src,
+      const tensor& weights, const tensor& bias, const tensor::dims& dst_dims,
+      tensor& dst, tensor& _weights, tensor& src_in, tensor& weights_in,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      descriptor::attr_t attr,
+      algorithm aalogorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind appading_kind = padding_kind::zero) {
+    tensor::descriptor result_desc(dst_dims, src.get_data_type());
+    std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
+        weights.get_dims(), bias.get_dims(), dst_dims, strides, dilates,
+        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+
+    fetch_or_create_m(comp, key, src.get_descriptor(),
+        weights.get_descriptor(), bias.get_descriptor(), result_desc,
+        strides, dilates, padding_l, padding_r, attr, aalogorithm,
+        aprop_kind, appading_kind);
+
+    src_in = src;
+    if (src.get_descriptor() != comp.expected_src_descriptor())
+      src_in.init<utils::scratch_allocator, convolution_forward>(
+          comp.expected_src_descriptor());
+
+    // solve the problem that slow reorder from nchw
+    _weights = weights.as_weights();
+    weights_in = _weights;
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor())
+      weights_in.init<utils::scratch_allocator, convolution_forward>(
+          comp.expected_weights_descriptor());
+
+    auto dst_desc = comp.expected_dst_descriptor();
+    dst.reinit<utils::scratch_allocator, convolution_forward>(std::move(dst_desc));
+
+    if (web_opt) {
+      comp.init_web_opt_fusion<alloc, web_opt>(
+          src, _weights, bias, dst_dims, strides, dilates,
+          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+      comp.init_web_opt_folding<alloc, web_opt>(
+          src, _weights, bias, dst_dims, src_in, strides, dilates,
+          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+    }
+
+    return comp;
+  }
+
+  void do_compute(const tensor& src, const tensor& weights,
+      tensor& src_in, tensor& weights_in, tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
+
+    if (weights.get_data_handle() != weights_in.get_data_handle())
+      reorder::compute(weights, weights_in);
+
+    execute(src_in, weights_in, dst);
+  }
+
+  void do_compute(const tensor& src, const tensor& weights,
+      const tensor& bias, tensor& src_in, tensor& weights_in,
+      tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
+
+    if (weights.get_data_handle() != weights_in.get_data_handle())
+      reorder::compute(weights, weights_in);
+
+    execute(src_in, weights_in, bias, dst);
+  }
+
+  template<class alloc, bool web_opt, typename ...Ts>
   static void compute_impl(const tensor& src,
       const tensor& weights, const tensor::dims& dst_dims,
       tensor& dst, Ts&&... args) {
-    tensor::descriptor result_desc(dst_dims, src.get_data_type());
-    std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
-        weights.get_dims(), dst_dims, args...);
+    tensor _weights, src_in, weights_in;
+    auto comp = convolution_forward::create_computation<alloc, web_opt>(
+        src, weights, dst_dims, dst, _weights, src_in, weights_in, args...);
 
-    fetch_or_create_m(comp, key, src.get_descriptor(),
-        weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
-
-    // Performance evaluation
-    auto src_in = src;
-
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-
-    // TODO: cut duplicated function call
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<alloc, convolution_forward>(
-          comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<alloc, convolution_forward>(
-          comp.expected_weights_descriptor());
-      reorder::compute(_weights.as_weights(), weights_in);
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          convolution_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src, _weights, comp.zero_bias(), src_in, weights_in)) {
+        utils::computation_web::template computation_node<
+            convolution_forward, tensor>::enqueue(cn);
+        return;
+      }
     }
 
-    auto dst_desc = comp.expected_dst_descriptor();
-    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
-    comp.execute(src_in, weights_in, dst);
+    if (web_opt)
+      comp.do_compute(
+          src, _weights, comp.zero_bias(), src_in, weights_in, dst);
+    else
+      comp.do_compute(
+          src, _weights, src_in, weights_in, dst);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc, bool web_opt, typename ...Ts>
+  static void compute_impl(const tensor& src,
+      const tensor& weights, const tensor& bias,
+      const tensor::dims& dst_dims, tensor& dst, Ts&&... args) {
+    tensor _weights, src_in, weights_in;
+    auto comp = convolution_forward::create_computation<alloc, web_opt>(
+        src, weights, bias, dst_dims, dst,
+        _weights, src_in, weights_in, args...);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          convolution_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src, _weights, bias, src_in, weights_in)) {
+        utils::computation_web::template computation_node<
+            convolution_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, _weights, bias, src_in, weights_in, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, tensor& dst, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
@@ -1124,11 +1575,12 @@ struct convolution_forward: public computation,
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, weights, result_dims, dst, strides, dilates,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    compute_impl<alloc, web_opt>(src, weights, result_dims, dst, strides,
+        dilates, padding_l, padding_r,
+        attr, aalogorithm, aprop_kind, appading_kind);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims,
       tensor& dst, const tensor::dims strides,
@@ -1138,11 +1590,12 @@ struct convolution_forward: public computation,
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, weights, bias, result_dims, dst, strides, dilates,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    compute_impl<alloc, web_opt>(src, weights, bias, result_dims, dst, strides,
+        dilates, padding_l, padding_r,
+        attr, aalogorithm, aprop_kind, appading_kind);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, tensor& dst, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
@@ -1153,11 +1606,11 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc>(src, weights_in, result_dims, dst, strides, dilates, 
+    compute_impl<alloc, web_opt>(src, weights_in, result_dims, dst, strides, dilates,
         padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims,
       tensor& dst, const tensor::dims strides,
@@ -1169,8 +1622,38 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc>(src, weights_in, bias, result_dims, dst, strides, dilates,
+    compute_impl<alloc, web_opt>(src, weights_in, bias, result_dims, dst, strides, dilates,
         padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    if (deps.size() == 5)
+      do_compute(deps[0], deps[1], deps[2], deps[3], deps[4], tars[0]);
+    else if (deps.size() == 4)
+      do_compute(deps[0], deps[1], deps[2], deps[3], tars[0]);
+  }
+
+  virtual cn_t fuse_if_necessary(
+      std::shared_ptr<utils::computation_web::template node<tensor>> pre_comp,
+      fusion_attr_t& tar_attr, tensor& dst) {
+    auto conv_fuse = *conv_fuse_.get();
+    auto conv_bn_folding = *conv_bn_folding_.get();
+    switch (tar_attr.ftype) {
+    case fusion_type_t::CN_FUSION_RELU:
+      return conv_fuse(dst, descriptor_group::attr_t::fuse_relu(
+          1.0, tar_attr.fattrs[0], tar_attr.fattrs[1]));
+    case fusion_type_t::CN_FUSION_SUM:
+      // skip if src0(dst) is not materialized
+      if (!dst.is_materialized())
+        return nullptr;
+      return conv_fuse(dst,
+          descriptor_group::attr_t::fuse_sum(tar_attr.fattrs[0]));
+    case fusion_type_t::CN_FUSION_BN:
+      return conv_bn_folding(pre_comp, dst, tar_attr.deps, tar_attr.fattrs[0]);
+    default:
+      return nullptr;
+    }
   }
 
   static tensor::descriptor expected_weights_descriptor(
@@ -1220,10 +1703,31 @@ struct convolution_forward: public computation,
         strides, dilates, padding_l, padding_r);
     return comp.expected_weights_descriptor();
   }
+
+  tensor& zero_bias() {
+    if (zero_bias_.get_data_handle() == nullptr) {
+      zero_bias_.init<utils::scratch_allocator, convolution_forward>(
+          {{expected_weights_descriptor().get_dims().at(0)},
+          expected_weights_descriptor().get_data_type()});
+      utils::fast_memset((float *)zero_bias_.get_data_handle(),
+          (float)(0.0), zero_bias_.get_nelems());
+    }
+
+    return zero_bias_;
+  }
+
+private:
+  tensor zero_bias_;
+  std::shared_ptr<std::function<
+      cn_t(tensor&, descriptor::attr_t)>> conv_fuse_;
+  std::shared_ptr<std::function<
+      cn_t(std::shared_ptr<utils::computation_web::node<tensor>>,
+      tensor&, std::vector<tensor>&, float)>> conv_bn_folding_;
 };
 
 struct convolution_backward_data : public computation,
-  public utils::computation_cache<convolution_backward_data> {
+  public utils::computation_cache<convolution_backward_data>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &grady_desc,
         const tensor::descriptor &weights_desc,
@@ -1269,6 +1773,8 @@ struct convolution_backward_data : public computation,
 public:
   using computation::computation;
   using computation::expected_gradx_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   template<typename ...Ts>
   void init(const tensor::descriptor &grady_desc,
@@ -1281,7 +1787,7 @@ public:
 
   convolution_backward_data() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   convolution_backward_data (T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -1291,7 +1797,18 @@ public:
     computation::execute(grady, weights, gradx);
   }
 
-  template <class alloc, typename ...Ts>
+  void do_compute(const tensor& grady, const tensor& weights,
+      tensor& grady_in, tensor& weights_in, tensor& gradx) {
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    if (weights.get_data_handle() != weights_in.get_data_handle())
+      reorder::compute(weights, weights_in);
+
+    execute(grady_in, weights_in, gradx);
+  }
+
+  template<class alloc, bool web_opt, typename ...Ts>
   static void compute_impl(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, tensor& gradx, Ts&&... args) {
     tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
@@ -1301,42 +1818,47 @@ public:
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
-    // XXX: Performance evaluation
-    // TODO: Custom allocator support
     auto grady_in = grady;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor())
+      grady_in.init<alloc, convolution_backward_data>(
+          comp.expected_grady_descriptor());
 
     // solve the problem that slow reorder from nchw
     auto _weights = weights.as_weights();
     auto weights_in = _weights;
-
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<alloc, convolution_backward_data>(
-          comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor())
       weights_in.init<alloc, convolution_backward_data>(
           comp.expected_weights_descriptor());
-      reorder::compute(_weights.as_weights(), weights_in);
-    }
 
     gradx.reinit<alloc, convolution_backward_data>(
         comp.expected_gradx_descriptor());
-    comp.execute(grady_in, weights_in, gradx);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          convolution_backward_data, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx);
+      if (cn->build_deps(grady, _weights, grady_in, weights_in)) {
+        utils::computation_web::template computation_node<
+            convolution_backward_data, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(grady, _weights, grady_in, weights_in, gradx);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, tensor& gradx, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
       const tensor::dims padding_r,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides,
+    compute_impl<alloc, web_opt>(grady, weights, gradx_dims, gradx, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, tensor& gradx, const tensor::dims strides,
       const tensor::dims dilates, const tensor::dims padding_l,
@@ -1345,13 +1867,19 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc>(grady, weights_in, gradx_dims, gradx, strides,
+    compute_impl<alloc, web_opt>(grady, weights_in, gradx_dims, gradx, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], deps[2], deps[3], tars[0]);
   }
 };
 
 struct convolution_backward_weights : public computation,
-  public utils::computation_cache<convolution_backward_weights> {
+  public utils::computation_cache<convolution_backward_weights>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &grady_desc,
@@ -1438,8 +1966,10 @@ struct convolution_backward_weights : public computation,
 public:
   using computation::expected_gradw_descriptor;
   using computation::expected_gradb_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &x_desc,
       const tensor::descriptor &grady_desc,
       const tensor::descriptor &gradw_desc, Ts&&... args) {
@@ -1450,7 +1980,7 @@ public:
 
   convolution_backward_weights() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   convolution_backward_weights (T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -1464,13 +1994,20 @@ public:
     computation::execute(src, grady, gradw);
   }
 
-  /*
-   * This interface require MKL-DNN fixed beyoned
-   * https://github.com/intel/mkl-dnn/commit/86f152b614c947b87633062a182c57775856a348
-   */
-  template <class alloc, typename ...Ts>
+  void do_compute(const tensor& src, const tensor& grady,
+      tensor& src_in, tensor& grady_in, tensor& gradw, tensor& gradb) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
+
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    execute(src_in, grady_in, gradw, gradb);
+  }
+
+  template<class alloc, bool web_opt, typename ...Ts>
   static void compute_impl(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, tensor& gradw, tensor& gbias,
+      const tensor::dims& gradw_dims, tensor& gradw, tensor& gradb,
       Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
     tensor::descriptor gradb_desc(
@@ -1483,29 +2020,47 @@ public:
         grady.get_descriptor(), gradw_desc, gradb_desc,
         std::forward<Ts>(args)...);
 
-    // XXX: Performance evaluation
-    // TODO: Custom allocator support
     auto src_in = src;
-    auto grady_in = grady;
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
+    if (src_in.get_descriptor() != comp.expected_src_descriptor())
       src_in.init<alloc, convolution_backward_weights>(
           comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+
+    auto grady_in = grady;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor())
       grady_in.init<alloc, convolution_backward_weights>(
           comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
 
     gradw.reinit<alloc, convolution_backward_weights>(
         comp.expected_gradw_descriptor());
-    gbias.reinit<alloc, convolution_backward_weights>(
+    gradb.reinit<alloc, convolution_backward_weights>(
         comp.expected_gradb_descriptor());
-    comp.execute(src_in, grady_in, gradw, gbias);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          convolution_backward_weights, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradw, gradb);
+      if (cn->build_deps(src, grady, src_in, grady_in)) {
+        utils::computation_web::template computation_node<
+            convolution_backward_weights, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, grady, src_in, grady_in, gradw, gradb);
   }
 
-  template <class alloc, typename ...Ts>
+  void do_compute(const tensor& src, const tensor& grady,
+      tensor& src_in, tensor& grady_in, tensor& gradw) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
+
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    execute(src_in, grady_in, gradw);
+  }
+
+  template<class alloc, bool web_opt, typename ...Ts>
   static void compute_impl(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, tensor& gradw, Ts&&... args) {
     tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
@@ -1516,49 +2071,56 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
 
-    // XXX: Performance evaluation
-    // TODO: Custom allocator support
     auto src_in = src;
-    auto grady_in = grady;
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
+    if (src_in.get_descriptor() != comp.expected_src_descriptor())
       src_in.init<alloc, convolution_backward_weights>(
           comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+
+    auto grady_in = grady;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor())
       grady_in.init<alloc, convolution_backward_weights>(
           comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
 
     gradw.reinit<alloc, convolution_backward_weights>(
         comp.expected_gradw_descriptor());
-    comp.execute(src_in, grady_in, gradw);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          convolution_backward_weights, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradw);
+      if (cn->build_deps(src, grady, src_in, grady_in)) {
+        utils::computation_web::template computation_node<
+            convolution_backward_weights, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, grady, src_in, grady_in, gradw);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, tensor& gradw,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, grady, gradw_dims, gradw, strides,
+    compute_impl<alloc, web_opt>(src, grady, gradw_dims, gradw, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src,
       const tensor& grady, const tensor::dims& gradw_dims, tensor& gradw,
       tensor& gradb, const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm = algorithm::convolution_direct,
       const padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb, strides,
+    compute_impl<alloc, web_opt>(src, grady, gradw_dims, gradw, gradb, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& grady,
       const tensor::dims& gradw_dims, tensor& gradw,
       const tensor::dims strides, const tensor::dims dilates,
@@ -1569,7 +2131,7 @@ public:
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
       tensor::group_dims(gw_dims_in, group);
     }
-    compute_impl<alloc>(src, grady, gw_dims_in, gradw, strides,
+    compute_impl<alloc, web_opt>(src, grady, gw_dims_in, gradw, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
 
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
@@ -1583,7 +2145,7 @@ public:
     }
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src,
       const tensor& grady, const tensor::dims& gradw_dims, tensor& gradw,
       tensor& gradb, const tensor::dims strides, const tensor::dims dilates,
@@ -1594,7 +2156,7 @@ public:
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
       tensor::group_dims(gw_dims_in, group);
     }
-    compute_impl<alloc>(src, grady, gw_dims_in, gradw, gradb,
+    compute_impl<alloc, web_opt>(src, grady, gw_dims_in, gradw, gradb,
         strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
 
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
@@ -1607,10 +2169,19 @@ public:
       gradw.reshape(gradw_dims);
     }
   }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    if (tars.size() == 2)
+      do_compute(deps[0], deps[1], deps[2], deps[3], tars[0], tars[1]);
+    else if (tars.size() == 1)
+      do_compute(deps[0], deps[1], deps[2], deps[3], tars[0]);
+  }
 };
 
 struct lrn_forward : public computation,
-  public utils::computation_cache<lrn_forward> {
+  public utils::computation_cache<lrn_forward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor (const tensor::descriptor &x_desc,
         int local_size, float alpha, float beta, float k = 1.0,
@@ -1633,8 +2204,10 @@ struct lrn_forward : public computation,
 public:
   using computation::expected_dst_descriptor;
   using computation::expected_workspace_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
@@ -1642,7 +2215,7 @@ public:
 
   lrn_forward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   lrn_forward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -1658,7 +2231,11 @@ public:
       computation::execute(src, dst);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& src, tensor& dst) {
+    execute(src, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, tensor& dst, int local_size,
       float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels,
@@ -1679,12 +2256,28 @@ public:
             comp.expected_workspace_descriptor());
     }
 
-    comp.execute(src, dst);
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          lrn_forward, tensor>::create(comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src)) {
+        utils::computation_web::template computation_node<
+            lrn_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, dst);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], tars[0]);
   }
 };
 
 struct lrn_backward : public computation,
- public utils::computation_cache<lrn_backward> {
+  public utils::computation_cache<lrn_backward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &gx_desc,
@@ -1709,6 +2302,8 @@ struct lrn_backward : public computation,
   };
 public:
   using computation::expected_gradx_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   template<typename ...Ts>
   void init(const tensor::descriptor &x_desc,
@@ -1733,7 +2328,12 @@ public:
       computation::execute(x, grady, *y.get_extra(), gradx);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& x, const tensor& grady,
+      const tensor& y, tensor& gradx) {
+    execute(x, grady, y, gradx);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& x, const tensor& grady, const tensor& y,
       tensor& gradx, int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
@@ -1744,12 +2344,30 @@ public:
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
     gradx.reinit<alloc, lrn_backward>(comp.expected_gradx_descriptor());
-    comp.execute(x, grady, y, gradx);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          lrn_backward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx);
+      if (cn->build_deps(x, grady, y)) {
+        utils::computation_web::template computation_node<
+            lrn_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(x, grady, y, gradx);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], deps[2], tars[0]);
   }
 };
 
 struct pooling_forward : public computation,
-  public utils::computation_cache<pooling_forward> {
+  public utils::computation_cache<pooling_forward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : descriptor_group {
     descriptor() = default;
     descriptor(
@@ -1787,8 +2405,10 @@ struct pooling_forward : public computation,
 public:
   using computation::expected_dst_descriptor;
   using computation::expected_workspace_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
@@ -1796,7 +2416,7 @@ public:
 
   pooling_forward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   pooling_forward(T arg, Ts &&...args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -1812,8 +2432,12 @@ public:
       computation::execute(src, dst);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor &src,
+  void do_compute(const tensor& src, tensor& dst) {
+    execute(src, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src,
       const tensor::dims dst_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1839,12 +2463,29 @@ public:
             comp.expected_workspace_descriptor());
     }
 
-    comp.execute(src, dst);
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          pooling_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src)) {
+        utils::computation_web::template computation_node<
+            pooling_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, dst);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], tars[0]);
   }
 };
 
 struct pooling_backward : public computation,
-  public utils::computation_cache<pooling_backward> {
+  public utils::computation_cache<pooling_backward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &gradx_desc,
             const tensor::descriptor &grady_desc,
@@ -1905,8 +2546,10 @@ struct pooling_backward : public computation,
 public:
   using computation::computation;
   using computation::expected_gradx_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &gradx_desc,
       const tensor::descriptor &grady_desc, Ts &&...args) {
     descriptor backward_descriptor(gradx_desc, grady_desc,
@@ -1916,29 +2559,39 @@ public:
 
   pooling_backward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   pooling_backward(T arg, Ts &&...args) {
     init(arg, std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor &grady, const tensor &y, const tensor &gradx) {
+  void execute(const tensor& grady, const tensor& y, const tensor& gradx) {
     if (num_of_inputs() == 1)
       computation::execute(grady, gradx);
     else
       computation::execute(grady, *y.get_extra(), gradx);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor &grady, const tensor &y, const tensor& x,
+  void do_compute(const tensor& grady, const tensor& y,
+      tensor& grady_in, tensor& gradx) {
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    // materialize workspace
+    if (y.has_extra())
+      (void)y.get_extra()->get_data_handle();
+
+    execute(grady_in, y, gradx);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& grady, const tensor& y, const tensor& x,
       tensor& gradx, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto grady_in = grady;
-    if (grady.get_internal_format() != x.get_internal_format()) {
+    if (grady.get_internal_format() != x.get_internal_format())
       grady_in.init<alloc, pooling_backward>({grady.get_dims(),
           grady.get_data_type(), x.get_internal_format()});
-      reorder::compute(grady, grady_in);
-    }
 
     auto key = utils::create_key(grady_in.get_data_type(), grady_in.get_dims(),
         grady_in.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
@@ -1949,12 +2602,30 @@ public:
         aalgorithm, apadding_kind);
 
     gradx.reinit<alloc, pooling_backward>(comp.expected_gradx_descriptor());
-    comp.execute(grady_in, y, gradx);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          pooling_backward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx);
+      if (cn->build_deps(grady, y, grady_in)) {
+        utils::computation_web::template computation_node<
+            pooling_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(grady, y, grady_in, gradx);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], deps[2], tars[0]);
   }
 };
 
 struct eltwise_forward : public computation,
-  public utils::computation_cache<eltwise_forward> {
+  public utils::computation_cache<eltwise_forward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         float alpha = 0.0, float beta = 0.0,
@@ -1979,6 +2650,8 @@ struct eltwise_forward : public computation,
 public:
   using computation::computation;
   using computation::expected_dst_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   template<typename ...Ts>
   void init(const tensor::descriptor &x_desc, Ts &&...args) {
@@ -1988,7 +2661,7 @@ public:
 
   eltwise_forward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   eltwise_forward(T arg, Ts &&...args) {
     init(std::forward<T>(arg), std::forward<Ts>(args)...);
   }
@@ -1997,8 +2670,12 @@ public:
     computation::execute(x, y);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor &src, tensor& dst,
+  void do_compute(const tensor& src, tensor& dst) {
+    execute(src, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, tensor& dst,
       algorithm aalogorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
@@ -2010,12 +2687,34 @@ public:
 
     if (dst != src)
       dst.reinit<alloc, eltwise_forward>(src.get_descriptor());
-    comp.execute(src, dst);
+
+    if (web_opt) {
+      auto fattr = aalogorithm == algorithm::eltwise_relu ?
+          fusion_attr_t{ fusion_type_t::CN_FUSION_RELU, {alpha, beta}, {} } :
+          fusion_attr_t{ fusion_type_t::CN_FUSION_NA, {}, {} };
+
+      auto cn = utils::computation_web::template computation_node<
+          eltwise_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, fattr, dst);
+      if (cn->build_deps(src)) {
+        utils::computation_web::template computation_node<
+            eltwise_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, dst);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], tars[0]);
   }
 };
 
 struct eltwise_backward : public computation,
-  public utils::computation_cache<eltwise_backward> {
+  public utils::computation_cache<eltwise_backward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &grady_desc,
         const tensor::descriptor &x_desc,
@@ -2042,8 +2741,10 @@ struct eltwise_backward : public computation,
 public:
   using computation::computation;
   using computation::expected_gradx_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &grady_desc,
       const tensor::descriptor &x_desc, Ts &&...args) {
     descriptor backward_descriptor(
@@ -2053,7 +2754,7 @@ public:
 
   eltwise_backward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   eltwise_backward(T grady_desc, T src_desc, Ts &&...args) {
     init(std::forward<T>(grady_desc), std::forward<T>(src_desc),
         std::forward<Ts>(args)...);
@@ -2063,33 +2764,50 @@ public:
     computation::execute(x, grady, gradx);
   }
 
-  // If grady and x had different format, performance is bad.
-  // TODO: Seeking a single shot solution.
-  template<class alloc, typename ...Ts>
-  static void compute_impl(const tensor &src, const tensor &grady,
-      tensor& gradx, Ts &&...args) {
-    // if grady is from outside, make it ours
-    tensor grady_in = grady;
-    if (grady.get_internal_format() != src.get_internal_format()) {
-      grady_in.init<alloc, eltwise_backward>(src.get_descriptor());
+  void do_compute(const tensor& src, const tensor& grady,
+      tensor& grady_in, tensor& gradx) {
+    if (grady.get_data_handle() != grady_in.get_data_handle())
       reorder::compute(grady, grady_in);
-    }
 
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), args...);
-
-    fetch_or_create_m(comp, key, grady_in.get_descriptor(),
-        src.get_descriptor(), std::forward<Ts>(args)...);
-
-    gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
-    comp.execute(src, grady_in, gradx);
+    execute(src, grady_in, gradx);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor &src, const tensor &grady,
+  // If grady and x had different format, performance is bad.
+  // TODO: Seeking a single shot solution.
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, const tensor& grady,
       tensor& gradx, algorithm aalogorithm = algorithm::eltwise_relu,
       float alpha = 0.0, float beta = 0.0) {
-    compute_impl<alloc>(src, grady, gradx, alpha, beta, aalogorithm);
+    // if grady is from outside, make it ours
+    tensor grady_in = grady;
+    if (grady.get_internal_format() != src.get_internal_format())
+      grady_in.init<alloc, eltwise_backward>(src.get_descriptor());
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), alpha, beta, aalogorithm);
+
+    fetch_or_create_m(comp, key, grady_in.get_descriptor(),
+        src.get_descriptor(), alpha, beta, aalogorithm);
+
+    gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          eltwise_backward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx);
+      if (cn->build_deps(src, grady, grady_in)) {
+        utils::computation_web::template computation_node<
+            eltwise_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, grady, grady_in, gradx);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], deps[2], tars[0]);
   }
 };
 
@@ -2205,89 +2923,9 @@ public:
   }
 };
 
-struct sum : public computation,
-  public utils::computation_cache<sum> {
-  struct descriptor : public descriptor_group {
-    descriptor(const std::vector<float> &scales,
-        const std::vector<tensor::descriptor> &inputs) {
-      mkldnn_primitive_desc_t result;
-      auto c_api_inputs = cpp_to_c(inputs);
-      error::wrap_c_api(mkldnn_sum_primitive_desc_create(
-              &result, nullptr,
-              (int)c_api_inputs.size(),
-              &scales[0], &c_api_inputs[0]),
-          "could not create a sum primitive descriptor");
-      reset(result);
-    }
-
-    descriptor(const std::vector<float> &scales,
-        const std::vector<tensor::descriptor> &inputs,
-        const tensor::descriptor output_desc) {
-      mkldnn_primitive_desc_t result;
-      auto c_api_inputs = cpp_to_c(inputs);
-      error::wrap_c_api(mkldnn_sum_primitive_desc_create(
-              &result, output_desc.get_mkldnn_memory_desc_t(),
-              (int)c_api_inputs.size(),
-              &scales[0], &c_api_inputs[0]),
-          "could not create a sum primitive descriptor");
-      reset(result);
-    }
-  };
-public:
-  using computation::execute;
-  using computation::expected_dst_descriptor;
-
-  void init(const std::vector<float> &scales,
-      const std::vector<tensor::descriptor> &inputs) {
-    descriptor forward_descriptor(scales, inputs);
-    computation::init(forward_descriptor, inputs);
-  }
-
-  void init(const std::vector<float> &scales,
-      const std::vector<tensor::descriptor> &inputs,
-      const tensor::descriptor output) {
-    descriptor forward_descriptor(scales, inputs, output);
-    computation::init(forward_descriptor, inputs);
-  }
-
-  sum() = default;
-
-  sum(const std::vector<float> &scales,
-      const std::vector<tensor::descriptor> &inputs_desc,
-      const tensor::descriptor output_desc) {
-    init(scales, inputs_desc, output_desc);
-  }
-
-  sum(const std::vector<float> &scales,
-      const std::vector<tensor::descriptor> &inputs_desc) {
-    init(scales, inputs_desc);
-  }
-
-  void execute(const std::vector<tensor> &inputs, const tensor &output) {
-    computation::execute(inputs, output);
-  }
-
-  template<class alloc = utils::allocator>
-  static void compute(const std::vector<float> &scales,
-      const std::vector<tensor> &inputs, tensor& output) {
-    std::vector<tensor::descriptor> inputs_desc;
-    for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
-        inputs_desc.push_back(in.get_descriptor());
-        });
-
-    if (output != inputs[0]) {
-      sum comp(scales, inputs_desc);
-      output.reinit<alloc, sum>(comp.expected_dst_descriptor());
-      comp.execute(inputs, output);
-    } else {
-      sum comp(scales, inputs_desc, output.get_descriptor());
-      comp.execute(inputs, output);
-    }
-  }
-};
-
 struct concat : public computation,
-  public utils::computation_cache<concat> {
+  public utils::computation_cache<concat>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension,
         const std::vector<tensor::descriptor> &inputs) {
@@ -2316,6 +2954,8 @@ struct concat : public computation,
 public:
   using computation::execute;
   using computation::expected_dst_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   void init(int concat_dimension,
       const std::vector<tensor::descriptor> &inputs) {
@@ -2334,8 +2974,19 @@ public:
     computation::execute(inputs, output);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(std::vector<tensor> &inputs, int axis, tensor& dst) {
+  void do_compute(const std::vector<tensor>& inputs,
+      std::vector<tensor>& inputs_in, tensor& output) {
+    for (size_t i = 1; i < inputs.size(); i++) {
+      if (inputs.at(i).get_data_handle() !=
+          inputs_in.at(i).get_data_handle())
+        reorder::compute(inputs.at(i), inputs_in.at(i));
+    }
+
+    execute(inputs_in, output);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(std::vector<tensor>& inputs, int axis, tensor& output) {
     std::vector<tensor::descriptor> tdesc;
     std::vector<tensor::data_type> inputs_dt;
     std::vector<tensor::dims> inputs_dims;
@@ -2351,27 +3002,51 @@ public:
 
     // FIXME
     // currently align all inputs format with first one
-    for (int i = 1; i <tdesc.size(); i++) {
-      if (inputs_format[i] != inputs_format[0]) {
-        auto src_in = inputs[i];
+    std::vector<tensor> inputs_in;
+    inputs_in.push_back(inputs.at(0));
+    for (int i = 1; i < tdesc.size(); i++) {
+      auto src_in = inputs[i];
+      if (inputs_format[i] != inputs_format[0])
         src_in.init<alloc, concat>(
             {inputs_dims[i], inputs_dt[i], inputs_format[0]});
-        reorder::compute(inputs[i], src_in);
-        inputs[i] = std::move(src_in);
-        tdesc[i] = inputs[i].get_descriptor();
-      }
+
+      inputs_in.push_back(src_in);
+      tdesc[i] = src_in.get_descriptor();
     }
 
     fetch_or_create_m(comp, key, axis, tdesc);
-    dst.reinit<alloc, concat>(comp.expected_dst_descriptor());
-    comp.execute(inputs, dst);
+    output.reinit<alloc, concat>(comp.expected_dst_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          concat, tensor>::create(comp, prop_kind_t::CN_PROP_NA, output);
+      if (cn->build_deps(inputs) && cn->build_deps(inputs_in)) {
+        utils::computation_web::template computation_node<
+            concat, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(inputs, inputs_in, output);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    std::vector<tensor> ins, ints;
+    for (size_t i = 0; i < deps.size(); i++) {
+      if (i < deps.size() / 2)
+        ins.push_back(deps[i]);
+      else
+        ints.push_back(deps[i]);
+    }
+    do_compute(ins, ints, tars[0]);
   }
 
   static std::vector<int32_t> compute(
-      std::vector<tensor> &inputs, int axis, bool add_axis, tensor& dst) {
+      std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
     IDEEP_ENFORCE(axis < (inputs[0].ndims() + (add_axis ? 1 : 0)),
         "invalid axis in concat");
-    for (int i = 0; i <inputs[0].ndims(); i++) {
+    for (int i = 0; i < inputs[0].ndims(); i++) {
       if (i == axis && !add_axis) continue;
       for (unsigned j = 1; j <inputs.size(); j++) {
         IDEEP_ENFORCE(inputs[j].get_dim(i) == inputs[0].get_dim(i),
@@ -2508,7 +3183,8 @@ public:
 };
 
 struct batch_normalization_forward_inference : public batch_norm_forward_base,
-  public utils::computation_cache<batch_normalization_forward_inference> {
+  public utils::computation_cache<batch_normalization_forward_inference>,
+  public utils::computation_web::node<tensor> {
 public:
   using batch_norm_forward_base::execute;
 
@@ -2523,6 +3199,9 @@ public:
   }
 
 public:
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
+
   void init(const tensor::descriptor& src_desc, float epsilon,
       unsigned flag = batch_normalization_flag::use_global_stats |
       batch_normalization_flag::use_scale_shift) {
@@ -2532,10 +3211,10 @@ public:
     computation::init(batch_norm_forward);
   }
 
-  batch_normalization_forward_inference () = default;
+  batch_normalization_forward_inference() = default;
 
-  template <typename T, typename ...Ts>
-  batch_normalization_forward_inference (T arg, Ts&&... args) {
+  template<typename T, typename ...Ts>
+  batch_normalization_forward_inference(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
 
@@ -2579,7 +3258,12 @@ public:
     comp.execute(src, scale, shift, dst);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& src, const tensor& mean, const tensor& variance,
+      const tensor& scale, const tensor& shift, tensor& dst) {
+    execute(src, mean, variance, scale, shift, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
@@ -2591,14 +3275,36 @@ public:
     if (dst != src)
       dst.reinit<alloc, batch_normalization_forward_inference>(
           comp.expected_dst_descriptor());
-    comp.execute(src, mean, variance, scale, shift, dst);
+
+    if (web_opt) {
+      auto fattr = fusion_attr_t{ fusion_type_t::CN_FUSION_BN,
+          {epsilon}, {mean, variance, scale, shift} };
+
+      auto cn = utils::computation_web::template computation_node<
+          batch_normalization_forward_inference, tensor>::
+          create(comp, prop_kind_t::CN_PROP_FORWARD, fattr, dst);
+      if (cn->build_deps(src, mean, variance, scale, shift)) {
+        utils::computation_web::template computation_node<
+            batch_normalization_forward_inference, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, mean, variance, scale, shift, dst);
   }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], deps[2], deps[3], deps[4], tars[0]);
+  }
+
 private:
-  param weights_;
+  tensor weights_;
 };
 
 struct batch_normalization_forward_training : public batch_norm_forward_base,
-  public utils::computation_cache<batch_normalization_forward_training> {
+  public utils::computation_cache<batch_normalization_forward_training>,
+  public utils::computation_web::node<tensor> {
   float get_epsilon() const {
     const mkldnn_batch_normalization_desc_t *p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
@@ -2609,6 +3315,8 @@ struct batch_normalization_forward_training : public batch_norm_forward_base,
   }
 public:
   using batch_norm_forward_base::execute;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   void init(const tensor::descriptor& src_desc, const tensor::descriptor& scale,
       const tensor::descriptor& shift, float momentum, float epsilon,
@@ -2625,7 +3333,7 @@ public:
 
   batch_normalization_forward_training () = default;
 
-  template <typename T, typename... Ts>
+  template<typename T, typename... Ts>
   batch_normalization_forward_training (T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -2677,7 +3385,12 @@ public:
 
   using computation::expected_dst_descriptor;
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& src, const tensor& scale, const tensor& shift,
+      tensor& dst, tensor& mean, tensor& variance) {
+    execute(src, scale, shift, dst, mean, variance);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& scale, const tensor& shift,
       tensor& dst, tensor& mean, tensor& variance,
       float momentum, float epsilon) {
@@ -2686,16 +3399,35 @@ public:
 
     fetch_or_create_m(comp, key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
+    comp.eps = epsilon;
 
     dst.reinit<alloc, batch_normalization_forward_training>(
         comp.expected_dst_descriptor());
     mean.reinit(comp.expected_statistic_descriptor());
     variance.reinit(comp.expected_statistic_descriptor());
 
-    comp.execute(src, scale, shift, dst, mean, variance);
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          batch_normalization_forward_training, tensor>::
+          create(comp, prop_kind_t::CN_PROP_FORWARD, dst, mean, variance);
+      if (cn->build_deps(src, scale, shift)) {
+        utils::computation_web::template computation_node<
+            batch_normalization_forward_training, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, scale, shift, dst, mean, variance);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& src, const tensor& scale,
+      const tensor& shift, tensor& dst, tensor& mean, tensor& variance,
+      tensor& running_mean, tensor& running_var) {
+    execute(src, scale, shift, dst, mean, variance);
+    running_statistic(mean, variance, running_mean, running_var);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& scale,
       const tensor& shift, tensor& dst, tensor& mean,
       tensor& variance, tensor& running_mean,
@@ -2714,17 +3446,42 @@ public:
     running_mean.reinit(comp.expected_statistic_descriptor());
     running_var.reinit(comp.expected_statistic_descriptor());
 
-    comp.execute(src, scale, shift, dst, mean, variance);
-    comp.running_statistic(mean, variance, running_mean, running_var);
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          batch_normalization_forward_training, tensor>::
+          create(comp, prop_kind_t::CN_PROP_FORWARD, dst,
+          mean, variance, running_mean, running_var);
+      if (cn->build_deps(src, scale, shift)) {
+        utils::computation_web::template computation_node<
+            batch_normalization_forward_training, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, scale, shift, dst, mean, variance,
+        running_mean, running_var);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    if (tars.size() == 3) {
+      do_compute(deps[0], deps[1], deps[2], tars[0],
+          tars[1], tars[2]);
+    } else if (tars.size() == 5) {
+      do_compute(deps[0], deps[1], deps[2], tars[0],
+          tars[1], tars[2], tars[3], tars[4]);
+    }
   }
 
 private:
-  param weights_;
+  tensor weights_;
   sum sum_;
+  float eps;
 };
 
 struct batch_normalization_backward : public computation,
-  public utils::computation_cache<batch_normalization_backward> {
+  public utils::computation_cache<batch_normalization_backward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &gradx_desc,
         const tensor::descriptor &x_desc,
@@ -2762,6 +3519,9 @@ struct batch_normalization_backward : public computation,
 
 public:
   using computation::expected_gradx_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
+
   tensor::descriptor expected_grad_scale_descriptor() const {
     return expected_descriptor_of(query::src_pd, 2);
   }
@@ -2793,7 +3553,7 @@ public:
 
   batch_normalization_backward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   batch_normalization_backward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -2830,7 +3590,13 @@ public:
     computation::execute(src, mean, variance, grady, weights_, gradx);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& src, const tensor& mean,
+      const tensor& variance, const tensor& grady, const tensor& scale,
+      tensor& gradx, tensor& gradw) {
+    execute(src, mean, variance, grady, scale, gradx, gradw);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
       tensor& gradx, tensor& gradw, float epsilon) {
@@ -2843,11 +3609,30 @@ public:
     gradx.reinit<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
     gradw.reinit(comp.expected_gradw_descriptor());
-    comp.execute(
-        src, mean, variance, grady, scale, gradx, gradw);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          batch_normalization_backward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx, gradw);
+      if (cn->build_deps(src, mean, variance, grady, scale)) {
+        utils::computation_web::template computation_node<
+            batch_normalization_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, mean, variance, grady, scale, gradx, gradw);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& src, const tensor& mean,
+      const tensor& variance, const tensor& grady, const tensor& scale,
+      tensor& gradx, tensor& grad_scale, tensor& grad_shift) {
+    execute(
+        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
+    grad_scale.set_descriptor(mean.get_descriptor());
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
       tensor& gradx, tensor& grad_scale, tensor& grad_shift, float epsilon) {
@@ -2861,16 +3646,40 @@ public:
         comp.expected_gradx_descriptor());
     grad_scale.reinit(comp.expected_gradw_descriptor());
     grad_shift.reinit(mean.get_descriptor());
-    comp.execute(
-        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
-    grad_scale.set_descriptor(mean.get_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          batch_normalization_backward, tensor>::
+          create(comp, prop_kind_t::CN_PROP_BACKWARD,
+          gradx, grad_scale, grad_shift);
+      if (cn->build_deps(src, mean, variance, grady, scale)) {
+        utils::computation_web::template computation_node<
+            batch_normalization_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, mean, variance, grady,
+        scale, gradx, grad_scale, grad_shift);
   }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    if (tars.size() == 2)
+      do_compute(deps[0], deps[1], deps[2], deps[3], deps[4],
+          tars[0], tars[1]);
+    else if (tars.size() == 3)
+      do_compute(deps[0], deps[1], deps[2], deps[3], deps[4],
+          tars[0], tars[1], tars[2]);
+  }
+
 private:
   tensor weights_;
 };
 
 struct inner_product_forward: public computation,
-  public utils::computation_cache<inner_product_forward> {
+  public utils::computation_cache<inner_product_forward>,
+  public utils::computation_web::node<tensor> {
   struct descriptor: public descriptor_group {
     descriptor(const tensor::descriptor &src_desc,
             const tensor::descriptor &weights_desc,
@@ -2927,6 +3736,8 @@ struct inner_product_forward: public computation,
   using computation::expected_dst_descriptor;
   using computation::expected_weights_descriptor;
   using computation::expected_src_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   void init(const tensor::descriptor &src_desc,
       const tensor::descriptor &weights_desc,
@@ -2946,58 +3757,25 @@ struct inner_product_forward: public computation,
 
   inner_product_forward() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   inner_product_forward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& weights,
-      const tensor& bias, tensor& dst) {
-    auto src_in = src;
-    auto weights_in = weights;
-    if (src_in.ndims() != weights_in.ndims()) {
-      auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
-      if (ndims != src_in.ndims()) {
-        auto new_dims = weights_in.get_dims();
-        new_dims[0] = src_in.get_dim(0);
-        src_in.reshape(new_dims);
-      } else if (ndims != weights_in.ndims()) {
-        auto new_dims = src_in.get_dims();
-        new_dims[0] = weights_in.get_dim(0);
-        weights_in.reshape(new_dims);
-      }
-    }
-    IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
-        "Invalid dims in src or weights");
-
-    tensor::dims dst_dims = {src_in.get_dim(0), weights_in.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
-
-    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
-        weights_in.get_dims(), bias.get_dims(), dst_dims);
-
-    fetch_or_create_m(comp, key, src_in.get_descriptor(),
-        weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
-
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
+  void do_compute(const tensor& src, const tensor& weights, const tensor& bias,
+      tensor& src_in, tensor& weights_in, tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
       reorder::compute(src, src_in);
-    }
-    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<alloc, inner_product_forward>(
-          comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
 
-    dst.reinit<alloc, inner_product_forward>(
-        comp.expected_dst_descriptor());
-    comp.execute(src_in, weights_in, bias, dst);
+    if (weights.get_data_handle() != weights_in.get_data_handle())
+      reorder::compute(weights, weights_in);
+
+    execute(src_in, weights_in, bias, dst);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(
-      const tensor& src, const tensor& weights, tensor& dst) {
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, const tensor& weights,
+      const tensor& bias, tensor& dst) {
     auto src_in = src;
     auto weights_in = weights;
     if (src_in.ndims() != weights_in.ndims()) {
@@ -3019,24 +3797,105 @@ struct inner_product_forward: public computation,
     tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
 
     auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+        weights_in.get_dims(), bias.get_dims(), dst_dims);
+
+    fetch_or_create_m(comp, key, src_in.get_descriptor(),
+        weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
+
+    if (src_in.get_descriptor() != comp.expected_src_descriptor())
+      src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
+
+    if (weights_in.get_descriptor() != comp.expected_weights_descriptor())
+      weights_in.init<alloc, inner_product_forward>(
+          comp.expected_weights_descriptor());
+
+    dst.reinit<alloc, inner_product_forward>(
+        comp.expected_dst_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          inner_product_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src, weights, bias, src_in, weights_in)) {
+        utils::computation_web::template computation_node<
+            inner_product_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, weights, bias, src_in, weights_in, dst);
+  }
+
+  void do_compute(const tensor& src, const tensor& weights,
+      tensor& src_in, tensor& weights_in, tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
+
+    if (weights.get_data_handle() != weights_in.get_data_handle())
+      reorder::compute(weights, weights_in);
+
+    execute(src_in, weights_in, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(
+      const tensor& src, const tensor& weights, tensor& dst) {
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src_in.ndims() != weights_in.ndims()) {
+      auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
+      if (ndims != src_in.ndims()) {
+        auto new_dims = weights_in.get_dims();
+        new_dims[0] = src_in.get_dim(0);
+        src_in.reshape(new_dims);
+      } else if (ndims != weights_in.ndims()) {
+        auto new_dims = src_in.get_dims();
+        new_dims[0] = weights_in.get_dim(0);
+        weights_in.reshape(new_dims);
+      }
+    }
+    IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
+        "Invalid dims in src or weights");
+
+    tensor::dims dst_dims = {src_in.get_dim(0), weights_in.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
+
+    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
         weights_in.get_dims(), dst_dims);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(),
         weights_in.get_descriptor(), dst_desc);
 
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
+    if (src_in.get_descriptor() != comp.expected_src_descriptor())
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
+
+    if (weights_in.get_descriptor() != comp.expected_weights_descriptor())
       weights_in.init<alloc, inner_product_forward>(
           comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
 
     dst.reinit<alloc, inner_product_forward>(
         comp.expected_dst_descriptor());
-    comp.execute(src_in, weights_in, dst);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          inner_product_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src, weights, src_in, weights_in)) {
+        utils::computation_web::template computation_node<
+            inner_product_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(src, weights, src_in, weights_in, dst);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    if (deps.size() == 5)
+      do_compute(deps[0], deps[1], deps[2], deps[3], deps[4], tars[0]);
+    else if (deps.size() == 4)
+      do_compute(deps[0], deps[1], deps[2], deps[3], tars[0]);
   }
 
   static tensor::descriptor expected_weights_descriptor(
@@ -3062,7 +3921,8 @@ struct inner_product_forward: public computation,
 
 // TODO: parameter sequence adjust?
 struct inner_product_backward_data: public computation,
-  utils::computation_cache<inner_product_backward_data> {
+  public utils::computation_cache<inner_product_backward_data>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &gradx_desc,
         const tensor::descriptor &weights_desc,
@@ -3090,8 +3950,10 @@ public:
   using computation::expected_gradx_descriptor;
   using computation::expected_grady_descriptor;
   using computation::expected_weights_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &gradx_desc,
       const tensor::descriptor &weights_desc,
       const tensor::descriptor &grady_desc) {
@@ -3101,7 +3963,7 @@ public:
 
   inner_product_backward_data() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   inner_product_backward_data(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -3110,8 +3972,19 @@ public:
     computation::execute(grady, weights, gradx);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute( const tensor& grady, const tensor& weights,
+  void do_compute(const tensor& grady, const tensor& weights,
+      tensor& grady_in, tensor& weights_in, tensor& gradx) {
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    if (weights.get_data_handle() != weights_in.get_data_handle())
+      reorder::compute(weights, weights_in);
+
+    execute(grady_in, weights_in, gradx);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& grady, const tensor& weights,
       tensor::dims gradx_dims, tensor& gradx) {
     auto weights_in = weights;
     if (gradx_dims.size() != weights_in.ndims()) {
@@ -3131,25 +4004,40 @@ public:
         weights_in.get_descriptor(), grady.get_descriptor());
 
     auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+    if (grady.get_descriptor() != comp.expected_grady_descriptor())
       grady_in.init<alloc, inner_product_backward_data>(
           comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
+
+    if (weights_in.get_descriptor() != comp.expected_weights_descriptor())
       weights_in.init<alloc, inner_product_backward_data>(
           comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
 
     gradx.reinit<alloc, inner_product_backward_data>(
         comp.expected_gradx_descriptor());
-    comp.execute(grady_in, weights_in, gradx);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          inner_product_backward_data, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx);
+      if (cn->build_deps(grady, weights, grady_in, weights_in)) {
+        utils::computation_web::template computation_node<
+            inner_product_backward_data, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(grady, weights, grady_in, weights_in, gradx);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], deps[2], deps[3], tars[0]);
   }
 };
 
 struct inner_product_backward_weights : public computation,
-  public utils::computation_cache<inner_product_backward_weights> {
+  public utils::computation_cache<inner_product_backward_weights>,
+  public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &gradw_desc,
@@ -3198,8 +4086,10 @@ struct inner_product_backward_weights : public computation,
 public:
   using computation::expected_gradw_descriptor;
   using computation::expected_gradb_descriptor;
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  template <typename ...Ts>
+  template<typename ...Ts>
   void init(const tensor::descriptor &x_desc,
       const tensor::descriptor &grady_desc,
       const tensor::descriptor &gradw_desc, Ts&&... args) {
@@ -3210,7 +4100,7 @@ public:
 
   inner_product_backward_weights() = default;
 
-  template <typename T, typename ...Ts>
+  template<typename T, typename ...Ts>
   inner_product_backward_weights(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
   }
@@ -3224,7 +4114,18 @@ public:
     computation::execute(x, grady, gradw, gradb);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& x, const tensor& grady,
+      tensor& x_in, tensor& grady_in, tensor& gradw) {
+    if (x.get_data_handle() != x_in.get_data_handle())
+      reorder::compute(x, x_in);
+
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    execute(x_in, grady_in, gradw);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& x, const tensor& grady, tensor& gradw) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
@@ -3237,23 +4138,43 @@ public:
         grady.get_descriptor());
 
     auto x_in = x;
-    auto grady_in = grady;
-    if (x.get_descriptor() != comp.expected_src_descriptor()) {
+    if (x.get_descriptor() != comp.expected_src_descriptor())
       x_in.init<alloc, inner_product_backward_weights>(comp.expected_src_descriptor());
-      reorder::compute(x, x_in);
-    }
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+
+    auto grady_in = grady;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor())
       grady_in.init<alloc, inner_product_backward_weights>(
           comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
 
     gradw.reinit<alloc, inner_product_backward_weights>(
         comp.expected_gradw_descriptor());
-    comp.execute(x_in, grady_in, gradw);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          inner_product_backward_weights, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradw);
+      if (cn->build_deps(x, grady, x_in, grady_in)) {
+        utils::computation_web::template computation_node<
+            inner_product_backward_weights, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(x, grady, x_in, grady_in, gradw);
   }
 
-  template<class alloc = utils::allocator>
+  void do_compute(const tensor& x, const tensor& grady,
+      tensor& x_in, tensor& grady_in, tensor& gradw, tensor& gradb) {
+    if (x.get_data_handle() != x_in.get_data_handle())
+      reorder::compute(x, x_in);
+
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+
+    execute(x_in, grady_in, gradw, gradb);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& x, const tensor& grady, tensor& gradw,
       tensor& gradb) {
     auto gradw_dims = x.get_dims();
@@ -3270,28 +4191,48 @@ public:
         grady.get_descriptor());
 
     auto x_in = x;
-    auto grady_in = grady;
-    if (x.get_descriptor() != comp.expected_src_descriptor()) {
+    if (x.get_descriptor() != comp.expected_src_descriptor())
       x_in.init<alloc, inner_product_backward_weights>(
           comp.expected_src_descriptor());
-      reorder::compute(x, x_in);
-    }
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+
+    auto grady_in = grady;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor())
       grady_in.init<alloc, inner_product_backward_weights>(
           comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
 
     gradw.reinit<alloc, inner_product_backward_weights>(
         comp.expected_gradw_descriptor());
     gradb.reinit(comp.expected_gradb_descriptor());
-    comp.execute(x_in, grady_in, gradw, gradb);
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          inner_product_backward_weights, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradw, gradb);
+      if (cn->build_deps(x, grady, x_in, grady_in)) {
+        utils::computation_web::template computation_node<
+            inner_product_backward_weights, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(x, grady, x_in, grady_in, gradw, gradb);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    if (tars.size() == 2)
+      do_compute(deps[0], deps[1], deps[2], deps[3], tars[0], tars[1]);
+    else if (tars.size() == 1)
+      do_compute(deps[0], deps[1], deps[2], deps[3], tars[0]);
   }
 };
 
-struct dropout_forward {
+struct dropout_forward : public utils::computation_web::node<tensor> {
 public:
   dropout_forward() = default;
+
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
   static void bernoulli_generate(const long n, const double p, int* r) {
     std::srand(std::time(0));
@@ -3317,16 +4258,12 @@ public:
     }
   }
 
-  template<class alloc, class T>
-  static void compute_impl(const tensor &src, float ratio,
-      tensor& dst, tensor& mask) {
-    const auto scale = 1.0 / (1.0 - ratio);
+  template<class T>
+  void do_compute(const tensor& src, tensor& dst, tensor& mask) {
+    const auto scale = 1.0 / (1.0 - ratio_);
     const auto size = src.get_nelems();
-    mask.reinit<alloc, dropout_forward>(src.get_descriptor());
-    dst.reinit<alloc, dropout_forward>(src.get_descriptor());
-
     std::unique_ptr<int[]> bernouli_nums(new int[size]);
-    bernoulli_generate(size, 1.0 - ratio, bernouli_nums.get());
+    bernoulli_generate(size, 1.0 - ratio_, bernouli_nums.get());
 
     const auto src_data = static_cast<T *>(src.get_data_handle());
     const auto mask_data = static_cast<T *>(mask.get_data_handle());
@@ -3339,40 +4276,88 @@ public:
     }
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc, class T, bool web_opt>
+  static void compute_impl(const tensor& src, float ratio,
+      tensor& dst, tensor& mask) {
+    dropout_forward comp;
+    comp.ratio_ = ratio;
+    mask.reinit<alloc, dropout_forward>(src.get_descriptor());
+    dst.reinit<alloc, dropout_forward>(src.get_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          dropout_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst, mask);
+      if (cn->build_deps(src)) {
+        utils::computation_web::template computation_node<
+            dropout_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute<T>(src, dst, mask);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, float ratio,
       tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
     case tensor::data_type::f32:
-      compute_impl<alloc, float>(src, ratio, dst, mask);
+      compute_impl<alloc, float, web_opt>(src, ratio, dst, mask);
       break;
     case tensor::data_type::s32:
-      compute_impl<alloc, int32_t>(src, ratio, dst, mask);
+      compute_impl<alloc, int32_t, web_opt>(src, ratio, dst, mask);
       break;
     case tensor::data_type::s16:
-      compute_impl<alloc, int16_t>(src, ratio, dst, mask);
+      compute_impl<alloc, int16_t, web_opt>(src, ratio, dst, mask);
       break;
     case tensor::data_type::s8:
-      compute_impl<alloc, int8_t>(src, ratio, dst, mask);
+      compute_impl<alloc, int8_t, web_opt>(src, ratio, dst, mask);
       break;
     case tensor::data_type::u8:
-      compute_impl<alloc, uint8_t>(src, ratio, dst, mask);
+      compute_impl<alloc, uint8_t, web_opt>(src, ratio, dst, mask);
       break;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }
   }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    switch(deps[0].get_data_type()) {
+    case tensor::data_type::f32:
+      do_compute<float>(deps[0], tars[0], tars[1]);
+      return;
+    case tensor::data_type::s32:
+      do_compute<int32_t>(deps[0], tars[0], tars[1]);
+      return;
+    case tensor::data_type::s16:
+      do_compute<int16_t>(deps[0], tars[0], tars[1]);
+      return;
+    case tensor::data_type::s8:
+      do_compute<int8_t>(deps[0], tars[0], tars[1]);
+      return;
+    case tensor::data_type::u8:
+      do_compute<uint8_t>(deps[0], tars[0], tars[1]);
+      return;
+    default:
+      throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
+    }
+  }
+
+  float ratio_;
 };
 
-struct dropout_backward {
+struct dropout_backward : public utils::computation_web::node<tensor> {
 public:
   dropout_backward() = default;
 
-  template<class alloc, class T>
-  static void compute_impl(const tensor &mask, const tensor &gy, tensor& gx) {
-    const auto size = mask.get_nelems();
-    gx.reinit<alloc, dropout_backward>(gy.get_descriptor());
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
 
+  template<class T>
+  void do_compute(const tensor& mask, const tensor& gy, tensor& gx) {
+    const auto size = mask.get_nelems();
     const auto mask_data = static_cast<T *>(mask.get_data_handle());
     const auto gy_data = static_cast<T *>(gy.get_data_handle());
     const auto gx_data = static_cast<T *>(gx.get_data_handle());
@@ -3383,24 +4368,66 @@ public:
     }
   }
 
-  template<class alloc = utils::allocator>
+  template<class alloc, class T, bool web_opt>
+  static void compute_impl(const tensor& mask, const tensor& gy, tensor& gx) {
+    dropout_backward comp;
+    gx.reinit<alloc, dropout_backward>(gy.get_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          dropout_backward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gx);
+      if (cn->build_deps(mask, gy)) {
+        utils::computation_web::template computation_node<
+            dropout_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute<T>(mask, gy, gx);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &mask, const tensor &gy, tensor& gx) {
     switch(gy.get_data_type()) {
     case tensor::data_type::f32:
-      compute_impl<alloc, float>(mask, gy, gx);
+      compute_impl<alloc, float, web_opt>(mask, gy, gx);
       break;
     case tensor::data_type::s32:
-      compute_impl<alloc, int32_t>(mask, gy, gx);
+      compute_impl<alloc, int32_t, web_opt>(mask, gy, gx);
       break;
     case tensor::data_type::s16:
-      compute_impl<alloc, int16_t>(mask, gy, gx);
+      compute_impl<alloc, int16_t, web_opt>(mask, gy, gx);
       break;
     case tensor::data_type::s8:
-      compute_impl<alloc, int8_t>(mask, gy, gx);
+      compute_impl<alloc, int8_t, web_opt>(mask, gy, gx);
       break;
     case tensor::data_type::u8:
-      compute_impl<alloc, uint8_t>(mask, gy, gx);
+      compute_impl<alloc, uint8_t, web_opt>(mask, gy, gx);
       break;
+    default:
+      throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
+    }
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    switch(deps[1].get_data_type()) {
+    case tensor::data_type::f32:
+      do_compute<float>(deps[0], deps[1], tars[0]);
+      return;
+    case tensor::data_type::s32:
+      do_compute<int32_t>(deps[0], deps[1], tars[0]);
+      return;
+    case tensor::data_type::s16:
+      do_compute<int16_t>(deps[0], deps[1], tars[0]);
+      return;
+    case tensor::data_type::s8:
+      do_compute<int8_t>(deps[0], deps[1], tars[0]);
+      return;
+    case tensor::data_type::u8:
+      do_compute<uint8_t>(deps[0], deps[1], tars[0]);
+      return;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
     }
@@ -3451,7 +4478,7 @@ public:
   }
 };
 
-struct sum_array {
+struct sum_array : public utils::computation_web::node<tensor> {
 public:
   typedef enum {
     NOERR = 0,
@@ -3461,6 +4488,51 @@ public:
   } err_num_t;
 
   sum_array() = default;
+
+  using prop_kind_t =
+      typename utils::computation_web::node<tensor>::prop_kind_t;
+
+  void do_compute(tensor& src, tensor& dst) {
+    switch(src.get_data_type()) {
+    case tensor::data_type::f32:
+      optimized_format(src) ?
+      sum_nChwXC_along_channel((float *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (float *)dst.get_data_handle()) :
+      sum_along_axis((float *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (float *)dst.get_data_handle());
+      return;
+    case tensor::data_type::s32:
+      optimized_format(src) ?
+      sum_nChwXC_along_channel((int32_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (int32_t *)dst.get_data_handle()) :
+      sum_along_axis((int32_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (int32_t *)dst.get_data_handle());
+      return;
+    case tensor::data_type::s16:
+      optimized_format(src) ?
+      sum_nChwXC_along_channel((int16_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (int16_t *)dst.get_data_handle()) :
+      sum_along_axis((int16_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (int16_t *)dst.get_data_handle());
+      return;
+    case tensor::data_type::s8:
+      optimized_format(src) ?
+      sum_nChwXC_along_channel((int8_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (int8_t *)dst.get_data_handle()) :
+      sum_along_axis((int8_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (int8_t *)dst.get_data_handle());
+      return;
+    case tensor::data_type::u8:
+      optimized_format(src) ?
+      sum_nChwXC_along_channel((uint8_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (uint8_t *)dst.get_data_handle()) :
+      sum_along_axis((uint8_t *)src.get_data_handle(),
+          src.get_descriptor(), axis_, (uint8_t *)dst.get_data_handle());
+      return;
+    default:
+      return;
+    }
+  }
 
   template<typename data_t>
   static inline void sum_nChwXC_along_channel(data_t *src,
@@ -3593,7 +4665,7 @@ public:
     delete(reinterpret_cast<char *>(buf));
   }
 
-  template<typename data_t>
+  template<bool web_opt>
   static inline tensor sum_fast_along_axis(tensor &src,
       std::vector<int> axis, err_num_t &err) {
     int axises = axis.size();
@@ -3631,15 +4703,25 @@ public:
     if (err == (err_num_t)-UNSUPPORT_AXIS_FAST_SUM)
       return tensor();
 
+    sum_array comp;
+    comp.axis_ = axis;
+
     tensor dst;
     dst.init({{src.get_dims()[1]},
               src.get_data_type(),
               format::x});
 
-    sum_nChwXC_along_channel((data_t *)src.get_data_handle(),
-                             src.get_descriptor(), axis,
-                             (data_t *)dst.get_data_handle());
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          sum_array, tensor>::create(comp, prop_kind_t::CN_PROP_NA, dst);
+      if (cn->build_deps(src)) {
+        utils::computation_web::template computation_node<
+            sum_array, tensor>::enqueue(cn);
+        return dst;
+      }
+    }
 
+    comp.do_compute(src, dst);
     return dst;
   }
 
@@ -3813,7 +4895,7 @@ public:
     }
   }
 
-  template<typename data_t>
+  template<bool web_opt>
   static inline tensor sum_common_along_axis(tensor &src,
       std::vector<int> axis, err_num_t &err) {
     auto src_dims = src.get_dims();
@@ -3827,55 +4909,55 @@ public:
       return tensor();
     }
 
+    sum_array comp;
+    comp.axis_ = axis;
+
     tensor dst;
     dst.init({get_dst_dims(src.get_dims(), axis),
               src.get_data_type(),
               engine::default_format(dst_ndims)});
 
-    sum_along_axis((data_t *)src.get_data_handle(),
-                   src.get_descriptor(), axis,
-                   (data_t *)dst.get_data_handle());
-
-    return dst;
-  }
-
-  static tensor compute(tensor &src,
-      std::vector<int> &axis, err_num_t &err) {
-    if (optimized_format(src)) {
-      switch(src.get_data_type()) {
-      case tensor::data_type::f32:
-        return sum_fast_along_axis<float>(src, axis, err);
-      case tensor::data_type::s32:
-        return sum_fast_along_axis<int32_t>(src, axis, err);
-      case tensor::data_type::s16:
-        return sum_fast_along_axis<int16_t>(src, axis, err);
-      case tensor::data_type::s8:
-        return sum_fast_along_axis<int8_t>(src, axis, err);
-      case tensor::data_type::u8:
-        return sum_fast_along_axis<uint8_t>(src, axis, err);
-      default:
-        break;
-      }
-    } else {
-      switch(src.get_data_type()) {
-      case tensor::data_type::f32:
-        return sum_common_along_axis<float>(src, axis, err);
-      case tensor::data_type::s32:
-        return sum_common_along_axis<int32_t>(src, axis, err);
-      case tensor::data_type::s16:
-        return sum_common_along_axis<int16_t>(src, axis, err);
-      case tensor::data_type::s8:
-        return sum_common_along_axis<int8_t>(src, axis, err);
-      case tensor::data_type::u8:
-        return sum_common_along_axis<uint8_t>(src, axis, err);
-      default:
-        break;
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          sum_array, tensor>::create(comp, prop_kind_t::CN_PROP_NA, dst);
+      if (cn->build_deps(src)) {
+        utils::computation_web::template computation_node<
+            sum_array, tensor>::enqueue(cn);
+        return dst;
       }
     }
 
-    err = (err_num_t)-UNSUPPORT_DATA_TYPE;
-    return tensor();
+    comp.do_compute(src, dst);
+    return dst;
   }
+
+  template<bool web_opt = false>
+  static tensor compute(tensor &src,
+      std::vector<int> &axis, err_num_t &err) {
+    switch(src.get_data_type()) {
+    case tensor::data_type::f32:
+    case tensor::data_type::s32:
+    case tensor::data_type::s16:
+    case tensor::data_type::s8:
+    case tensor::data_type::u8:
+      break;
+    default:
+      err = (err_num_t)-UNSUPPORT_DATA_TYPE;
+      return tensor();
+    }
+
+    if (optimized_format(src))
+      return sum_fast_along_axis<web_opt>(src, axis, err);
+    else
+      return sum_common_along_axis<web_opt>(src, axis, err);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], tars[0]);
+  }
+
+  std::vector<int> axis_;
 
 private:
   static inline bool optimized_format(const tensor &t) {

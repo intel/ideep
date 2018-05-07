@@ -47,7 +47,7 @@ public:
                          conv_param_t *cp) {
     tensor dst;
     if (bias)
-      convolution_forward::compute<scratch_allocator>(
+      convolution_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
           *(src->get()), *(weights->get()),
           *(bias->get()), cp->out_dims, dst,
           tensor::dims {cp->sy, cp->sx},
@@ -55,7 +55,7 @@ public:
           tensor::dims {cp->pad_lh, cp->pad_lw},
           tensor::dims {cp->pad_rh, cp->pad_rw});
     else
-      convolution_forward::compute<scratch_allocator>(
+      convolution_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
           *(src->get()), *(weights->get()), cp->out_dims, dst,
           tensor::dims {cp->sy, cp->sx},
           tensor::dims {cp->dilate_y, cp->dilate_x},
@@ -71,7 +71,8 @@ public:
                                  mdarray *grady,
                                  conv_param_t *cp) {
     tensor gW;
-    convolution_backward_weights::compute<scratch_allocator>(
+    convolution_backward_weights::compute<
+        scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *(src->get()), *(grady->get()), cp->out_dims, gW,
         tensor::dims {cp->sy, cp->sx},
         tensor::dims {cp->dilate_y, cp->dilate_x},
@@ -87,7 +88,8 @@ public:
                                                   mdarray *grady,
                                                   conv_param_t *cp) {
     tensor gW, gb;
-    convolution_backward_weights::compute<scratch_allocator>(
+    convolution_backward_weights::compute<
+        scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *(src->get()), *(grady->get()), cp->out_dims, gW, gb,
         tensor::dims {cp->sy, cp->sx},
         tensor::dims {cp->dilate_y, cp->dilate_x},
@@ -106,7 +108,7 @@ public:
                               mdarray *grady,
                               conv_param_t *cp) {
     tensor gx;
-    convolution_backward_data::compute<scratch_allocator>(
+    convolution_backward_data::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *(grady->get()), *(weights->get()), cp->out_dims, gx,
         tensor::dims {cp->sy, cp->sx},
         tensor::dims {cp->dilate_y, cp->dilate_x},

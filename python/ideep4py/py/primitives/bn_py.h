@@ -53,15 +53,17 @@ public:
 
     if (mean) {
       tensor dst;
-      batch_normalization_forward_inference::compute<scratch_allocator>(
-		    *src->get(), *mean->get(), *variance->get(),
-            *scale->get(), *shift->get(), dst, eps);
+      batch_normalization_forward_inference::compute<
+          scratch_allocator, _IDEEP4PY_WEB_OPT_>(
+          *src->get(), *mean->get(), *variance->get(),
+          *scale->get(), *shift->get(), dst, eps);
 
       outs.push_back(mdarray(dst));
     } else {
       tensor dst, mean, variance;
-      batch_normalization_forward_training::compute<scratch_allocator>(
-		     *src->get(), *scale->get(), *shift->get(), dst, mean, variance, 0, eps);
+      batch_normalization_forward_training::compute<
+          scratch_allocator, _IDEEP4PY_WEB_OPT_>(
+          *src->get(), *scale->get(), *shift->get(), dst, mean, variance, 0, eps);
 
       tensor inv;
       inv.init<scratch_allocator, batch_normalization_forward_training>(
@@ -95,7 +97,8 @@ public:
     }
 
     tensor gx, gW;
-    batch_normalization_backward::compute<scratch_allocator>(*src->get(),
+    batch_normalization_backward::compute<
+        scratch_allocator, _IDEEP4PY_WEB_OPT_>(*src->get(),
         *mean->get(), *variance->get(), *grady->get(), _scale, gx, gW, eps);
 
     outs.push_back(mdarray(gx));
@@ -125,14 +128,16 @@ public:
 
     if (mean) {
       tensor dst_;
-      batch_normalization_forward_inference::compute<scratch_allocator>(
+      batch_normalization_forward_inference::compute<
+          scratch_allocator, _IDEEP4PY_WEB_OPT_>(
 		  *src->get(), *mean->get(), *variance->get(), scale, shift, dst_, eps);
 
       outs.push_back(mdarray(dst_));
     } else {
       tensor dst, mean, variance;
-      batch_normalization_forward_training::compute<scratch_allocator>(
-		     *src->get(), scale, shift, dst, mean, variance, 0, eps);
+      batch_normalization_forward_training::compute<
+          scratch_allocator, _IDEEP4PY_WEB_OPT_>(
+		  *src->get(), scale, shift, dst, mean, variance, 0, eps);
 
       tensor inv_;
       inv_.init<scratch_allocator, batch_normalization_forward_training>(

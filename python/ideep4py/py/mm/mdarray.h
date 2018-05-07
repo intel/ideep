@@ -213,7 +213,7 @@ public:
             return reinterpret_cast<void *>(
                 new scratch_allocator::byte<tensor>[dims2size(dims, dt)]);
           } ()),
-      buff_(std::shared_ptr<char>((char *)get_data_handle(), [](char *p) {
+      buff_(std::shared_ptr<char>((char *)get_data_handle<false>(), [](char *p) {
             auto _p = reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
             delete [] _p;
           })),
@@ -253,13 +253,13 @@ public:
             #endif
               buf = reinterpret_cast<void *>(
                   new scratch_allocator::byte<tensor>[view->len]);
-              fast_memcpy((char *)buf, (char *)view->buf, view->len);
+              ideep::utils::fast_memcpy((char *)buf, (char *)view->buf, view->len);
             }
             return buf;
           } ()),
       buff_([&] () {
-            if (get_data_handle() != view->buf) {
-              return std::shared_ptr<char>((char *)get_data_handle(),
+            if (get_data_handle<false>() != view->buf) {
+              return std::shared_ptr<char>((char *)get_data_handle<false>(),
                   [](char *p) {
                     auto _p =
                         reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
@@ -280,19 +280,18 @@ public:
         tensor wgt_in = tensor(desc_in, buf);
         reorder::compute(*this, wgt_in);
 
-        init(wgt_in.get_descriptor(), wgt_in.get_data_handle());
+        init(wgt_in.get_descriptor(), wgt_in.get_data_handle<false>());
 
         buff_.reset();
         buff_ = std::shared_ptr<char>((char *)buf, [](char *p) {
               auto _p = reinterpret_cast<scratch_allocator::byte<tensor> *>(p);
               delete [] _p;
             });
-
-        view_.reset();
       }
     }
 
-    if (view_.get() && get_data_handle() != view->buf) {
+    if (view_.get() && get_data_handle<false>() != view->buf) {
+      set_tensor_buffer(buff_);
       view_.reset();
     }
   }
@@ -396,7 +395,7 @@ public:
   inline tensor &get_tensor() { return *this; }
 
   inline void reset_tensor(tensor &dst) {
-      init(dst.get_descriptor(), dst.get_data_handle()); }
+      init(dst.get_descriptor(), dst.get_data_handle<false>()); }
 
   inline std::shared_ptr<char> get_shared_buff() const { return buff_; }
   inline void set_shared_buff(std::shared_ptr<char>& buff) { buff_ = buff; }
@@ -536,6 +535,8 @@ public:
 public:
   reorderer(const mdarray &src) :
       non_trivial_(!src.is_public_format()) {
+    // Sync data explicitly before sharing data with numpy array
+    (void)src.get_data_handle<true>();
     if (non_trivial()) {
       data_ = std::shared_ptr<char>(reinterpret_cast<char *>(
           new scratch_allocator::byte<tensor>[src.get_size()]),

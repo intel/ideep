@@ -208,7 +208,8 @@ using scratch_allocator = ideep::utils::scratch_allocator;
 using descriptor = ideep::tensor::descriptor;
 
 void mdarray::axpby(tensor &dst, float a, const tensor &x, float b, const tensor &y) {
-  sum::compute<scratch_allocator>({(float)a, (float)b}, {x, y}, dst);
+  sum::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
+      {(float)a, (float)b}, {x, y}, dst);
   return;
 }
 

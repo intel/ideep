@@ -235,7 +235,9 @@ public:
           aformat = expected;
         }
       } else {
-        if (public_format_ != expected)
+        if (format_compatible_with(expected))
+          aformat = expected;
+        else
           throw error(mkldnn_runtime_error, "format_to errors");
       }
 
@@ -254,21 +256,18 @@ public:
       return descriptor(result, expected);
     }
 
-    descriptor as_weights_format(format expected) const {
-      switch(expected) {
+    descriptor as_weights_format() const {
+      switch(get_internal_format()) {
       case format::nc:
-      case format::io:
         return format_to(format::oi);
       case format::nchw:
-      case format::oihw:
         return format_to(format::oihw);
       case format::nhwc:
-      case format::ihwo:
         return format_to(format::ihwo);
       case format::chwn:
         return format_to(format::hwio);
       default:
-        return format_to(format::format_undef);
+        return *this;
       }
     }
 
@@ -390,7 +389,7 @@ public:
       }
     }
 
-    inline bool format_compatible_with(format aformat) {
+    inline bool format_compatible_with(format aformat) const {
       if ( public_format_ == format::format_undef
           && public_format_ == aformat ) {
           return true;
@@ -788,6 +787,10 @@ public:
            convert_to_c(descriptor::public_compatible_format(desc));
   }
 
+  inline bool is_weights() const {
+    return get_internal_format() > format::oi;
+  }
+
   inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }
 private:
   // mirror descriptor's same information
@@ -860,6 +863,13 @@ public:
 
   bool has_extra() const {
     return twin_ != nullptr;
+  }
+
+  tensor as_weights() const {
+    tensor ret = *this;
+    if (!is_weights())
+      ret.set_descriptor(get_descriptor().as_weights_format());
+    return ret;
   }
 protected:
   std::shared_ptr<tensor> twin_;

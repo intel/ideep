@@ -35,7 +35,11 @@ INST_TEST_CASE(SimpleSmall_NCHW,
     PARAMS(nhwc, hwigo, FMT_BIAS, nhwc,
         2, 2, 4, 4, 4, 6, 4, 4, 3, 3, 0, 0, 1, 1),
     PARAMS(nhwc, hwigo, FMT_BIAS, nhwc,
-        2, 2, 4, 4, 4, 6, 4, 4, 3, 3, 1, 1, 1, 1)
+        2, 2, 4, 4, 4, 6, 4, 4, 3, 3, 1, 1, 1, 1),
+    PARAMS(nchw, nchw, FMT_BIAS, nchw,
+        2, 1, 4, 4, 4, 6, 4, 4, 3, 3, 1, 1, 1, 1),
+    PARAMS(nchw, nchw, FMT_BIAS, nchw,
+        2, 1, 4, 4, 4, 6, 2, 2, 3, 3, 0, 0, 1, 1)
 );
 
 INST_TEST_CASE(SimpleSmall_Blocked,

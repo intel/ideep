@@ -1044,16 +1044,19 @@ struct convolution_forward: public computation,
     // XXX: Performance evaluation
     // TODO: Custom allocator support
     auto src_in = src;
-    auto weights_in = weights;
+
+    // solve the problem that slow reorder from nchw
+    auto _weights = weights.as_weights();
+    auto weights_in = _weights;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, convolution_forward>(
           comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, convolution_forward>(
           comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
+      reorder::compute(_weights, weights_in);
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
@@ -1074,7 +1077,10 @@ struct convolution_forward: public computation,
 
     // Performance evaluation
     auto src_in = src;
-    auto weights_in = weights;
+
+    // solve the problem that slow reorder from nchw
+    auto _weights = weights.as_weights();
+    auto weights_in = _weights;
 
     // TODO: cut duplicated function call
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
@@ -1082,10 +1088,10 @@ struct convolution_forward: public computation,
           comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, convolution_forward>(
           comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
+      reorder::compute(_weights.as_weights(), weights_in);
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
@@ -1334,16 +1340,20 @@ public:
     // XXX: Performance evaluation
     // TODO: Custom allocator support
     auto grady_in = grady;
-    auto weights_in = weights;
+
+    // solve the problem that slow reorder from nchw
+    auto _weights = weights.as_weights();
+    auto weights_in = _weights;
+
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
       grady_in.init<alloc, convolution_backward_data>(
           comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, convolution_backward_data>(
           comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
+      reorder::compute(_weights.as_weights(), weights_in);
     }
 
     gradx.reinit<alloc, convolution_backward_data>(

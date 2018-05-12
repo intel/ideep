@@ -105,8 +105,16 @@ INSTANTIATE_TEST_CASE_P(TestInnerProductForwardNoBias, inner_product_test_float,
     inprod_test_params_float{ prop_kind::forward, engine::kind::cpu,
     mkldnn::memory::format::nc, mkldnn::memory::format::oi,
     mkldnn::memory::format::format_undef, mkldnn::memory::format::nc,
-    { 2, 2, 4, 1, 1 } })
-);
+    { 2, 2, 4, 1, 1 } },
+    inprod_test_params_float{ prop_kind::forward, engine::kind::cpu,
+    mkldnn::memory::format::nc, mkldnn::memory::format::nc,
+    mkldnn::memory::format::format_undef, mkldnn::memory::format::nc,
+    { 2, 32, 1152, 1, 1 } },
+    inprod_test_params_float{ prop_kind::forward, engine::kind::cpu,
+    mkldnn::memory::format::nc, mkldnn::memory::format::nc,
+    mkldnn::memory::format::format_undef, mkldnn::memory::format::nc,
+    { 2, 2, 4, 1, 1 } }
+));
 
 // INSTANTIATE_TEST_CASE_P(TestInnerProductForwardEF, inner_product_test_float,
 //   ::testing::Values(
@@ -149,5 +157,13 @@ INSTANTIATE_TEST_CASE_P(TestInnerProductForward, inner_product_test_float,
     inprod_test_params_float{ prop_kind::forward, engine::kind::cpu,
     mkldnn::memory::format::nc, mkldnn::memory::format::oi,
     mkldnn::memory::format::x, mkldnn::memory::format::nc,
-    { 2, 2, 4, 1, 1 } })
-);
+    { 2, 2, 4, 1, 1 } },
+    inprod_test_params_float{ prop_kind::forward, engine::kind::cpu,
+    mkldnn::memory::format::nc, mkldnn::memory::format::nc,
+    mkldnn::memory::format::x, mkldnn::memory::format::nc,
+    { 2, 32, 1152, 1, 1 } },
+    inprod_test_params_float{ prop_kind::forward, engine::kind::cpu,
+    mkldnn::memory::format::nc, mkldnn::memory::format::nc,
+    mkldnn::memory::format::x, mkldnn::memory::format::nc,
+    { 2, 2, 4, 1, 1 } }
+));

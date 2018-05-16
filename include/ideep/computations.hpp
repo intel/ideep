@@ -2977,7 +2977,7 @@ struct inner_product_forward: public computation,
         src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
 
       if (src.is_public_format())
-        src_in.init({new_dims, src.get_data_type(), format::nc}, src.get_data_handle());
+        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
       else {
         src_in.init<alloc, inner_product_forward>(
             {src.get_dims(), src.get_data_type(), format::nchw});
@@ -3027,7 +3027,7 @@ struct inner_product_forward: public computation,
         src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
 
       if (src.is_public_format())
-        src_in.init({new_dims, src.get_data_type(), format::nc}, src.get_data_handle());
+        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
       else {
         src_in.init<alloc, inner_product_forward>(
             {src.get_dims(), src.get_data_type(), format::nchw});

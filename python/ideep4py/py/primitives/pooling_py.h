@@ -69,7 +69,7 @@ public:
                           pooling_param_t *pp) {
     tensor dst;
     if (ws)
-      dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
+      dst.init_extra(*ws->get());
 
     tensor gx;
     pooling_backward::compute<scratch_allocator>(
@@ -96,7 +96,7 @@ public:
               engine::default_format(pp->out_dims.size())}, nullptr);
 
     if (ws)
-      dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
+      dst.init_extra(*ws->get());
 
     tensor gx;
     pooling_backward::compute<scratch_allocator>(

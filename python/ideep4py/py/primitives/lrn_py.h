@@ -56,7 +56,7 @@ public:
   static mdarray Backward(mdarray *src, mdarray *grady, mdarray *ws, lrn_param_t *pp) {
     tensor dst;
     if (ws)
-      dst.init_extra(ws->get()->get_descriptor(), ws->get()->get_data_handle());
+      dst.init_extra(*ws->get());
 
     tensor gradx;
     lrn_backward::compute<scratch_allocator>(*src->get(), *grady->get(),

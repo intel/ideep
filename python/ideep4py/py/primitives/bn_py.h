@@ -91,8 +91,7 @@ public:
     if (_scale.ndims() == 2) {
       // scale is weights (scale + shift).
       // cut half to scale.
-      _scale.init({{_scale.get_nelems() / 2}, _scale.get_data_type(), format::x},
-                  _scale.get_data_handle());
+      _scale.reinit({{_scale.get_nelems() / 2}, _scale.get_data_type(), format::x});
     }
 
     tensor gx, gW;

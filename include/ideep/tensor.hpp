@@ -814,6 +814,11 @@ public:
     twin_.reset(new tensor(workspace, handle));
   }
 
+  void init_extra(const tensor &ws) {
+    twin_.reset();
+    twin_ = std::make_shared<tensor>(ws);
+  }
+
   // for gcc4.8
   tensor() : param() {}
 

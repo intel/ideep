@@ -392,6 +392,7 @@ public:
       init(dst.get_descriptor(), dst.get_data_handle()); }
 
   inline std::shared_ptr<char> get_shared_buff() const { return buff_; }
+  inline void set_shared_buff(std::shared_ptr<char>& buff) { buff_ = buff; }
 
 private:
   static inline size_t dims2size(dims_t &dims, data_type_t dt) {

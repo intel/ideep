@@ -583,13 +583,15 @@ public:
     if (!get_descriptor().is_shape_compatible(new_dims)) {
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
     } else if (new_dims != get_dims()) {
-      // XXX: format is an issue here, only default format considered
-      // Lock buffer by auto _buff temporarily
-      std::shared_ptr<char> _buff = buffer_;
-      descriptor new_desc(new_dims, get_data_type());
-      void *handle = get_data_handle();
-      init(new_desc, handle);
-      buffer_ = _buff;
+      if (!is_public_format()) {
+        param p;
+        p.init<utils::scratch_allocator>({get_dims(), get_data_type()});
+        reorder_to(p);
+        set_data_handle(p.get_data_handle());
+        buffer_ = p.get_tensor_buffer();
+      }
+
+      set_descriptor({new_dims, get_data_type()});
     }
 
     return *this;
@@ -792,6 +794,7 @@ public:
   }
 
   inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }
+  inline void set_tensor_buffer(std::shared_ptr<char>& buffer) {buffer_ = buffer;}
 private:
   // mirror descriptor's same information
   format public_format_;

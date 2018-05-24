@@ -917,6 +917,23 @@ PyObject *mdarray::reshape(py_handle *self, std::vector<int> dims)
     // Share memory between src and dst array
     auto o = new mdarray(*this);
     o->_reshape(dims);
+
+    if (!is_public_format()) {
+      buff_ = o->get_tensor_buffer();
+      o->set_shared_buff(buff_);
+
+      // update src mdarray
+      set_shared_buff(buff_);
+      set_descriptor({get_dims(), get_data_type()});
+      set_data_handle(o->get_data_handle());
+      set_tensor_buffer(buff_);
+
+      // mdarray becomes entity, free view
+      if (view_.get()) {
+        view_.reset();
+        o->view_.reset();
+      }
+    }
     PyObject *resultobj = SWIG_Python_NewPointerObj(nullptr,
         SWIG_as_voidptr(new py_handle(o)), SwigTy_mdarray, SWIG_POINTER_OWN | 0);
     return resultobj;

@@ -25,6 +25,7 @@
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include "mdarray.h"
+#include <immintrin.h>
 #include <mkl_vml_functions.h>
 #include "ideep_pin_singletons.hpp"
 // #include "dlcp_py.h"
@@ -771,6 +772,8 @@ int mdarray::getbuffer(PyObject *self, Py_buffer *view, int flags) {
   // PyBuffer_Release helps to decrease its reference
   view->obj = rbobj;
 
+  // avoiding AVX-SSE Transition Penalties
+  _mm256_zeroupper();
   return 0;
 }
 

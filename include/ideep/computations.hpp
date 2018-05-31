@@ -1195,37 +1195,53 @@ struct convolution_forward: public computation,
 
   static tensor::descriptor expected_weights_descriptor(
       const tensor::dims weights_dims,
-      tensor::data_type dtype = tensor::data_type::f32) {
-    // Construct a dummy case
-    auto it = weights_dims.end();
-    auto o = *(it - 4), i = *(it - 3), h = *(it - 2), w = *(it - 1);
-    auto ndims = weights_dims.size();
-    auto g = ndims == 5 ? *(it - 5) : 1;
-    tensor::dims x_dims = { 1, i * g, h, w};
-    tensor::dims y_dims = { 1, o * g, 1, 1};
-    tensor::descriptor x_desc(x_dims, dtype, format::nchw);
-    tensor::descriptor y_desc(y_dims, dtype, format::nchw);
-    tensor::descriptor weights_desc(weights_dims, dtype,
-        ndims == 5 ? format::goihw : format::oihw);
+      const tensor::data_type dtype = tensor::data_type::f32,
+      const tensor::dims strides = {1, 1},
+      const tensor::dims padding_l = {0, 0},
+      const tensor::dims padding_r = {0, 0},
+      const tensor::dims dilates = {0, 0},
+      const int group = 1) {
+    auto dims_in = weights_dims;
+    auto ndims = dims_in.size();
+    auto grouped = ndims == 5 ? 1 : 0;
+    if (!grouped && (group > 1)) {
+      dims_in.insert(dims_in.begin(), group);
+      dims_in[1] = dims_in[1] / group;
+      ndims = dims_in.size();
+      grouped = 1;
+    }
+    auto g = grouped ? dims_in[0] : 1;
 
-    //  Because of:
-    //        && implication(jcp.kw > 7, (jcp.t_pad == 0 && jcp.l_pad == 0)
-    //             || (jcp.stride_w == 1 && jcp.stride_h == 1))
-    //  We guess conservatively
-
-    if ( w > 7 ) {
-      return weights_desc;
+    auto dilates_in = dilates;
+    if (dilates.empty() ||
+        IDEEP_STD_EQUAL(dilates, 1) ||
+        IDEEP_STD_EQUAL(dilates, 0)) {
+      dilates_in = {0, 0};
     }
 
-    tensor::dims strides = {1, 1};
-    tensor::dims dilates = {0, 0};
-    tensor::dims padding_l = {0, 0};
-    tensor::dims padding_r = {0, 0};
+    // Construct a dummy case
+    auto ic = g * dims_in[1 + grouped];
+    auto oc = g * dims_in[0 + grouped];
+    auto kh = dims_in[ndims - 2];
+    auto kw = dims_in[ndims - 1];
+    auto h = 2 * kh;
+    auto w = 4 * kw;
+    auto oh =
+      (h - ((kh - 1) * (dilates_in[0] + 1) + 1)
+       + (padding_l[0] + padding_r[0])) / strides[0] + 1;
+    auto ow =
+      (w - ((kw - 1) * (dilates_in[1] + 1) + 1)
+       + (padding_l[1] + padding_r[1])) / strides[1] + 1;
+
+    tensor::dims x_dims = { 1, ic, h, w};
+    tensor::dims y_dims = { 1, oc, oh, ow};
+    tensor::descriptor x_desc(x_dims, dtype, format::nchw);
+    tensor::descriptor y_desc(y_dims, dtype, format::nchw);
+    tensor::descriptor weights_desc(dims_in, dtype,
+        ndims == 5 ? format::goihw : format::oihw);
 
     convolution_forward comp(x_desc, weights_desc, y_desc,
-        std::move(strides), std::move(dilates), std::move(padding_l),
-        std::move(padding_r));
-
+        strides, dilates_in, padding_l, padding_r);
     return comp.expected_weights_descriptor();
   }
 };

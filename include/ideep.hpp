@@ -40,10 +40,14 @@
 #include <immintrin.h>
 
 #include "ideep/abstract_types.hpp"
-#include "ideep/fast_math.hpp"
 #include "ideep/tensor.hpp"
 #include "ideep/computations.hpp"
 #include "ideep/allocators.hpp"
+
+#if __GNUC__ > 4
+#include "ideep/fast_math.hpp"
+#endif
+
 #endif
 
 #endif

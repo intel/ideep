@@ -44,12 +44,16 @@
 #include <chrono>
 
 #include "abstract_types.hpp"
-#include "fast_math.hpp"
 #include "tensor.hpp"
 #include "lru_cache.hpp"
 #include "scope_guard.hpp"
 #include "instruments.hpp"
 #include <mkl_vsl.h>
+
+#if __GNUC__ > 4
+#include "fast_math.hpp"
+#endif
+
 #endif
 
 namespace ideep {
@@ -3410,6 +3414,7 @@ public:
   }
 };
 
+#if __GNUC__ > 4
 struct eltwise_binary {
 public:
   enum eltwise_binary_op {
@@ -3451,6 +3456,7 @@ public:
     }
   }
 };
+#endif
 
 struct sum_array {
 public:

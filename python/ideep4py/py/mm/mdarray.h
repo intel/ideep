@@ -245,7 +245,12 @@ public:
             return ndims2format(view->ndim, input_type);
           } ()}, [&]() {
             void *buf = view->buf;
+            #if 0
             if ((uint64_t)buf & (_TENSOR_MEM_ALIGNMENT_ - 1)) {
+            #else
+            #define FORCE_CPY true
+            if (FORCE_CPY) {
+            #endif
               buf = reinterpret_cast<void *>(
                   new scratch_allocator::byte<tensor>[view->len]);
               fast_memcpy((char *)buf, (char *)view->buf, view->len);

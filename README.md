@@ -1,6 +1,6 @@
-# iDeep: Intel Deep Learning Extension Package
+# MKL-DNN bridge for Chainer
 
-Intel Deep Learning Extension Package is a module for collection of accelerated deep learning operations like convolution, deconvolution, relu etc. It uses Intel MKL-DNN as acceleration engine.
+A Chainer module providing mumpy like API and DNN acceleration using MKL-DNN.
 
 
 ## Requirements

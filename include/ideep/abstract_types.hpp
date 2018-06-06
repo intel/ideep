@@ -18,6 +18,9 @@ using error = mkldnn::error;
 #define IDEEP_STD_EQUAL(v, i) \
   std::all_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k == i;})
 
+// For 2D convolution with grouped weights, the ndims must be 5 (goihw)
+#define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)
+
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance
 template <typename T, typename traits = mkldnn::handle_traits<T>>

@@ -156,7 +156,7 @@ public:
     /// @param adesc Pointer to a primitive_desct_t C struct
     descriptor(mkldnn_primitive_desc_t adesc) : descriptor(adesc,
       public_format(
-          static_cast<format>(
+          convert_to_public_format(
             mkldnn_primitive_desc_query_memory_d(adesc)->format))) {
     }
 
@@ -312,12 +312,9 @@ public:
       return static_cast<format>(this->get_mkldnn_memory_desc_t()->format);
     }
 
-    // oi, nc, oihw, nchw
-    // TODO: other public compatible format, eg. iohw, nhwc.
-    static inline format public_compatible_format(const descriptor &desc)
-    {
+    static inline format convert_to_public_format(const mkldnn_memory_format_t mformat) {
       format ret;
-      switch(desc.get_mkldnn_memory_desc_t()->format) {
+      switch(mformat) {
       case mkldnn_x:
         ret = format::x;
         break;
@@ -356,11 +353,36 @@ public:
       case mkldnn_OhIw16o4i:
         ret = format::oihw;
         break;
+      case mkldnn_goihw:
+      case mkldnn_hwigo:
+      case mkldnn_gOIhw8i8o:
+      case mkldnn_gOIhw16i16o:
+      case mkldnn_gOIhw4i16o4i:
+      case mkldnn_gOIhw8i16o2i:
+      case mkldnn_gOIhw8o16i2o:
+      case mkldnn_gOIhw8o8i:
+      case mkldnn_gOIhw16o16i:
+      case mkldnn_gIOhw16o16i:
+      case mkldnn_gOihw8o:
+      case mkldnn_gOihw16o:
+      case mkldnn_gOhwi8o:
+      case mkldnn_gOhwi16o:
+      case mkldnn_Goihw8g:
+      case mkldnn_Goihw16g:
+      case mkldnn_gOhIw16o4i:
+        ret = format::goihw;
+        break;
       default:
         ret = format::format_undef;
         break;
       }
       return ret;
+    }
+
+    // oi, nc, oihw, nchw
+    // TODO: other public compatible format, eg. iohw, nhwc.
+    static inline format public_compatible_format(const descriptor &desc) {
+      return convert_to_public_format(desc.get_mkldnn_memory_desc_t()->format);
     }
 
   private:
@@ -634,6 +656,7 @@ public:
     auto buf = std::move(buffer_);
     init(new_desc, get_data_handle());
     buffer_ = std::move(buf);
+    public_format_ = new_desc.public_format_;
   }
 
   view create_view(dims view_dims, dims offsets) const {
@@ -791,6 +814,42 @@ public:
 
   inline bool is_weights() const {
     return get_internal_format() > format::oi;
+  }
+
+  inline bool is_grouped() const {
+    return public_format_ == format::goihw;
+  }
+
+  static inline void group_dims(dims& adims, const int group) {
+    adims.insert(adims.begin(), group);
+    adims[1] /= group;
+  }
+
+  static inline int ungroup_dims(dims& adims) {
+    int group = adims[0];
+    adims[1] *= group;
+    adims.erase(adims.begin());
+    return group;
+  }
+
+  void make_group(int group) {
+    if (group > 1 && !is_grouped()) {
+      IDEEP_ENFORCE(is_public_format(),
+          "can not make grouped with internal format");
+      auto adims = get_dims();
+      group_dims(adims, group);
+      set_descriptor({adims, get_data_type(), format::goihw});
+    }
+  }
+
+  void make_ungroup() {
+    if (is_grouped()) {
+      IDEEP_ENFORCE(is_public_format(),
+          "can not make ungrouped with internal format");
+      auto adims = get_dims();
+      ungroup_dims(adims);
+      set_descriptor({adims, get_data_type(), format::oihw});
+    }
   }
 
   inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }

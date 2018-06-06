@@ -647,7 +647,7 @@ public:
 
   template <typename alloc = utils::allocator>
   static void compute(const tensor& input, tensor& output) {
-    if (input.is_empty())
+    if (input.is_empty() || input == output)
       return;
 
     output.reinit<alloc, direct_copy>(input.get_descriptor());
@@ -1143,14 +1143,7 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
 
     auto weights_in = weights;
-    if (group > 1) {
-      auto gw_dims = weights.get_dims();
-      gw_dims.insert(gw_dims.begin(), group);
-      gw_dims[1] = gw_dims[1] / group;
-      weights_in.init(
-          tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-          weights.get_data_handle());
-    }
+    weights_in.make_group(group);
 
     if (dilates.empty() ||
         IDEEP_STD_EQUAL(dilates, 1) ||
@@ -1176,14 +1169,7 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
 
     auto weights_in = weights;
-    if (group > 1) {
-      auto gw_dims = weights.get_dims();
-      gw_dims.insert(gw_dims.begin(), group);
-      gw_dims[1] = gw_dims[1] / group;
-      weights_in.init(
-          tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-          weights.get_data_handle());
-    }
+    weights_in.make_group(group);
 
     if (dilates.empty() ||
         IDEEP_STD_EQUAL(dilates, 1) ||
@@ -1204,16 +1190,13 @@ struct convolution_forward: public computation,
       const tensor::dims padding_l = {0, 0},
       const tensor::dims padding_r = {0, 0},
       const tensor::dims dilates = {0, 0},
-      const int group = 1) {
+      int group = 1) {
     auto dims_in = weights_dims;
-    auto ndims = dims_in.size();
-    auto grouped = ndims == 5 ? 1 : 0;
-    if (!grouped && (group > 1)) {
-      dims_in.insert(dims_in.begin(), group);
-      dims_in[1] = dims_in[1] / group;
-      ndims = dims_in.size();
-      grouped = 1;
+    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
+      tensor::group_dims(dims_in, group);
     }
+    auto ndims = dims_in.size();
+    auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
     auto g = grouped ? dims_in[0] : 1;
 
     auto dilates_in = dilates;
@@ -1242,7 +1225,7 @@ struct convolution_forward: public computation,
     tensor::descriptor x_desc(x_dims, dtype, format::nchw);
     tensor::descriptor y_desc(y_dims, dtype, format::nchw);
     tensor::descriptor weights_desc(dims_in, dtype,
-        ndims == 5 ? format::goihw : format::oihw);
+        grouped ? format::goihw : format::oihw);
 
     convolution_forward comp(x_desc, weights_desc, y_desc,
         strides, dilates_in, padding_l, padding_r);
@@ -1401,14 +1384,7 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
 
     auto weights_in = weights;
-    if (group > 1) {
-      auto gw_dims = weights.get_dims();
-      gw_dims.insert(gw_dims.begin(), group);
-      gw_dims[1] = gw_dims[1] / group;
-      weights_in.init(
-          tensor::descriptor {std::move(gw_dims), weights.get_data_type()},
-          weights.get_data_handle());
-    }
+    weights_in.make_group(group);
 
     if (dilates.empty() ||
         IDEEP_STD_EQUAL(dilates, 1) ||
@@ -1691,9 +1667,8 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
 
     auto gw_dims_in = gradw_dims;
-    if (group > 1) {
-      gw_dims_in.insert(gw_dims_in.begin(), group);
-      gw_dims_in[1] /= group;
+    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
+      tensor::group_dims(gw_dims_in, group);
     }
 
     if (dilates.empty() ||
@@ -1706,11 +1681,11 @@ public:
           dilates, padding_l, padding_r, aalgorithm, apadding_kind);
     }
 
-    if (group > 1) {
+    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
       IDEEP_ENFORCE(group == gradw.get_dim(0),
           "invalid dim 0 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims[0] == group * gradw.get_dim(1),
-          "invalid dim 0 in grouped gradw");
+          "invalid dim 1 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1,
           "invalid ndim in grouped gradw");
       gradw.reshape(gradw_dims);
@@ -1726,9 +1701,8 @@ public:
       const padding_kind apadding_kind = padding_kind::zero) {
 
     auto gw_dims_in = gradw_dims;
-    if (group > 1) {
-      gw_dims_in.insert(gw_dims_in.begin(), group);
-      gw_dims_in[1] /= group;
+    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
+      tensor::group_dims(gw_dims_in, group);
     }
 
     if (dilates.empty() ||
@@ -1741,11 +1715,11 @@ public:
           strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
     }
 
-    if (group > 1) {
+    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
       IDEEP_ENFORCE(group == gradw.get_dim(0),
           "invalid dim 0 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims[0] == group * gradw.get_dim(1),
-          "invalid dim 0 in grouped gradw");
+          "invalid dim 1 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1,
           "invalid ndim in grouped gradw");
       gradw.reshape(gradw_dims);
@@ -2986,41 +2960,37 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& weights,
       const tensor& bias, tensor& dst) {
-    tensor src_in = src;
-
-    if (src.ndims() == 4 && weights.ndims() == 2) {
-      //
-      // tricky procedure, we change src back to public format
-      // then we using another tensor with 2 dimension to describe the buffer
-      //
-      tensor::dims new_dims { src.get_dim(0),
-        src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
-
-      if (src.is_public_format())
-        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
-      else {
-        src_in.init<alloc, inner_product_forward>(
-            {src.get_dims(), src.get_data_type(), format::nchw});
-        reorder::compute(src, src_in);
-        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
+    auto src_in = src;
+    auto weights_in = weights;
+    if (src_in.ndims() != weights_in.ndims()) {
+      auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
+      if (ndims != src_in.ndims()) {
+        auto new_dims = weights_in.get_dims();
+        new_dims[0] = src_in.get_dim(0);
+        src_in.reshape(new_dims);
+      } else if (ndims != weights_in.ndims()) {
+        auto new_dims = src_in.get_dims();
+        new_dims[0] = weights_in.get_dim(0);
+        weights_in.reshape(new_dims);
       }
     }
+    IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
+        "Invalid dims in src or weights");
 
-    tensor::dims dst_dims = {src_in.get_dim(0), weights.get_dim(0)};
+    tensor::dims dst_dims = {src_in.get_dim(0), weights_in.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
 
     auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
-        weights.get_dims(), bias.get_dims(), dst_dims);
+        weights_in.get_dims(), bias.get_dims(), dst_dims);
 
     auto comp = fetch_or_create_m(key, src_in.get_descriptor(),
-        weights.get_descriptor(), bias.get_descriptor(), dst_desc);
+        weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
 
-    auto weights_in = weights;
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, inner_product_forward>(
           comp.expected_weights_descriptor());
       reorder::compute(weights, weights_in);
@@ -3034,40 +3004,37 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator>
   static void compute(
       const tensor& src, const tensor& weights, tensor& dst) {
-    tensor::dims dst_dims = {src.get_dim(0), weights.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
     auto src_in = src;
-
-    if (src.ndims() == 4 && weights.ndims() == 2) {
-      //
-      // tricky procedure, we change src back to public format
-      // then we using another tensor with 2 dimension to describe the buffer
-      //
-      tensor::dims new_dims { src.get_dim(0),
-        src.get_dim(1) * src.get_dim(2) * src.get_dim(3) };
-
-      if (src.is_public_format())
-        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
-      else {
-        src_in.init<alloc, inner_product_forward>(
-            {src.get_dims(), src.get_data_type(), format::nchw});
-        reorder::compute(src, src_in);
-        src_in.set_descriptor({new_dims, src.get_data_type(), format::nc});
+    auto weights_in = weights;
+    if (src_in.ndims() != weights_in.ndims()) {
+      auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
+      if (ndims != src_in.ndims()) {
+        auto new_dims = weights_in.get_dims();
+        new_dims[0] = src_in.get_dim(0);
+        src_in.reshape(new_dims);
+      } else if (ndims != weights_in.ndims()) {
+        auto new_dims = src_in.get_dims();
+        new_dims[0] = weights_in.get_dim(0);
+        weights_in.reshape(new_dims);
       }
     }
+    IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
+        "Invalid dims in src or weights");
+
+    tensor::dims dst_dims = {src.get_dim(0), weights_in.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
 
     auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
-        weights.get_dims(), dst_dims);
+        weights_in.get_dims(), dst_dims);
 
     auto comp = fetch_or_create_m(key, src_in.get_descriptor(),
-        weights.get_descriptor(), dst_desc);
+        weights_in.get_descriptor(), dst_desc);
 
-    auto weights_in = weights;
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, inner_product_forward>(
           comp.expected_weights_descriptor());
       reorder::compute(weights, weights_in);
@@ -3076,6 +3043,26 @@ struct inner_product_forward: public computation,
     dst.reinit<alloc, inner_product_forward>(
         comp.expected_dst_descriptor());
     comp.execute(src_in, weights_in, dst);
+  }
+
+  static tensor::descriptor expected_weights_descriptor(
+      const tensor::dims weights_dims,
+      const tensor::data_type dtype = tensor::data_type::f32) {
+    auto x_dims = weights_dims;
+    x_dims[0] = 1;
+    auto y_dims = {x_dims[0], weights_dims[0]};
+    auto ndims = weights_dims.size();
+
+    IDEEP_ENFORCE(x_dims.size() == weights_dims.size(),
+        "Invalid dims for data and weights");
+    tensor::descriptor x_desc(x_dims, dtype,
+        ndims == 2 ? format::nc : format::nchw);
+    tensor::descriptor y_desc(y_dims, dtype, format::nc);
+    tensor::descriptor weights_desc(weights_dims, dtype,
+        ndims == 2 ? format::oi : format::oihw);
+
+    inner_product_forward comp(x_desc, weights_desc, y_desc);
+    return comp.expected_weights_descriptor();
   }
 };
 
@@ -3132,22 +3119,30 @@ public:
   template<class alloc = utils::allocator>
   static void compute( const tensor& grady, const tensor& weights,
       tensor::dims gradx_dims, tensor& gradx) {
+    auto weights_in = weights;
+    if (gradx_dims.size() != weights_in.ndims()) {
+      auto new_dims = gradx_dims;
+      new_dims[0] = weights_in.get_dim(0);
+      weights_in.reshape(new_dims);
+    }
+    IDEEP_ENFORCE(gradx_dims.size() == weights_in.ndims(),
+        "Invalid dims in src or weights");
+
     tensor::descriptor gradx_desc(gradx_dims, grady.get_data_type());
 
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
-        weights.get_dims(), gradx_dims);
+        weights_in.get_dims(), gradx_dims);
 
     auto comp = fetch_or_create_m(key, gradx_desc,
-        weights.get_descriptor(), grady.get_descriptor());
+        weights_in.get_descriptor(), grady.get_descriptor());
 
     auto grady_in = grady;
-    auto weights_in = weights;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
       grady_in.init<alloc, inner_product_backward_data>(
           comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
-    if (weights.get_descriptor() != comp.expected_weights_descriptor()) {
+    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, inner_product_backward_data>(
           comp.expected_weights_descriptor());
       reorder::compute(weights, weights_in);

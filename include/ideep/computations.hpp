@@ -2072,7 +2072,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor &grady, const tensor &y, const tensor& x,
+  static void compute(const tensor& grady, tensor& y, const tensor& x,
       tensor& gradx, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
@@ -2091,6 +2091,14 @@ public:
     auto comp = fetch_or_create_m(key, x.get_descriptor(),
         grady_in.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
+
+    if (y.has_extra() && (y.get_extra()->get_descriptor() !=
+        comp.expected_workspace_descriptor())) {
+      tensor ws_in;
+      ws_in.init<alloc, pooling_backward>(comp.expected_workspace_descriptor());
+      reorder::compute(*y.get_extra(), ws_in);
+      y.init_extra(ws_in);
+    }
 
     gradx.reinit<alloc, pooling_backward>(comp.expected_gradx_descriptor());
     comp.execute(grady, y, gradx);

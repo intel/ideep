@@ -2003,12 +2003,13 @@ struct pooling_backward : public computation,
               mkldnn::memory::validate_dims(kernel);
               mkldnn::memory::validate_dims(padding_l);
               mkldnn::memory::validate_dims(padding_r);
-              auto gradx_data = gradx_desc.format_any();
+              auto gradx_data = gradx_desc.get_mkldnn_memory_desc_t();
+              auto grady_data = grady_desc.format_any();
               mkldnn_pooling_desc_t data;
               error::wrap_c_api(mkldnn_pooling_forward_desc_init(&data,
                     mkldnn::convert_to_c(prop_kind::forward),
                     convert_to_c(aalgorithm),
-                    &gradx_data, grady_desc.get_mkldnn_memory_desc_t(),
+                    gradx_data, &grady_data,
                     &strides[0], &kernel[0],
                     &padding_l[0], &padding_r[0],
                     mkldnn::convert_to_c(apadding_kind)),
@@ -2072,15 +2073,14 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& grady, tensor& y, const tensor& x,
+  static void compute(const tensor &grady, const tensor &y, const tensor& x,
       tensor& gradx, const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto grady_in = grady;
-    // y is a scalar sometimes
-    if (y.ndims() > 0 &&
-        grady.get_descriptor() != y.get_descriptor()) {
-      grady_in.init<alloc, pooling_backward>(y.get_descriptor());
+    if (grady.get_internal_format() != x.get_internal_format()) {
+      grady_in.init<alloc, pooling_backward>({grady.get_dims(),
+          grady.get_data_type(), x.get_internal_format()});
       reorder::compute(grady, grady_in);
     }
 
@@ -2092,16 +2092,8 @@ public:
         grady_in.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
 
-    if (y.has_extra() && (y.get_extra()->get_descriptor() !=
-        comp.expected_workspace_descriptor())) {
-      tensor ws_in;
-      ws_in.init<alloc, pooling_backward>(comp.expected_workspace_descriptor());
-      reorder::compute(*y.get_extra(), ws_in);
-      y.init_extra(ws_in);
-    }
-
     gradx.reinit<alloc, pooling_backward>(comp.expected_gradx_descriptor());
-    comp.execute(grady, y, gradx);
+    comp.execute(grady_in, y, gradx);
   }
 };
 

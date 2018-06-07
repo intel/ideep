@@ -2307,10 +2307,14 @@ public:
         inputs_desc.push_back(in.get_descriptor());
         });
 
-    sum comp(scales, inputs_desc);
-    if (output != inputs[0])
+    if (output != inputs[0]) {
+      sum comp(scales, inputs_desc);
       output.reinit<alloc, sum>(comp.expected_dst_descriptor());
-    comp.execute(inputs, output);
+      comp.execute(inputs, output);
+    } else {
+      sum comp(scales, inputs_desc, output.get_descriptor());
+      comp.execute(inputs, output);
+    }
   }
 };
 

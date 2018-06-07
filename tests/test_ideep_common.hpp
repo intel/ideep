@@ -982,6 +982,7 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
     ref_diff_gamma *= sqrt_variance;
 
     if (pk == prop_kind::backward) {
+      ASSERT_TRUE((diff_scale_data != nullptr) && (diff_shift_data != nullptr));
       auto diff_gamma = diff_scale_data[map_index(diff_scale_d, c)];
       data_t norm_max = std::max(fabs(diff_gamma), fabs(ref_diff_gamma));
       if (norm_max < 10e-3) norm_max = data_t(1);

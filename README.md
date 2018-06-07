@@ -1,6 +1,6 @@
 # MKL-DNN bridge for Chainer
 
-A Chainer module providing mumpy like API and DNN acceleration using MKL-DNN.
+A Chainer module providing numpy like API and DNN acceleration using MKL-DNN.
 
 
 ## Requirements

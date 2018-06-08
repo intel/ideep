@@ -958,6 +958,11 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
 
   const data_t eps = static_cast<data_t>(1.e-4 * bp.mb * bp.d * bp.h * bp.w);
 
+  if (pk == prop_kind::backward) {
+    ASSERT_TRUE(diff_scale_data != nullptr);
+    ASSERT_TRUE(diff_shift_data != nullptr);
+  }
+
 #pragma omp parallel for
   for (int c = 0; c < bp.c; c++) {
     data_t ref_diff_gamma = data_t(0);

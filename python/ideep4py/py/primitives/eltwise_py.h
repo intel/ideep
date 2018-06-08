@@ -35,28 +35,30 @@ class Relu
 public:
   using scratch_allocator = ideep::utils::scratch_allocator;
   using tensor = ideep::tensor;
+  using algorithm = ideep::algorithm;
+  using prop_kind = ideep::prop_kind;
   using eltwise_forward = ideep::eltwise_forward;
   using eltwise_backward = ideep::eltwise_backward;
 
-  static mdarray Forward(mdarray &src) {
+  static mdarray Forward(mdarray &src, float slope = 0.0) {
     tensor dst;
     eltwise_forward::compute<scratch_allocator>(
-                  *(src.get()), dst);
+                  *src.get(), dst, algorithm::eltwise_relu,
+                  prop_kind::forward, slope);
 
     auto out = mdarray(dst);
     return out;
   }
 
-  static mdarray Backward(mdarray &src, mdarray &grady) {
+  static mdarray Backward(mdarray &src, mdarray &grady, float slope = 0.0) {
     tensor gradx;
     eltwise_backward::compute<scratch_allocator>(
-        *(src.get()), *(grady.get()), gradx);
+        *src.get(), *grady.get(), gradx, algorithm::eltwise_relu, slope);
 
     auto out = mdarray(gradx);
     return out;
   }
 };
-
 
 class Tanh
 {

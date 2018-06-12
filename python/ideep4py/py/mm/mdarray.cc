@@ -282,6 +282,43 @@ PyObject *mdarray::inplace_axpby(float a, PyObject *self, float b, PyObject *o) 
   return self;
 }
 
+void mdarray::set(PyObject *o) {
+  // Resource manager, for GCC do not accept lambda
+  struct py_decref {
+    void operator () (PyObject *p) const {
+      Py_DECREF(p);
+    }
+  };
+
+  std::unique_ptr<PyObject, py_decref> op(nullptr);
+
+  // Create mdarray from buffer provider
+  if (reinterpret_cast<PyTypeObject *>(o->ob_type) == &PyArray_Type) {
+    o = py_mdarray_from(o);
+    op.reset(o);
+  }
+
+  void *oprd2;
+  int res = SWIG_ConvertPtr(o, &oprd2, nullptr, 0);
+
+  if (!SWIG_IsOK(res)) {
+    PyErr_SetString(PyExc_ValueError, "Wrong operand object in add wrapper");
+    return;
+  }
+
+  auto in = (reinterpret_cast<py_handle *>(oprd2))->get();
+  auto dims = get_dims();
+  auto in_dims = in->get_dims();
+  if (dims.size() != in_dims.size())
+    throw error(mkldnn_invalid_arguments, "mdarray set: Inconsistent ndims");
+  for (size_t d = 0; d < dims.size(); d++) {
+    if (dims[d] != in_dims[d])
+      throw error(mkldnn_invalid_arguments, "mdarray set: Inconsistent dims");
+  }
+  memcpy(get_data_handle(), in->get_data_handle(), get_size());
+  return;
+}
+
 PyObject *mdarray::m_Add(PyObject *self, PyObject *o) {
   // Array Broadcast
   if (!is_mdarray_supported(self, o)) {

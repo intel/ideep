@@ -100,6 +100,11 @@
   PyObject *flat() {
     return (*self)->flat();
   }
+
+  void set(PyObject *o){
+    (*self)->set(o);
+    return;
+  }
 }
 
 /* mdarray::reshape */

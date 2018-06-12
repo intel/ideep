@@ -160,7 +160,7 @@ packages = ['ideep4py']
 
 setup(
     name='ideep4py',
-    version='2.0.0',
+    version='2.0.0_b1',
     description='ideep4py is a wrapper for iDeep library.',
     author='Intel',
     author_email='',

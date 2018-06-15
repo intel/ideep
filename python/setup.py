@@ -62,6 +62,12 @@ def clean_ext():
 ###############################################################################
 # Custom build commands
 ###############################################################################
+class build(distutils.command.build.build):
+    def run(self):
+        prepare_ext()
+        distutils.command.build.build.run(self)
+
+
 class build_ext(setuptools.command.build_ext.build_ext):
     def run(self):
         prepare_ext()
@@ -84,6 +90,7 @@ class clean(distutils.command.clean.clean):
 
 
 cmdclass = {
+    'build': build,
     'build_ext': build_ext,
     'install': install,
     'clean': clean,

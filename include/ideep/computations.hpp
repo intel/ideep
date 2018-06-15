@@ -78,10 +78,12 @@ inline tensor::data_type tensor::descriptor::type_to_id<signed char>() {
   return tensor::data_type::s8;
 }
 
-/// Descriptor group, create relative descriptors all in one
+/// A group of primitive descriptors, pack related reorder descriptors
+/// with computational descriptor.
 class descriptor_group: public c_wrapper_complex<mkldnn_primitive_desc_t> {
   friend class primitive_group;
 public:
+  /// Post ops for fusion operations
   class post_ops : public c_wrapper<mkldnn_post_ops_t> {
   public:
     post_ops() : c_wrapper([]() {
@@ -90,7 +92,6 @@ public:
           "could not create post operation sequence");
       return result;
     }()) {}
-
 
     int num_ops() const {
       return mkldnn_post_ops_len(get());
@@ -195,6 +196,8 @@ public:
     }
   };
 
+  /// Attribute class for extra information into computations, including
+  /// post operations, rounding mode, etc.
   class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
   public:
     attr_t() : c_wrapper([]() {
@@ -273,6 +276,7 @@ public:
       return attr;
     }
 
+    // XXX: concept error
     static inline attr_t residual(float scale = 1.0,
         float alpha = 0.f, float beta = 0.f) {
       attr_t attr;
@@ -304,9 +308,14 @@ protected:
   }
 
 public:
+  /// Empty construction
   descriptor_group()
     : c_wrapper_complex() {}
 
+  /// Query interface
+  ///
+  /// @param q query kind
+  /// @param index query index
   tensor::descriptor expected_descriptor_of(mkldnn::query q
       , int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
@@ -319,55 +328,83 @@ public:
     return param::descriptor(cdesc);
   }
 
+  /// Query expected input descriptor
+  ///
+  /// @param index Input index
   tensor::descriptor expected_input_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::input_pd, index);
   }
 
+  /// Query expected output descriptor
+  ///
+  /// @param index Input index
   tensor::descriptor expected_output_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::output_pd, index);
   }
 
+  /// Query expected src descriptor
+  ///
   tensor::descriptor expected_src_descriptor() const {
     return expected_descriptor_of(mkldnn::src_pd);
   }
 
+  /// Query expected weights descriptor
+  ///
   tensor::descriptor expected_weights_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd);
   }
 
+  /// Query expected bias descriptor
+  ///
   tensor::descriptor expected_bias_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd, 1);
   }
 
+  /// Query expected dst descriptor
+  ///
   tensor::descriptor expected_dst_descriptor() const {
     return expected_descriptor_of(mkldnn::dst_pd, 0);
   }
 
+  /// Query expected workspace descriptor
+  ///
   tensor::descriptor expected_workspace_descriptor() const {
     return expected_descriptor_of(mkldnn::workspace_pd, 0);
   }
 
+  /// Query expected gradient X descriptor
+  ///
   tensor::descriptor expected_gradx_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_src_pd, 0);
   }
 
+  /// Query expected gradient Y descriptor
+  ///
   tensor::descriptor expected_grady_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_dst_pd, 0);
   }
 
+  /// Qeury expected weights gradient descriptor
+  ///
   tensor::descriptor expected_gradw_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 0);
   }
 
+  /// Qeury expected bias gradient descriptor
+  ///
   tensor::descriptor expected_gradb_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
+  /// Query number of inputs
+  ///
   int num_of_inputs() const {
       return mkldnn_primitive_desc_query_s32(get()
           , mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
   }
 
+  /// Query number of outputs
+  ///
   int num_of_outputs() const {
       return mkldnn_primitive_desc_query_s32(get()
           , mkldnn::convert_to_c(mkldnn::num_of_outputs_s32), 0);
@@ -390,8 +427,11 @@ protected:
   }
 };
 
+/// A group of primitives, pack related reorder with computation.
+/// It serves as a base class of computation
 class primitive_group: public c_wrapper_complex<mkldnn_primitive_t> {
 public:
+  /// Empty constructor
   primitive_group()
     : c_wrapper_complex() {}
 
@@ -404,6 +444,7 @@ public:
     return cdesc;
   }
 
+  /// Query interface
   tensor::descriptor expected_descriptor_of(mkldnn::query q,
       int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
@@ -430,6 +471,8 @@ protected:
     auxiliaries_[index].reset(result);
   }
 
+  /// Specific query interface, not valid for all computations.
+  ///
   tensor::descriptor expected_input_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::input_pd, index);
   }
@@ -688,6 +731,8 @@ public:
   }
 };
 
+/// Computation class, abstruct of computation
+///
 struct computation : public primitive_group {
   computation() = default;
 

@@ -882,9 +882,26 @@ private:
   std::vector<param> primitive_inputs_;
 };
 
+/// Convolution forward computation, this class represent a MKL-DNN
+/// convolution forward process, also manage old computation instances.
 struct convolution_forward: public computation,
   public utils::computation_cache<convolution_forward> {
+  /// Descriptor class for describing convolution forward process
+  ///
   struct descriptor : public descriptor_group {
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param bias_desc Bias tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &bias_desc,
@@ -922,6 +939,19 @@ struct convolution_forward: public computation,
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
     }
+
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &dst_desc,
@@ -957,6 +987,21 @@ struct convolution_forward: public computation,
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
     }
+
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param bias_desc Bias tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param dilates Dilates parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &bias_desc,
@@ -994,6 +1039,20 @@ struct convolution_forward: public computation,
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
     }
+
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param dilates Dilates parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &dst_desc,

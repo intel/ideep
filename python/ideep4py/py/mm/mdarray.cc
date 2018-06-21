@@ -306,16 +306,23 @@ void mdarray::set(PyObject *o) {
     return;
   }
 
-  auto in = (reinterpret_cast<py_handle *>(oprd2))->get();
+  auto in = *(reinterpret_cast<py_handle *>(oprd2))->get();
   auto dims = get_dims();
-  auto in_dims = in->get_dims();
+  auto in_dims = in.get_dims();
   if (dims.size() != in_dims.size())
     throw error(mkldnn_invalid_arguments, "mdarray set: Inconsistent ndims");
   for (size_t d = 0; d < dims.size(); d++) {
     if (dims[d] != in_dims[d])
       throw error(mkldnn_invalid_arguments, "mdarray set: Inconsistent dims");
   }
-  memcpy(get_data_handle(), in->get_data_handle(), get_size());
+
+  tensor in_ = in;
+  if (in.get_descriptor() != get_descriptor()) {
+    in_.init(get_descriptor());
+    reorder::compute(in, in_);
+  }
+
+  memcpy(get_data_handle(), in_.get_data_handle(), get_size());
   return;
 }
 

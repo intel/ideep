@@ -49,11 +49,8 @@
 #include "scope_guard.hpp"
 #include "instruments.hpp"
 #include <mkl_vsl.h>
-
-#if __GNUC__ > 4
+#include <bitset>
 #include "fast_math.hpp"
-#endif
-
 #endif
 
 namespace ideep {
@@ -2315,6 +2312,112 @@ public:
   }
 };
 
+struct channel_shuffle_forward {
+public:
+  channel_shuffle_forward() = delete;
+
+public:
+  static void compute_impl(const tensor& src, tensor& dst, int group) {
+    auto C = src.get_dim(1);
+    auto K = C / group;
+    auto S = src.get_dim(2) * src.get_dim(3); // h * w
+    float* X = static_cast<float*>(src.get_data_handle());
+    float* Y = static_cast<float*>(dst.get_data_handle());
+
+    IDEEP_ENFORCE(C % group == 0, "Invalid channel and group");
+    IDEEP_ENFORCE(src.get_data_type() == tensor::data_type::f32, "invalid data type");
+
+    if (group <= 1) {
+      direct_copy::compute(src, dst);
+      return;
+    }
+
+    # pragma omp parallel for collapse(3) schedule(static)
+    for (auto n = 0; n < src.get_dim(0); n++) {
+      for (auto g = 0; g < group; g++) {
+        for (auto i = 0; i < K; i++) {
+          auto* X_offset = (X + g * K * S + n * C * S + S * i);
+          auto* Y_offset = (Y + g * S + n * C * S + group * S * i);
+#ifdef __AVX2__
+          FM_AVX2_PREF::memcpy<float>(X_offset, Y_offset, S);
+#else
+          std::memcpy(Y_offset, X_offset, sizeof(float) * S);
+#endif
+        }
+      }
+    }
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src, tensor& dst, const int group = 1) {
+    IDEEP_ENFORCE(src != dst, "Unsupport in-place op");
+    IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims");
+
+    auto src_in = src;
+    if (!src_in.is_public_format()) {
+      src_in.init<alloc, channel_shuffle_forward>(
+          {src.get_dims(), src.get_data_type(), format::nchw});
+      reorder::compute(src, src_in);
+    }
+
+    dst.reinit_like(src_in);
+    compute_impl(src_in, dst, group);
+  }
+};
+
+struct channel_shuffle_backward {
+public:
+  channel_shuffle_backward() = delete;
+
+public:
+  static void compute_impl(const tensor& grady, tensor& gradx, int group) {
+    auto C = grady.get_dim(1);
+    auto K = C / group;
+    auto S = grady.get_dim(2) * grady.get_dim(3); // h * w
+    float* dY = static_cast<float*>(grady.get_data_handle());
+    float* dX = static_cast<float*>(gradx.get_data_handle());
+
+    IDEEP_ENFORCE(C % group == 0, "Invalid channel and group");
+    IDEEP_ENFORCE(grady.get_data_type() == tensor::data_type::f32, "invalid data type");
+
+    if (group <= 1) {
+      direct_copy::compute(grady, gradx);
+      return;
+    }
+
+    # pragma omp parallel for collapse(3) schedule(static)
+    for (auto n = 0; n < grady.get_dim(0); n++) {
+      for (auto g = 0; g < group; g++) {
+        for (auto i = 0; i < K; i++) {
+          auto* dY_offset = (dY + g * S + n * C * S + group * S * i);
+          auto* dX_offset = (dX + g * K * S + n * C * S + S * i);
+#ifdef __AVX2__
+          FM_AVX2_PREF::memcpy<float>(dY_offset, dX_offset, S);
+#else
+          std::memcpy(dX_offset, dY_offset, sizeof(float) * S);
+#endif
+        }
+      }
+    }
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& grady, tensor& gradx, const int group = 1) {
+    IDEEP_ENFORCE(grady != gradx, "Unsupport in-place op");
+    IDEEP_ENFORCE(grady.ndims() == 4, "Only support 4 dims");
+
+    auto grady_in = grady;
+    if (!grady_in.is_public_format()) {
+      grady_in.init<alloc, channel_shuffle_forward>(
+          {grady.get_dims(), grady.get_data_type(), format::nchw});
+      reorder::compute(grady, grady_in);
+    }
+
+    gradx.reinit_like(grady_in);
+    compute_impl(grady_in, gradx, group);
+  }
+};
+
 struct sum : public computation,
   public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
@@ -3517,7 +3620,6 @@ public:
   }
 };
 
-#if __GNUC__ > 4
 struct eltwise_binary {
 public:
   enum eltwise_binary_op {
@@ -3543,12 +3645,14 @@ public:
       }
       switch (op) {
       case ELTWISE_ADD:
-        utils::fast_math<utils::cpu_isa_t::avx2>::add<float>(
+#ifdef __AVX2__
+        FM_AVX2_PREF::add<float>(
             static_cast<float*>(outputC.get_data_handle()),
             static_cast<float*>(inputA.get_data_handle()),
             static_cast<float*>(inputB_data),
             static_cast<unsigned>(inputA.get_nelems()));
         return;
+#endif
       case ELTWISE_MUL:
       case ELTWISE_DIV:
       default:
@@ -3559,7 +3663,6 @@ public:
     }
   }
 };
-#endif
 
 struct sum_array {
 public:

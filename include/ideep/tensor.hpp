@@ -564,8 +564,8 @@ public:
       "could not create a memory primitive");
 
     reset(result);
-    set_data_handle(ahandle);
     buffer_.reset();
+    set_data_handle(ahandle);
     public_format_ = adesc.public_format_;
   }
 
@@ -583,8 +583,7 @@ public:
     auto curr_size = get_size();
     auto new_size = adesc.get_size();
 
-    if (curr_size >= new_size ||
-        (buffer_ == nullptr && get_data_handle() != nullptr)) {
+    if (curr_size >= new_size && buffer_.get() == get_data_handle()) {
       // We don't have to allocate new buffer or we don't manage the buffer
       // either way, we don't allocate new buffer
       // People who manage buffer provide enough space
@@ -651,8 +650,8 @@ public:
         param p;
         p.init<utils::scratch_allocator>({get_dims(), get_data_type()});
         reorder_to(p);
-        set_data_handle(p.get_data_handle());
         buffer_ = p.get_tensor_buffer();
+        set_data_handle(p.get_data_handle());
       }
 
       set_descriptor({new_dims, get_data_type()});
@@ -759,17 +758,18 @@ public:
   /// Returns a handle of the data contained in the param. On
   /// the CPU engine, this is a pointer to the allocated memory.
   inline void *get_data_handle() const {
-      void *handle;
-      error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle),
-              "could not get native handle");
-      return handle;
+    void *handle;
+    error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle),
+            "could not get native handle");
+    return handle;
   }
 
   /// Set new buffer handle into param
   /// @param handle Buffer handle
   inline void set_data_handle(void *handle) {
-      error::wrap_c_api(mkldnn_memory_set_data_handle(get(), handle),
-              "could not set native handle");
+    if (buffer_.get() != handle && buffer_ != nullptr) buffer_.reset();
+    error::wrap_c_api(mkldnn_memory_set_data_handle(get(), handle),
+            "could not set native handle");
   }
 
   /// Materialize a param. For specific scenario param will allocate

@@ -25,80 +25,77 @@ typedef enum {
     avx512_mic_4ops,
 } cpu_isa_t;
 
+
 template<cpu_isa_t isa = avx2>
 class fast_math {
   static constexpr int thread_hold = 1024;
-
-#define ret_type(i, t) \
-  typename std::enable_if<isa == i, t>::type
+  static constexpr int align_bytes = 32;
 
 public:
-  using TF = typename std::conditional<isa == sse42, __m128,
-        typename std::conditional<isa == avx2, __m256, void/*__m512*/>::type>::type;
-  using TI = typename std::conditional<isa == sse42, __m128i,
-        typename std::conditional<isa == avx2, __m256i, void/*__m512i*/>::type>::type;
+  using TF = __m256;
+  using TI = __m256i;
 
-  // AVX2 functions
   template<typename T>
-  static inline ret_type(avx2, unsigned) get_vec_sz() {
+  static inline unsigned get_vec_sz() {
     return 256 / 8 / sizeof(T);
   }
 
-  static inline ret_type(avx2, TI) size_to_mask(unsigned nres) {
+  static inline TI size_to_mask(unsigned nres) {
     assert(nres < 8 && nres >= 0);
     std::bitset<8> e = ~((1 << nres) - 1);
     return _mm256_set_epi32(e[7]-1, e[6]-1, e[5]-1, e[4]-1, e[3]-1, e[2]-1, e[1]-1, e[0]-1);
   }
 
-  static inline ret_type(avx2, TF) add_ps(TF v1, TF v2) {
+  static inline TF add_ps(TF v1, TF v2) {
     return _mm256_add_ps(v1, v2);
   }
 
-  static inline ret_type(avx2, TF) mul_ps(TF v1, TF v2) {
+  static inline TF mul_ps(TF v1, TF v2) {
     return _mm256_mul_ps(v1, v2);
   }
 
-  static inline ret_type(avx2, TF) div_ps(TF v1, TF v2) {
+  static inline TF div_ps(TF v1, TF v2) {
     return _mm256_div_ps(v1, v2);
   }
 
-  static inline ret_type(avx2, TF) sqrt_ps(TF v) {
+  static inline TF sqrt_ps(TF v) {
     return _mm256_sqrt_ps(v);
   }
 
-  template<typename T>
-  static inline ret_type(avx2, TF) set1_ps(const T v) {
+  template<typename T = float>
+  static inline TF set1_ps(const T v) {
     return _mm256_set1_ps(v);
   }
 
-  template<typename T>
-  static inline ret_type(avx2, TF) load_ps(const T *src) {
+  template<typename T = float>
+  static inline TF load_ps(const T *src) {
     return _mm256_load_ps(src);
   }
 
-  template<typename T>
-  static inline ret_type(avx2, TF) maskload_ps(const T *src, TI mask) {
+  template<typename T = float>
+  static inline TF maskload_ps(const T *src, TI mask) {
     return _mm256_maskload_ps(src, mask);
   }
 
-  template<typename T>
-  static inline ret_type(avx2, void) store_ps(T *dst, TF v) {
+  template<typename T = float>
+  static inline void store_ps(T *dst, TF v) {
     _mm256_store_ps(dst, v);
   }
 
-  template<typename T>
-  static inline ret_type(avx2, void) maskstore_ps(T *dst, TI mask, TF v) {
+  template<typename T = float>
+  static inline void maskstore_ps(T *dst, TI mask, TF v) {
     _mm256_maskstore_ps(dst, mask, v);
   }
 
   template<class T = float>
-  static inline ret_type(avx2, void) memcpy(T* src, T* dst, size_t size) {
+  static inline void memcpy(T* src, T* dst, size_t size) {
     auto itemsize = sizeof(T);
     auto vec_sz = get_vec_sz<T>();
     auto num_vec = size / vec_sz;
     auto num_res = size % vec_sz;
 
-    if ((size < vec_sz) || (IDEEP_MOD_PTR(src, 32) != IDEEP_MOD_PTR(dst, 32))) {
+    if ((size < vec_sz) ||
+        (IDEEP_MOD_PTR(src, align_bytes) != IDEEP_MOD_PTR(dst, align_bytes))) {
       std::memcpy(dst, src, itemsize * size);
       return;
     }
@@ -106,14 +103,14 @@ public:
     auto cpy_cnt = 0;
     auto cur_res = num_res;
     auto cur_vec = num_vec;
-    if (!IDEEP_IS_ALIGNED_PTR(src, 32)) {
-      cpy_cnt = (32 - IDEEP_MOD_PTR(src, 32)) / itemsize;
+    if (!IDEEP_IS_ALIGNED_PTR(src, align_bytes)) {
+      cpy_cnt = (align_bytes - IDEEP_MOD_PTR(src, align_bytes)) / itemsize;
       std::memcpy(dst, src, itemsize * cpy_cnt);
       src += cpy_cnt;
       dst += cpy_cnt;
     }
     IDEEP_ENFORCE(cpy_cnt < vec_sz, "invalid copy count");
-    IDEEP_ENFORCE(IDEEP_IS_ALIGNED_PTR(dst, 32), "not 32 bytes aligned address");
+    IDEEP_ENFORCE(IDEEP_IS_ALIGNED_PTR(dst, align_bytes), "not bytes aligned address");
 
     if (cpy_cnt > cur_res) {
         cur_vec -= 1;
@@ -163,11 +160,11 @@ public:
       single_thread_vecwise_unary_op(dst, src, nelems, op, op_mask);
   }
 
-  template<class elem_t = float>
+  template<class T = float>
   static void inv_square_var(float epsilon,
-      const elem_t* inv_sqrt_var, elem_t* variance, unsigned nelems) {
+      const T* inv_sqrt_var, T* variance, unsigned nelems) {
     if (isa == avx2) {
-      if (std::is_same<elem_t, float>::value) {
+      if (std::is_same<T, float>::value) {
         const float *src = reinterpret_cast<const float *>(inv_sqrt_var);
         float *dst = reinterpret_cast<float *>(variance);
 
@@ -195,11 +192,11 @@ public:
     }
   }
 
-  template<class elem_t = float>
+  template<class T = float>
   static void inv_sqrt_var(float epsilon,
       const void* variance, void* inv_sqrt_var, unsigned nelems) {
     if (isa == avx2) {
-      if (std::is_same<elem_t, float>::value) {
+      if (std::is_same<T, float>::value) {
         const float *src =
           reinterpret_cast<const float *>(variance);
         float *dst =
@@ -265,10 +262,10 @@ public:
       single_thread_vecwise_binary_op(dst, src1, src2, nelems, op, op_mask);
   }
 
-  template<class elem_t = float>
-  static void add(elem_t *dst, const elem_t *src1, const elem_t *src2,
+  template<class T = float>
+  static void add(T *dst, const T *src1, const T *src2,
       unsigned nelems) {
-    if (std::is_same<elem_t, float>::value) {
+    if (std::is_same<T, float>::value) {
       auto op = [] (TF vmm1, TF vmm2) {
         vmm1 = add_ps(vmm1, vmm2);
         return vmm1;

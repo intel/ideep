@@ -2,9 +2,16 @@
 #define _FAST_MATH_HPP_
 #include <assert.h>
 #include <string>
+#include <bitset>
 #include <type_traits>
 #include <immintrin.h>
 #include "abstract_types.hpp"
+
+#ifdef __AVX2__
+
+#define FM_AVX2_PREF \
+  ideep::utils::fast_math<ideep::utils::cpu_isa_t::avx2>
+
 namespace ideep {
 namespace utils {
 
@@ -18,146 +25,109 @@ typedef enum {
     avx512_mic_4ops,
 } cpu_isa_t;
 
-template <cpu_isa_t T> struct TypeMap {};
-#define MAP_T(v, F, I) \
-  template<> struct TypeMap<v> { using tF = F; using tI = I;};
-MAP_T(avx2, __m256, __m256i)
-#undef MAP_T
-#define TF  typename TypeMap<isa>::tF
-#define TI  typename TypeMap<isa>::tI
 
 template<cpu_isa_t isa = avx2>
 class fast_math {
   static constexpr int thread_hold = 1024;
+  static constexpr int align_bytes = 32;
+
 public:
+  using TF = __m256;
+  using TI = __m256i;
 
   template<typename T>
   static inline unsigned get_vec_sz() {
-    switch (isa) {
-    case avx2:
-      return 256/8/sizeof(T);
-    case avx512_common:
-    case avx512_core:
-      return 512/8/sizeof(T);
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-      return 0;
-    }
+    return 256 / 8 / sizeof(T);
   }
 
-  // Move this to utils
-  template<typename T>
   static inline TI size_to_mask(unsigned nres) {
-    constexpr int on = -1;
-    constexpr int off = 0;
-    switch (isa) {
-    case avx2:
-      assert(nres < 8 && nres > 0);
-      switch(nres) {
-      case 1:
-        return _mm256_set_epi32(off, off, off, off, off, off, off, on);
-      case 2:
-        return _mm256_set_epi32(off, off, off, off, off, off, on, on);
-      case 3:
-        return _mm256_set_epi32(off, off, off, off, off, on, on, on);
-      case 4:
-        return _mm256_set_epi32(off, off, off, off, on, on, on, on);
-      case 5:
-        return _mm256_set_epi32(off, off, off, on, on, on, on, on);
-      case 6:
-        return _mm256_set_epi32(off, off, on, on, on, on, on, on);
-      case 7:
-        return _mm256_set_epi32(off, on, on, on, on, on, on, on);
-      default:
-        return _mm256_set_epi32(off, off, off, off, off, off, off, off);
-      }
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-    }
+    assert(nres < 8 && nres >= 0);
+    std::bitset<8> e = ~((1 << nres) - 1);
+    return _mm256_set_epi32(e[7]-1, e[6]-1, e[5]-1, e[4]-1, e[3]-1, e[2]-1, e[1]-1, e[0]-1);
   }
 
-#define BIN_OPS(name) \
-  template<typename T> \
-  static TF name##_ps (TF v1, TF v2) { \
-    switch (isa) {  \
-    case avx2:  \
-      return _mm256_##name##_ps(v1, v2); \
-    default: \
-      throw error(mkldnn_unimplemented, "Not implemented!"); \
-      return set1_ps(0.f); \
-    } \
+  static inline TF add_ps(TF v1, TF v2) {
+    return _mm256_add_ps(v1, v2);
   }
 
-  BIN_OPS(add);
-  BIN_OPS(mul);
-  BIN_OPS(div);
-#undef BIN_OPS
-
-  template<typename T>
-  static TF set1_ps (const T v) {
-    switch (isa) {
-    case avx2:
-      return _mm256_set1_ps(v);
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-      return set1_ps(0.f);
-    }
+  static inline TF mul_ps(TF v1, TF v2) {
+    return _mm256_mul_ps(v1, v2);
   }
 
-  template<typename T>
-  static TF sqrt_ps (TF v) {
-    switch (isa) {
-    case avx2:
-      return _mm256_sqrt_ps(v);
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-      return set1_ps(0.f);
-    }
+  static inline TF div_ps(TF v1, TF v2) {
+    return _mm256_div_ps(v1, v2);
   }
 
-  template<typename T>
-  static TF load_ps (const T *src) {
-    switch (isa) {
-    case avx2:
-      return _mm256_load_ps(src);
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-      return set1_ps(0.f);
-    }
+  static inline TF sqrt_ps(TF v) {
+    return _mm256_sqrt_ps(v);
   }
 
-  template<typename T>
-  static TF maskload_ps (const T *src, TI mask) {
-    switch (isa) {
-    case avx2:
-      return _mm256_maskload_ps(src, mask);
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-      return set1_ps(0.f);
-    }
+  template<typename T = float>
+  static inline TF set1_ps(const T v) {
+    return _mm256_set1_ps(v);
   }
 
-  template<typename T>
-  static void store_ps (T *dst, TF v) {
-    switch (isa) {
-    case avx2:
-      _mm256_store_ps(dst, v);
-      return;
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
+  template<typename T = float>
+  static inline TF load_ps(const T *src) {
+    return _mm256_load_ps(src);
+  }
+
+  template<typename T = float>
+  static inline TF maskload_ps(const T *src, TI mask) {
+    return _mm256_maskload_ps(src, mask);
+  }
+
+  template<typename T = float>
+  static inline void store_ps(T *dst, TF v) {
+    _mm256_store_ps(dst, v);
+  }
+
+  template<typename T = float>
+  static inline void maskstore_ps(T *dst, TI mask, TF v) {
+    _mm256_maskstore_ps(dst, mask, v);
+  }
+
+  template<class T = float>
+  static inline void memcpy(T* src, T* dst, size_t size) {
+    auto itemsize = sizeof(T);
+    auto vec_sz = get_vec_sz<T>();
+    auto num_vec = size / vec_sz;
+    auto num_res = size % vec_sz;
+
+    if ((size < vec_sz) ||
+        (IDEEP_MOD_PTR(src, align_bytes) != IDEEP_MOD_PTR(dst, align_bytes))) {
+      std::memcpy(dst, src, itemsize * size);
       return;
     }
-  }
 
-  template<typename T>
-  static void maskstore_ps (T *dst, TI mask, TF v) {
-    switch (isa) {
-    case avx2:
-      _mm256_maskstore_ps(dst, mask, v);
-      return;
-    default:
-      throw error(mkldnn_unimplemented, "Not implemented!");
-      return;
+    auto cpy_cnt = 0;
+    auto cur_res = num_res;
+    auto cur_vec = num_vec;
+    if (!IDEEP_IS_ALIGNED_PTR(src, align_bytes)) {
+      cpy_cnt = (align_bytes - IDEEP_MOD_PTR(src, align_bytes)) / itemsize;
+      std::memcpy(dst, src, itemsize * cpy_cnt);
+      src += cpy_cnt;
+      dst += cpy_cnt;
+    }
+    IDEEP_ENFORCE(cpy_cnt < vec_sz, "invalid copy count");
+    IDEEP_ENFORCE(IDEEP_IS_ALIGNED_PTR(dst, align_bytes), "not bytes aligned address");
+
+    if (cpy_cnt > cur_res) {
+        cur_vec -= 1;
+        cur_res = vec_sz - (cpy_cnt - cur_res);
+    } else {
+        cur_res -= cpy_cnt;
+    }
+
+    for (auto j = 0; j < cur_vec; j++, dst += vec_sz, src += vec_sz) {
+      auto vmm = load_ps(src);
+      store_ps(dst, vmm);
+    }
+
+    if (cur_res != 0) {
+      auto mask = size_to_mask(cur_res);
+      auto vmm = maskload_ps(src, mask);
+      maskstore_ps(dst, mask, vmm);
     }
   }
 
@@ -176,7 +146,7 @@ public:
     }
 
     if (nres != 0) {
-      TI mask = size_to_mask<T>(nres);
+      TI mask = size_to_mask(nres);
       TF vmm1 = maskload_ps(src, mask);
       vmm1 = op_mask(vmm1, mask);
       maskstore_ps(dst, mask, vmm1);
@@ -190,11 +160,11 @@ public:
       single_thread_vecwise_unary_op(dst, src, nelems, op, op_mask);
   }
 
-  template<class elem_t = float>
+  template<class T = float>
   static void inv_square_var(float epsilon,
-      const elem_t* inv_sqrt_var, elem_t* variance, unsigned nelems) {
+      const T* inv_sqrt_var, T* variance, unsigned nelems) {
     if (isa == avx2) {
-      if (std::is_same<elem_t, float>::value) {
+      if (std::is_same<T, float>::value) {
         const float *src = reinterpret_cast<const float *>(inv_sqrt_var);
         float *dst = reinterpret_cast<float *>(variance);
 
@@ -222,11 +192,11 @@ public:
     }
   }
 
-  template<class elem_t = float>
+  template<class T = float>
   static void inv_sqrt_var(float epsilon,
       const void* variance, void* inv_sqrt_var, unsigned nelems) {
     if (isa == avx2) {
-      if (std::is_same<elem_t, float>::value) {
+      if (std::is_same<T, float>::value) {
         const float *src =
           reinterpret_cast<const float *>(variance);
         float *dst =
@@ -245,7 +215,7 @@ public:
         }
 
         if (nres != 0) {
-          TI mask = size_to_mask<elem_t>(nres);
+          TI mask = size_to_mask(nres);
           TF vmm1 = maskload_ps(src, mask);
           vmm1 = add_ps(vmm1, epsilones);
           vmm1 = sqrt_ps(vmm1);
@@ -277,7 +247,7 @@ public:
     }
 
     if (nres != 0) {
-      TI mask = size_to_mask<T>(nres);
+      TI mask = size_to_mask(nres);
       TF vmm1 = maskload_ps(src1, mask);
       TF vmm2 = maskload_ps(src2, mask);
       vmm2 = op_mask(vmm1, vmm2);
@@ -292,12 +262,12 @@ public:
       single_thread_vecwise_binary_op(dst, src1, src2, nelems, op, op_mask);
   }
 
-  template<class elem_t = float>
-  static void add(elem_t *dst, const elem_t *src1, const elem_t *src2,
+  template<class T = float>
+  static void add(T *dst, const T *src1, const T *src2,
       unsigned nelems) {
-    if (std::is_same<elem_t, float>::value) {
+    if (std::is_same<T, float>::value) {
       auto op = [] (TF vmm1, TF vmm2) {
-        vmm1 = add_ps<elem_t>(vmm1, vmm2);
+        vmm1 = add_ps(vmm1, vmm2);
         return vmm1;
       };
       vecwise_binary_op(dst, src1, src2, nelems, op, op);
@@ -305,7 +275,10 @@ public:
       throw error(mkldnn_unimplemented, "Not implemented!");
     }
   }
+
 };
 }
 }
+#endif
+
 #endif

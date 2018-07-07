@@ -325,6 +325,8 @@ public:
 
   PyObject *flat(void);
 
+  void set(PyObject *o);
+
   PyObject *reshape(py_handle *self, std::vector<int> dims);
 
   PyObject *m_mult_div(PyObject *self, PyObject *o, int mult_or_div, bool inplace);

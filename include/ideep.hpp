@@ -43,10 +43,7 @@
 #include "ideep/tensor.hpp"
 #include "ideep/computations.hpp"
 #include "ideep/allocators.hpp"
-
-#if __GNUC__ > 4
 #include "ideep/fast_math.hpp"
-#endif
 
 #endif
 

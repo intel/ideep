@@ -21,38 +21,27 @@ using error = mkldnn::error;
 // For 2D convolution with grouped weights, the ndims must be 5 (goihw)
 #define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)
 
+#define IDEEP_MOD_PTR(ptr, bytes) (((uintptr_t)(ptr)) & ((bytes) - 1))
+#define IDEEP_IS_ALIGNED_PTR(ptr, bytes) ((IDEEP_MOD_PTR(ptr, bytes)) == 0)
+
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance
 template <typename T, typename traits = mkldnn::handle_traits<T>>
-class c_wrapper{
-protected:
-  std::shared_ptr<typename std::remove_pointer<T>::type> _data;
+class c_wrapper :
+  public std::shared_ptr<typename std::remove_pointer<T>::type> {
+  using super = std::shared_ptr<typename std::remove_pointer<T>::type>;
 public:
   /// Constructs a C handle wrapper.
   /// @param t The C handle to wrap.
   /// @param weak A flag to specify whether to construct a weak wrapper.
-  c_wrapper(T t = nullptr, bool weak = false): _data(t, [weak]() {
+  c_wrapper(T t = nullptr, bool weak = false): super(t, [weak]() {
     auto dummy = [](T) {
       return decltype(traits::destructor(0))(0);
     };
     return weak? dummy : traits::destructor;
   }()) {}
 
-  bool operator==(const T other) const { return other == _data.get(); }
-  bool operator!=(const T other) const { return !(*this == other); }
-
-  c_wrapper(const c_wrapper& other): _data(other._data) {}
-  c_wrapper(c_wrapper&& movable) : _data(std::move(movable._data)) {}
-
-  c_wrapper &operator=(c_wrapper&& other) {
-    _data = std::move(other._data);
-    return *this;
-  }
-
-  c_wrapper &operator=(const c_wrapper& other) {
-    _data = other._data;
-    return *this;
-  }
+  using super::super;
 
   /// Resets the value of a C handle.
   /// @param t The new value of the C handle.
@@ -61,17 +50,7 @@ public:
     auto dummy_destructor = [](T) {
       return decltype(traits::destructor(0))(0);
     };
-    _data.reset(t, weak ? dummy_destructor : traits::destructor);
-  }
-
-  /// Returns the value of the underlying C handle.
-  T get() const { return _data.get(); }
-
-  bool operator==(const c_wrapper &other) const {
-    return other._data.get() == _data.get();
-  }
-  bool operator!=(const c_wrapper &other) const {
-    return !(*this == other);
+    super::reset(t, weak ? dummy_destructor : traits::destructor);
   }
 };
 

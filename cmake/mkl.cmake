@@ -151,7 +151,12 @@ detect_mkl("mkl_rt")
 if(HAVE_MKL)
     include_directories(AFTER ${MKLINC})
     install(DIRECTORY ${MKLINC}/ DESTINATION include/mklml)
-    install(DIRECTORY ${MKLINC}/../lib/ DESTINATION lib)
+
+    set(LIBLIST libmklml_intel.so libiomp5.so)
+    foreach(LIB ${LIBLIST})
+        install(FILES ${MKLINC}/../lib/${LIB} DESTINATION lib)
+    endforeach()
+
     list(APPEND mkldnn_LINKER_LIBS ${MKLLIB})
 
     set(MSG "Intel(R) MKL:")

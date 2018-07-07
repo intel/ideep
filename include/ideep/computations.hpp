@@ -49,11 +49,8 @@
 #include "scope_guard.hpp"
 #include "instruments.hpp"
 #include <mkl_vsl.h>
-
-#if __GNUC__ > 4
+#include <bitset>
 #include "fast_math.hpp"
-#endif
-
 #endif
 
 namespace ideep {
@@ -78,10 +75,12 @@ inline tensor::data_type tensor::descriptor::type_to_id<signed char>() {
   return tensor::data_type::s8;
 }
 
-/// Descriptor group, create relative descriptors all in one
+/// A group of primitive descriptors, pack related reorder descriptors
+/// with computational descriptor.
 class descriptor_group: public c_wrapper_complex<mkldnn_primitive_desc_t> {
   friend class primitive_group;
 public:
+  /// Post ops for fusion operations
   class post_ops : public c_wrapper<mkldnn_post_ops_t> {
   public:
     post_ops() : c_wrapper([]() {
@@ -90,7 +89,6 @@ public:
           "could not create post operation sequence");
       return result;
     }()) {}
-
 
     int num_ops() const {
       return mkldnn_post_ops_len(get());
@@ -195,6 +193,8 @@ public:
     }
   };
 
+  /// Attribute class for extra information into computations, including
+  /// post operations, rounding mode, etc.
   class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
   public:
     attr_t() : c_wrapper([]() {
@@ -273,6 +273,7 @@ public:
       return attr;
     }
 
+    // XXX: concept error
     static inline attr_t residual(float scale = 1.0,
         float alpha = 0.f, float beta = 0.f) {
       attr_t attr;
@@ -304,9 +305,14 @@ protected:
   }
 
 public:
+  /// Empty construction
   descriptor_group()
     : c_wrapper_complex() {}
 
+  /// Query interface
+  ///
+  /// @param q query kind
+  /// @param index query index
   tensor::descriptor expected_descriptor_of(mkldnn::query q
       , int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
@@ -319,55 +325,83 @@ public:
     return param::descriptor(cdesc);
   }
 
+  /// Query expected input descriptor
+  ///
+  /// @param index Input index
   tensor::descriptor expected_input_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::input_pd, index);
   }
 
+  /// Query expected output descriptor
+  ///
+  /// @param index Input index
   tensor::descriptor expected_output_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::output_pd, index);
   }
 
+  /// Query expected src descriptor
+  ///
   tensor::descriptor expected_src_descriptor() const {
     return expected_descriptor_of(mkldnn::src_pd);
   }
 
+  /// Query expected weights descriptor
+  ///
   tensor::descriptor expected_weights_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd);
   }
 
+  /// Query expected bias descriptor
+  ///
   tensor::descriptor expected_bias_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd, 1);
   }
 
+  /// Query expected dst descriptor
+  ///
   tensor::descriptor expected_dst_descriptor() const {
     return expected_descriptor_of(mkldnn::dst_pd, 0);
   }
 
+  /// Query expected workspace descriptor
+  ///
   tensor::descriptor expected_workspace_descriptor() const {
     return expected_descriptor_of(mkldnn::workspace_pd, 0);
   }
 
+  /// Query expected gradient X descriptor
+  ///
   tensor::descriptor expected_gradx_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_src_pd, 0);
   }
 
+  /// Query expected gradient Y descriptor
+  ///
   tensor::descriptor expected_grady_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_dst_pd, 0);
   }
 
+  /// Qeury expected weights gradient descriptor
+  ///
   tensor::descriptor expected_gradw_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 0);
   }
 
+  /// Qeury expected bias gradient descriptor
+  ///
   tensor::descriptor expected_gradb_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
+  /// Query number of inputs
+  ///
   int num_of_inputs() const {
       return mkldnn_primitive_desc_query_s32(get()
           , mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
   }
 
+  /// Query number of outputs
+  ///
   int num_of_outputs() const {
       return mkldnn_primitive_desc_query_s32(get()
           , mkldnn::convert_to_c(mkldnn::num_of_outputs_s32), 0);
@@ -390,8 +424,11 @@ protected:
   }
 };
 
+/// A group of primitives, pack related reorder with computation.
+/// It serves as a base class of computation
 class primitive_group: public c_wrapper_complex<mkldnn_primitive_t> {
 public:
+  /// Empty constructor
   primitive_group()
     : c_wrapper_complex() {}
 
@@ -404,6 +441,7 @@ public:
     return cdesc;
   }
 
+  /// Query interface
   tensor::descriptor expected_descriptor_of(mkldnn::query q,
       int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
@@ -430,6 +468,8 @@ protected:
     auxiliaries_[index].reset(result);
   }
 
+  /// Specific query interface, not valid for all computations.
+  ///
   tensor::descriptor expected_input_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::input_pd, index);
   }
@@ -688,6 +728,8 @@ public:
   }
 };
 
+/// Computation class, abstruct of computation
+///
 struct computation : public primitive_group {
   computation() = default;
 
@@ -837,9 +879,26 @@ private:
   std::vector<param> primitive_inputs_;
 };
 
+/// Convolution forward computation, this class represent a MKL-DNN
+/// convolution forward process, also manage old computation instances.
 struct convolution_forward: public computation,
   public utils::computation_cache<convolution_forward> {
+  /// Descriptor class for describing convolution forward process
+  ///
   struct descriptor : public descriptor_group {
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param bias_desc Bias tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &bias_desc,
@@ -877,6 +936,19 @@ struct convolution_forward: public computation,
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
     }
+
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &dst_desc,
@@ -912,6 +984,21 @@ struct convolution_forward: public computation,
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
     }
+
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param bias_desc Bias tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param dilates Dilates parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &bias_desc,
@@ -949,6 +1036,20 @@ struct convolution_forward: public computation,
       reset(result);
       create_reorder_pds({src_desc, weights_desc});
     }
+
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param weights_desc Weights tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param strides Strides parameters for the convolution
+    /// @param dilates Dilates parameters for the convolution
+    /// @param padding_l Paddings of up-left
+    /// @param padding_r Paddings of down-right
+    /// @param attr Extra attribute for the convolution
+    /// @param aalgorithm Convolution algorithm
+    /// @param aprop_kind The propagation kind of convolution
+    /// @param apadding_kind Padding kind of convolution
     descriptor(const tensor::descriptor &src_desc,
         const tensor::descriptor &weights_desc,
         const tensor::descriptor &dst_desc,
@@ -2211,6 +2312,112 @@ public:
   }
 };
 
+struct channel_shuffle_forward {
+public:
+  channel_shuffle_forward() = delete;
+
+public:
+  static void compute_impl(const tensor& src, tensor& dst, int group) {
+    auto C = src.get_dim(1);
+    auto K = C / group;
+    auto S = src.get_dim(2) * src.get_dim(3); // h * w
+    float* X = static_cast<float*>(src.get_data_handle());
+    float* Y = static_cast<float*>(dst.get_data_handle());
+
+    IDEEP_ENFORCE(C % group == 0, "Invalid channel and group");
+    IDEEP_ENFORCE(src.get_data_type() == tensor::data_type::f32, "invalid data type");
+
+    if (group <= 1) {
+      direct_copy::compute(src, dst);
+      return;
+    }
+
+    # pragma omp parallel for collapse(3) schedule(static)
+    for (auto n = 0; n < src.get_dim(0); n++) {
+      for (auto g = 0; g < group; g++) {
+        for (auto i = 0; i < K; i++) {
+          auto* X_offset = (X + g * K * S + n * C * S + S * i);
+          auto* Y_offset = (Y + g * S + n * C * S + group * S * i);
+#ifdef __AVX2__
+          FM_AVX2_PREF::memcpy<float>(X_offset, Y_offset, S);
+#else
+          std::memcpy(Y_offset, X_offset, sizeof(float) * S);
+#endif
+        }
+      }
+    }
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src, tensor& dst, const int group = 1) {
+    IDEEP_ENFORCE(src != dst, "Unsupport in-place op");
+    IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims");
+
+    auto src_in = src;
+    if (!src_in.is_public_format()) {
+      src_in.init<alloc, channel_shuffle_forward>(
+          {src.get_dims(), src.get_data_type(), format::nchw});
+      reorder::compute(src, src_in);
+    }
+
+    dst.reinit_like(src_in);
+    compute_impl(src_in, dst, group);
+  }
+};
+
+struct channel_shuffle_backward {
+public:
+  channel_shuffle_backward() = delete;
+
+public:
+  static void compute_impl(const tensor& grady, tensor& gradx, int group) {
+    auto C = grady.get_dim(1);
+    auto K = C / group;
+    auto S = grady.get_dim(2) * grady.get_dim(3); // h * w
+    float* dY = static_cast<float*>(grady.get_data_handle());
+    float* dX = static_cast<float*>(gradx.get_data_handle());
+
+    IDEEP_ENFORCE(C % group == 0, "Invalid channel and group");
+    IDEEP_ENFORCE(grady.get_data_type() == tensor::data_type::f32, "invalid data type");
+
+    if (group <= 1) {
+      direct_copy::compute(grady, gradx);
+      return;
+    }
+
+    # pragma omp parallel for collapse(3) schedule(static)
+    for (auto n = 0; n < grady.get_dim(0); n++) {
+      for (auto g = 0; g < group; g++) {
+        for (auto i = 0; i < K; i++) {
+          auto* dY_offset = (dY + g * S + n * C * S + group * S * i);
+          auto* dX_offset = (dX + g * K * S + n * C * S + S * i);
+#ifdef __AVX2__
+          FM_AVX2_PREF::memcpy<float>(dY_offset, dX_offset, S);
+#else
+          std::memcpy(dX_offset, dY_offset, sizeof(float) * S);
+#endif
+        }
+      }
+    }
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& grady, tensor& gradx, const int group = 1) {
+    IDEEP_ENFORCE(grady != gradx, "Unsupport in-place op");
+    IDEEP_ENFORCE(grady.ndims() == 4, "Only support 4 dims");
+
+    auto grady_in = grady;
+    if (!grady_in.is_public_format()) {
+      grady_in.init<alloc, channel_shuffle_forward>(
+          {grady.get_dims(), grady.get_data_type(), format::nchw});
+      reorder::compute(grady, grady_in);
+    }
+
+    gradx.reinit_like(grady_in);
+    compute_impl(grady_in, gradx, group);
+  }
+};
+
 struct sum : public computation,
   public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
@@ -3413,7 +3620,6 @@ public:
   }
 };
 
-#if __GNUC__ > 4
 struct eltwise_binary {
 public:
   enum eltwise_binary_op {
@@ -3439,12 +3645,14 @@ public:
       }
       switch (op) {
       case ELTWISE_ADD:
-        utils::fast_math<utils::cpu_isa_t::avx2>::add<float>(
+#ifdef __AVX2__
+        FM_AVX2_PREF::add<float>(
             static_cast<float*>(outputC.get_data_handle()),
             static_cast<float*>(inputA.get_data_handle()),
             static_cast<float*>(inputB_data),
             static_cast<unsigned>(inputA.get_nelems()));
         return;
+#endif
       case ELTWISE_MUL:
       case ELTWISE_DIV:
       default:
@@ -3455,7 +3663,6 @@ public:
     }
   }
 };
-#endif
 
 struct sum_array {
 public:

@@ -1,0 +1,27 @@
+{% set version = "2.0.0b1" %}
+
+package:
+  name: ideep4py
+  version: {{ version }}
+
+source:
+  path: ../
+
+build:
+  number: 0
+  skip: True  # [win]
+
+requirements:
+  build:
+    - numpy
+    - python
+  run:
+    - numpy
+    - python
+
+test:
+  imports:
+    - ideep4py
+
+about:
+  license: MIT

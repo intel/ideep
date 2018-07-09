@@ -5,8 +5,13 @@ set(__MKLDNN_INCLUDE)
 
 if (USE_MKLDNN_INTERNAL)
   if (NOT IS_DIRECTORY ${PROJECT_SOURCE_DIR}/mkl-dnn/external)
-    execute_process(COMMAND "${PROJECT_SOURCE_DIR}/mkl-dnn/scripts/prepare_mkl.sh"
-      RESULT_VARIABLE __result)
+    if (UNIX)
+      execute_process(COMMAND "${PROJECT_SOURCE_DIR}/mkl-dnn/scripts/prepare_mkl.sh"
+        RESULT_VARIABLE __result)
+    else ()
+      execute_process(COMMAND "${PROJECT_SOURCE_DIR}/mkl-dnn/scripts/prepare_mkl.bat"
+        RESULT_VARIABLE __result)
+    endif()
   endif()
   add_subdirectory(mkl-dnn)
 else()

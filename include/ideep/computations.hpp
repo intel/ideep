@@ -2408,7 +2408,7 @@ public:
 
     auto grady_in = grady;
     if (!grady_in.is_public_format()) {
-      grady_in.init<alloc, channel_shuffle_forward>(
+      grady_in.init<alloc, channel_shuffle_backward>(
           {grady.get_dims(), grady.get_data_type(), format::nchw});
       reorder::compute(grady, grady_in);
     }

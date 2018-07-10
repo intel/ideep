@@ -653,7 +653,7 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
         input.get_internal_format(), output.get_dims(), output.get_data_type(),
         output.get_internal_format(), attr);
 
-    auto op = fetch_or_create_m(key, input.get_descriptor(),
+    fetch_or_create_m(op, key, input.get_descriptor(),
         output.get_descriptor(), attr);
 
     op(input, output);
@@ -670,7 +670,7 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     tensor gx;
     gx.init<alloc, reorder>(view.expected_dst_descriptor());
 
-    auto op = fetch_or_create_m(key, view, input.get_descriptor(),
+    fetch_or_create_m(op, key, view, input.get_descriptor(),
         gx.get_descriptor());
 
     op(input, gx);
@@ -767,7 +767,7 @@ struct computation : public primitive_group {
     primitive_inputs_ = std::vector<param>((unsigned)n_inputs);
     inouts_ = std::vector<param>((unsigned)(n_inputs + n_outputs));
 
-    mkldnn_primitive_at_t inputs[n_inputs];
+    std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [n_inputs]);
     for (int i =0; i < n_inputs; i ++) {
       primitive_inputs_[i] = {
         adesc.expected_input_descriptor(i), nullptr };
@@ -776,7 +776,7 @@ struct computation : public primitive_group {
       inputs[i] = { primitive_inputs_[i].get(), 0 };
     }
 
-    const_mkldnn_primitive_t outputs[n_outputs];
+    std::unique_ptr<const_mkldnn_primitive_t []> outputs(new const_mkldnn_primitive_t [n_outputs]);
     for (int i = 0; i < n_outputs; i ++) {
       inouts_[i + n_inputs] = {
         adesc.expected_output_descriptor(i), nullptr };
@@ -785,7 +785,7 @@ struct computation : public primitive_group {
 
     mkldnn_primitive_t result;
     error::wrap_c_api(mkldnn_primitive_create(&result,
-          adesc.get(), inputs, outputs),
+          adesc.get(), inputs.get(), outputs.get()),
         "could not create a computation primitive");
 
     reset(result);
@@ -1141,7 +1141,7 @@ struct convolution_forward: public computation,
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), dst_dims, args...);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(),
         tensor::descriptor {dst_dims, src.get_data_type()},
         std::forward<Ts>(args)...);
@@ -1177,7 +1177,7 @@ struct convolution_forward: public computation,
     std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), dst_dims, args...);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
     // Performance evaluation
@@ -1438,7 +1438,7 @@ public:
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
         weights.get_dims(), gradx_dims, args...);
 
-    auto comp = fetch_or_create_m(key, grady.get_descriptor(),
+    fetch_or_create_m(comp, key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
     // XXX: Performance evaluation
@@ -1680,7 +1680,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         grady.get_dims(), gradw_dims, grady.get_dim(1), args...);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, gradb_desc,
         std::forward<Ts>(args)...);
 
@@ -1714,7 +1714,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         grady.get_dims(), gradw_dims, args...);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
 
     // XXX: Performance evaluation
@@ -1886,7 +1886,7 @@ public:
         src.get_internal_format(), local_size, alpha, beta, k,
         aalgorithm, aprop_kind);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
@@ -1959,7 +1959,7 @@ public:
     auto key = utils::create_key(x.get_data_type(), x.get_dims(),
         x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
 
-    auto comp = fetch_or_create_m(key, x.get_descriptor(),
+    fetch_or_create_m(comp, key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
     gradx.reinit<alloc, lrn_backward>(comp.expected_gradx_descriptor());
@@ -2043,7 +2043,7 @@ public:
         src.get_internal_format(), dst_dims, strides, kernel, padding_l,
         padding_r, aalgorithm, aprop_kind, apadding_kind);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
         aprop_kind, apadding_kind);
 
@@ -2163,7 +2163,7 @@ public:
         grady_in.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
         padding_r, aalgorithm, apadding_kind);
 
-    auto comp = fetch_or_create_m(key, x.get_descriptor(),
+    fetch_or_create_m(comp, key, x.get_descriptor(),
         grady_in.get_descriptor(), strides, kernel, padding_l, padding_r,
         aalgorithm, apadding_kind);
 
@@ -2224,7 +2224,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), alpha, beta, aalogorithm, aprop_kind);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor()
+    fetch_or_create_m(comp, key, src.get_descriptor()
         , alpha, beta, aalogorithm, aprop_kind);
 
     if (dst != src)
@@ -2297,7 +2297,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), args...);
 
-    auto comp = fetch_or_create_m(key, grady_in.get_descriptor(),
+    fetch_or_create_m(comp, key, grady_in.get_descriptor(),
         src.get_descriptor(), std::forward<Ts>(args)...);
 
     gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
@@ -2331,8 +2331,11 @@ public:
       direct_copy::compute(src, dst);
       return;
     }
-
+#if defined(WIN32)
+# pragma omp parallel for schedule(static)
+#else
     # pragma omp parallel for collapse(3) schedule(static)
+#endif
     for (auto n = 0; n < src.get_dim(0); n++) {
       for (auto g = 0; g < group; g++) {
         for (auto i = 0; i < K; i++) {
@@ -2384,8 +2387,11 @@ public:
       direct_copy::compute(grady, gradx);
       return;
     }
-
+#if defined(WIN32)
+#pragma omp parallel for schedule(static)
+#else
     # pragma omp parallel for collapse(3) schedule(static)
+#endif
     for (auto n = 0; n < grady.get_dim(0); n++) {
       for (auto g = 0; g < group; g++) {
         for (auto i = 0; i < K; i++) {
@@ -2575,7 +2581,7 @@ public:
       }
     }
 
-    auto comp = fetch_or_create_m(key, axis, tdesc);
+    fetch_or_create_m(comp, key, axis, tdesc);
     dst.reinit<alloc, concat>(comp.expected_dst_descriptor());
     comp.execute(inputs, dst);
   }
@@ -2783,7 +2789,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 3, epsilon);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
 
     if (dst != src)
@@ -2799,7 +2805,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), 5, epsilon);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(), epsilon);
+    fetch_or_create_m(comp, key, src.get_descriptor(), epsilon);
 
     if (dst != src)
       dst.reinit<alloc, batch_normalization_forward_inference>(
@@ -2897,7 +2903,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     dst.reinit<alloc, batch_normalization_forward_training>(
@@ -2916,7 +2922,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     // TODO: Substitue running statistics calculation with lighter version
@@ -3050,7 +3056,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
     gradx.reinit<alloc, batch_normalization_backward>(
@@ -3067,7 +3073,7 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), epsilon);
 
-    auto comp = fetch_or_create_m(key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
     gradx.reinit<alloc, batch_normalization_backward>(
@@ -3190,7 +3196,7 @@ struct inner_product_forward: public computation,
     auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
         weights_in.get_dims(), bias.get_dims(), dst_dims);
 
-    auto comp = fetch_or_create_m(key, src_in.get_descriptor(),
+    fetch_or_create_m(comp, key, src_in.get_descriptor(),
         weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
@@ -3234,7 +3240,7 @@ struct inner_product_forward: public computation,
     auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
         weights_in.get_dims(), dst_dims);
 
-    auto comp = fetch_or_create_m(key, src_in.get_descriptor(),
+    fetch_or_create_m(comp, key, src_in.get_descriptor(),
         weights_in.get_descriptor(), dst_desc);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
@@ -3340,7 +3346,7 @@ public:
     auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
         weights_in.get_dims(), gradx_dims);
 
-    auto comp = fetch_or_create_m(key, gradx_desc,
+    fetch_or_create_m(comp, key, gradx_desc,
         weights_in.get_descriptor(), grady.get_descriptor());
 
     auto grady_in = grady;
@@ -3446,7 +3452,7 @@ public:
     auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
         grady.get_dims());
 
-    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc,
+    fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc,
         grady.get_descriptor());
 
     auto x_in = x;
@@ -3479,7 +3485,7 @@ public:
     auto key = utils::create_key(x.get_data_type(), x.get_dims(), gradw_dims,
         gradb_dims, grady.get_dims());
 
-    auto comp = fetch_or_create_m(key, x.get_descriptor(), gradw_desc, gradb_desc,
+    fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, gradb_desc,
         grady.get_descriptor());
 
     auto x_in = x;

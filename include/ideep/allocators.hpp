@@ -135,9 +135,13 @@ public:
 
       // No cached memory
       size_t len = size + alignment_;
+#if defined(WIN32)
+	  ptr = _aligned_malloc(size, alignment_);
+#else
       int rc = ::posix_memalign(&ptr, alignment_, len);
       if (rc != 0)
         throw std::invalid_argument("Out of memory");
+#endif
       header_t *head = static_cast<header_t *>(ptr);
       head->size_ = size;
       head->seq_ = seq_++;

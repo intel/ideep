@@ -7,7 +7,7 @@ set(__settings_included)
 add_definitions(-D__STDC_LIMIT_MACROS -D__STDC_CONSTANT_MACROS)
 
 if (MSVC)
-  set(__cxx_flags "/openmp")
+  set(__cxx_flags "/std:c++14 /openmp /Qpar /arch:AVX2")
 else ()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11")
   set(__cxx_flags "-std=c++11 -fvisibility-inlines-hidden -Wall -Werror -Wno-sign-compare -Wno-unknown-pragmas -fvisibility-inlines-hidden -march=native -mtune=native -pthread -fopenmp")

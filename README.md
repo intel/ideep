@@ -1,4 +1,4 @@
-# MKL-DNN bridge for Chainer
+# Chainer Backend for Intel Architecture
 
 A Chainer module providing numpy like API and DNN acceleration using MKL-DNN.
 

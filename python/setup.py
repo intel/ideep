@@ -165,9 +165,13 @@ ext_modules.append(ext)
 
 packages = ['ideep4py']
 
+here = os.path.abspath(os.path.dirname(__file__))
+# Get __version__ variable
+exec(open(os.path.join(here, 'ideep4py', '_version.py')).read())
+
 setup(
     name='ideep4py',
-    version='2.0.0',
+    version=__version__,  # NOQA
     description='ideep4py is a wrapper for iDeep library.',
     author='Intel',
     author_email='',

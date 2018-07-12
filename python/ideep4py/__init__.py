@@ -2,6 +2,7 @@ import numpy
 import sys
 
 from ideep4py._ideep4py import intVector  # NOQA
+from ideep4py import _version  # NOQA
 
 from ideep4py._ideep4py import mdarray  # NOQA
 from ideep4py._ideep4py import mdarrayVector  # NOQA
@@ -24,6 +25,8 @@ from ideep4py._ideep4py import basic_copyto  # NOQA
 # from ideep4py._ideep4py import dlCompression  # NOQA
 # from ideep4py import cosim  # NOQA
 
+
+__version__ = _version.__version__
 
 # ------------------------------------------------------------------------------
 # ideep4py.mdarray allocation

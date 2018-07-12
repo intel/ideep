@@ -4,6 +4,9 @@
 #include <string>
 #include <unordered_map>
 #include <list>
+#ifdef WIN32
+#include <intrin.h>
+#endif
 #include "tensor.hpp"
 
 namespace ideep {
@@ -290,7 +293,7 @@ private:
   size_type capacity_;
 };
 
-template <class value_t, class key_t = std::string, size_t capacity = 1024>
+template <class value_t, size_t capacity = 1024, class key_t = std::string>
 class computation_cache {
 public:
   using iterator = typename lru_cache<key_t, value_t>::iterator;
@@ -338,7 +341,7 @@ public:
 };
 
 // TODO: mutex it
-template <class value_t, class key_t = std::string, size_t capacity = 1024>
+template <class value_t, size_t capacity = 1024, class key_t = std::string>
 class computation_gcache {
 public:
   using iterator = typename lru_cache<key_t, value_t>::iterator;
@@ -394,9 +397,9 @@ public:
 };
 
 // Possible better performance, but use inside class scope only (private)
-#define fetch_or_create_m(key, ...) ({  \
+#define fetch_or_create_m(op, key, ...)  \
     auto it = find(key);  \
-    it == end() ? fetch(create(key, __VA_ARGS__)) : fetch(it);})
+    auto op = it == end() ? fetch(create(key, __VA_ARGS__)) : fetch(it);
 
 template <typename T>
 inline std::string to_string(const T arg) {
@@ -422,15 +425,19 @@ using bytestring = std::string;
 
 inline bytestring to_bytes(const int arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
-#ifndef __AVX__
+#if defined(WIN32)
+  auto len = sizeof(arg) - __lzcnt(arg) / 8;
+#else
+# if !defined(__AVX__)
   if (arg == 0)
     return bytestring();
 
   auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
-#else
+# else
   unsigned int lz;
   asm volatile ("lzcntl %1, %0": "=r" (lz): "r" (arg));
   auto len = sizeof(int) - lz / 8;
+# endif
 #endif
 
   return bytestring(as_cstring, len);

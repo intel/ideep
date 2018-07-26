@@ -27,6 +27,7 @@
 #pragma once
 #include "ideep.hpp"
 #include "TR_interface.h"
+#include "assert.h"
 #include "tensor.hpp"
 
 #define null_callback (void(*)(int))NULL

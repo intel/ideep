@@ -1,6 +1,5 @@
 #ifndef _FAST_MATH_HPP_
 #define _FAST_MATH_HPP_
-#include <assert.h>
 #include <string>
 #include <bitset>
 #include <type_traits>
@@ -41,9 +40,10 @@ public:
   }
 
   static inline TI size_to_mask(unsigned nres) {
-    assert(nres < 8 && nres >= 0);
+    IDEEP_ENFORCE(nres < 8 && nres >= 0, "Invalid mask size");
     std::bitset<8> e = ~((1 << nres) - 1);
-    return _mm256_set_epi32(e[7]-1, e[6]-1, e[5]-1, e[4]-1, e[3]-1, e[2]-1, e[1]-1, e[0]-1);
+    return _mm256_set_epi32(e[7]-1, e[6]-1, e[5]-1, e[4]-1,
+                            e[3]-1, e[2]-1, e[1]-1, e[0]-1);
   }
 
   static inline TF add_ps(TF v1, TF v2) {
@@ -110,7 +110,8 @@ public:
       dst += cpy_cnt;
     }
     IDEEP_ENFORCE(cpy_cnt < vec_sz, "invalid copy count");
-    IDEEP_ENFORCE(IDEEP_IS_ALIGNED_PTR(dst, align_bytes), "not bytes aligned address");
+    IDEEP_ENFORCE(IDEEP_IS_ALIGNED_PTR(dst, align_bytes),
+                  "not bytes aligned address");
 
     if (cpy_cnt > cur_res) {
         cur_vec -= 1;

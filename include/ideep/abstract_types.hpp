@@ -2,12 +2,22 @@
 #define _ABSTRACT_TYPES_HPP_
 
 #include <string>
+#include <map>
+#include <vector>
 #include <mkldnn.h>
 #include <mkldnn.hpp>
 
 namespace ideep {
 
 using error = mkldnn::error;
+
+#if defined (__GNUC__)
+#define IDEEP_DEPRECATED __attribute__((deprecated))
+#elif defined(_MSC_VER)
+#define IDEEP_DEPRECATED __declspec(deprecated)
+#else
+#define IDEEP_DEPRECATED
+#endif
 
 #define IDEEP_ENFORCE(condition, message) \
   do {  \
@@ -23,6 +33,9 @@ using error = mkldnn::error;
 
 #define IDEEP_STD_EACH_SUB(v, i) \
   for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
+
+#define IDEEP_CROSS_EQUAL(v1, v2, i1, i2) \
+  (((v1 == i1) && (v2 == i2)) || ((v1 == i2) && (v2 == i1)))
 
 // For 2D convolution with grouped weights, the ndims must be 5 (goihw)
 #define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)
@@ -81,7 +94,25 @@ protected:
 
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
+using scale_t = std::vector<float>;
 using round_mode = mkldnn::round_mode;
+
+#define IDEEP_OP_SCALE_MASK(scale_size) (((scale_size) > 1) ? 2 : 0)
+#define IDEEP_TENSOR_SCALE_MASK(scale_size, grouped) \
+  (((scale_size) > 1) ? ((grouped) ? 3 : 1) : 0)
+
+const scale_t IDEEP_DEF_SCALE {1.0f};
+constexpr int IDEEP_MEANING_MAX = 0;
+
+constexpr int IDEEP_U8_MAX = 0xFF;
+constexpr int IDEEP_S8_MAX = 0x7F;
+constexpr int IDEEP_S32_MAX = 0x7FFFFFFF;
+const std::map<mkldnn::memory::data_type, int> dt_max_map
+{
+  {mkldnn::memory::data_type::s32, IDEEP_S32_MAX},
+  {mkldnn::memory::data_type::s8, IDEEP_S8_MAX},
+  {mkldnn::memory::data_type::u8, IDEEP_U8_MAX}
+};
 
 /// hide other formats
 enum format {

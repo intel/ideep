@@ -26,7 +26,6 @@
 #define IDEEP_HPP
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
-#include <assert.h>
 #include <stdlib.h>
 #include <omp.h>
 #include <algorithm>
@@ -39,6 +38,7 @@
 #include <functional>
 #include <iostream>
 #include <immintrin.h>
+#include <limits.h>
 #include <random>
 #include <atomic>
 #include <chrono>
@@ -101,6 +101,28 @@ public:
     kind op_kind(int index) const {
       IDEEP_ENFORCE(index < num_ops(), "post_ops index is out of range");
       return static_cast<kind>(mkldnn_post_ops_get_kind(get(), index));
+    }
+
+    bool has_op_kind(kind op_kind) const {
+      for (int i = 0; i < num_ops(); i++) {
+        if (op_kind == this->op_kind(i)) return true;
+      }
+      return false;
+    }
+
+    bool non_negitive_output() const {
+      auto last = num_ops() - 1;
+      if (last < 0) return false;
+
+      auto params = get_params(last);
+      if (std::get<0>(params) != kind::eltwise
+          ||std::get<1>(params) <= 0.f
+          || std::get<2>(params) != 0.f
+          || std::get<3>(params) != 0.f
+          || std::get<4>(params) != algorithm::eltwise_relu)
+        return false;
+
+      return true;
     }
 
     void append(kind op_kind,
@@ -186,12 +208,12 @@ public:
       return ret;
     }
 
-    static post_ops residual(float scale = 1.0,
+    static post_ops residual(float sum_scale = 1.0, float relu_scale = 1.0,
         float alpha = 0.f, float beta = 0.f) {
       post_ops ret;
 
-      ret.append(kind::sum, scale, 1.0, 0.0, algorithm::eltwise_relu);
-      ret.append(kind::eltwise, scale, alpha, beta, algorithm::eltwise_relu);
+      ret.append(kind::sum, sum_scale, 1.0, 0.0, algorithm::eltwise_relu);
+      ret.append(kind::eltwise, relu_scale, alpha, beta, algorithm::eltwise_relu);
 
       return ret;
     }
@@ -208,6 +230,17 @@ public:
       return result;
     }()) {}
 
+    attr_t(int mask, scale_t &scales,
+        round_mode mode = round_mode::round_nearest)
+      : c_wrapper([]() {
+      mkldnn_primitive_attr_t result;
+      error::wrap_c_api(mkldnn_primitive_attr_create(&result),
+          "could not create a primitive attr");
+      return result; }()) {
+      set_output_scales(mask, scales);
+      set_int_output_round_mode(round_mode::round_nearest);
+    }
+
     round_mode get_int_output_round_mode() const {
       mkldnn_round_mode_t result;
       error::wrap_c_api(mkldnn_primitive_attr_get_int_output_round_mode(
@@ -221,17 +254,17 @@ public:
           "could not set int output round mode");
     }
 
-    std::pair<std::vector<float>, int> get_output_scales() const {
+    std::pair<scale_t, int> get_output_scales() const {
       int count, c_mask;
       const float *c_scales;
       error::wrap_c_api(mkldnn_primitive_attr_get_output_scales(get(),
             &count, &c_mask, &c_scales), "could not get int output scales");
 
       return std::make_pair(
-          std::vector<float>(c_scales, c_scales + count), c_mask);
+          scale_t(c_scales, c_scales + count), c_mask);
     }
 
-    void set_output_scales(int mask, std::vector<float> scales) {
+    void set_output_scales(int mask, scale_t scales) {
       error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(get(),
             (int)scales.size(), mask, &scales[0]),
           "could not set int output scales");
@@ -278,10 +311,10 @@ public:
     }
 
     // XXX: concept error
-    static inline attr_t residual(float scale = 1.0,
-        float alpha = 0.f, float beta = 0.f) {
+    static inline attr_t residual(float sum_scale = 1.0,
+        float relu_scale = 1.0, float alpha = 0.f, float beta = 0.f) {
       attr_t attr;
-      attr.set_post_ops(post_ops::residual(scale, alpha, beta));
+      attr.set_post_ops(post_ops::residual(sum_scale, relu_scale, alpha, beta));
       return attr;
     }
 
@@ -317,15 +350,14 @@ public:
   ///
   /// @param q query kind
   /// @param index query index
-  tensor::descriptor expected_descriptor_of(mkldnn::query q
-      , int index = 0) const {
+  tensor::descriptor expected_descriptor_of(mkldnn::query q,
+     int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
     const_mkldnn_primitive_desc_t const_cdesc =
-        mkldnn_primitive_desc_query_pd(get()
-            , mkldnn::convert_to_c(q), index);
-    error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc
-          , const_cdesc)
-        , "could not clone a src primititve descriptor");
+        mkldnn_primitive_desc_query_pd(get(),
+           mkldnn::convert_to_c(q), index);
+    error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
+        "could not clone a src primititve descriptor");
     return param::descriptor(cdesc);
   }
 
@@ -400,28 +432,38 @@ public:
   /// Query number of inputs
   ///
   int num_of_inputs() const {
-      return mkldnn_primitive_desc_query_s32(get()
-          , mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
+      return mkldnn_primitive_desc_query_s32(get(),
+         mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
   }
 
   /// Query number of outputs
   ///
   int num_of_outputs() const {
-      return mkldnn_primitive_desc_query_s32(get()
-          , mkldnn::convert_to_c(mkldnn::num_of_outputs_s32), 0);
+      return mkldnn_primitive_desc_query_s32(get(),
+         mkldnn::convert_to_c(mkldnn::num_of_outputs_s32), 0);
   }
 
 protected:
-  void create_reorder_pds(std::vector<tensor::descriptor> descriptors) {
+  void create_reorder_pds(std::vector<tensor::descriptor> descriptors,
+      std::vector<attr_t> attrs = std::vector<attr_t>()) {
     for (unsigned i = 0; i < descriptors.size(); i ++) {
-      assert((int)i < num_of_inputs());
+      IDEEP_ENFORCE((int)i < num_of_inputs(), "Incorrect input number");
       auto &provided = descriptors[i];
       auto expected = expected_input_descriptor((int)i);
       if (expected != provided) {
         mkldnn_primitive_desc_t result;
-        error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-              &result, provided.get(), expected.get()),
-            "could not create reorder primitive descriptor");
+        if (attrs.empty()) {
+          error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
+                &result, provided.get(), expected.get()),
+              "could not create reorder primitive descriptor");
+        } else {
+          IDEEP_ENFORCE(!(provided.get_data_type() == tensor::data_type::s8
+                && expected.get_data_type() == tensor::data_type::u8),
+              "Not support the reorder of s8 to u8 to avoid overflow.");
+          error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
+                &result, provided.get(), expected.get(), attrs[i].get()),
+              "could not create reorder primitive descriptor with attr");
+        }
         auxiliaries_[i].reset(result);
       }
     }
@@ -452,21 +494,20 @@ public:
     const_mkldnn_primitive_desc_t const_cdesc =
         mkldnn_primitive_desc_query_pd(get_mkldnn_primitive_desc_t(),
             mkldnn::convert_to_c(q), index);
-    error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc
-          , const_cdesc)
-        , "could not clone a src primititve descriptor");
+    error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
+        "could not clone a src primititve descriptor");
     return tensor::descriptor(cdesc);
   }
 
 protected:
-  void create_reorder_for(unsigned index
-      , const descriptor_group &g, tensor& in, tensor& out) {
+  void create_reorder_for(unsigned index,
+     const descriptor_group &g, param& in, param& out) {
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
     const_mkldnn_primitive_t outputs[] = { out.get() };
 
-    error::wrap_c_api(mkldnn_primitive_create(&result
-          , g.auxiliaries_[index].get(), inputs, outputs),
+    error::wrap_c_api(mkldnn_primitive_create(&result,
+          g.auxiliaries_[index].get(), inputs, outputs),
         "could not create a reorder");
 
     auxiliaries_[index].reset(result);
@@ -537,11 +578,11 @@ protected:
 
     __itt_frame_begin_v3(instruments::domain::ideep(), nullptr);
     error::wrap_c_api(
-        mkldnn_stream_submit(parallel_control.get()
-          , execution_sequence.size(), &execution_sequence[0]
-          , &c_api_error_primitive)
-        , "could not execute the computation"
-        , &c_api_error_primitive);
+        mkldnn_stream_submit(parallel_control.get(),
+         execution_sequence.size(), &execution_sequence[0],
+         &c_api_error_primitive),
+       "could not execute the computation",
+       &c_api_error_primitive);
     __itt_frame_end_v3(instruments::domain::ideep(), nullptr);
   }
 };
@@ -591,11 +632,13 @@ public:
     reset(result);
   }
 
-  void init(const tensor::view& view, const tensor::descriptor& src_desc,
-      const tensor::descriptor& dst_desc) {
+  void init(const tensor::view& view,
+      const tensor::descriptor& src_desc,
+      const tensor::descriptor& dst_desc,
+      const descriptor::attr_t attr = descriptor::attr_t()) {
     mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-          &desc, view.get(), dst_desc.get()),
+    error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
+          &desc, view.get(), dst_desc.get(), attr.get()),
         "could not create a reorder primitive descriptor");
     c_wrapper<mkldnn_primitive_desc_t> sg(desc);
 
@@ -610,11 +653,13 @@ public:
     reset(result);
   }
 
-  void init(const tensor::descriptor& src_desc, const tensor::view& view,
-      const tensor::descriptor& dst_desc) {
+  void init(const tensor::descriptor& src_desc,
+      const tensor::view& view,
+      const tensor::descriptor& dst_desc,
+      const descriptor::attr_t attr = descriptor::attr_t()) {
     mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-          &desc, src_desc.get(), view.get()),
+    error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
+          &desc, src_desc.get(), view.get(), attr.get()),
         "could not create a reorder primitive descriptor");
     c_wrapper<mkldnn_primitive_desc_t> sg(desc);
 
@@ -635,8 +680,13 @@ public:
   }
 
   void operator() (const tensor &input, const tensor &output) {
-    assert(input.get_descriptor() == in.get_descriptor()
-        && output.get_descriptor() == out.get_descriptor());
+    IDEEP_ENFORCE(!(input.get_data_type() == tensor::data_type::s8
+          && output.get_data_type() == tensor::data_type::u8),
+        "Not support the reorder of s8 to u8 to avoid overflow.");
+    IDEEP_ENFORCE(input.get_descriptor() == in.get_descriptor()
+        && output.get_descriptor() == out.get_descriptor(),
+        "Unmatch tensor descriptor in reorder");
+
     in.set_data_handle(input.get_data_handle());
     out.set_data_handle(output.get_data_handle());
 
@@ -721,6 +771,7 @@ public:
 
     output.reinit<alloc, direct_copy>(input.get_descriptor());
     reorder::compute<false, web_opt>(input, output);
+    if (input.has_scale()) output.set_scale(input.get_scale());
   }
 };
 
@@ -742,6 +793,7 @@ public:
       tensor output(view.expected_dst_descriptor());
       reorder_.init(view, input.get_descriptor(), output.get_descriptor());
       reorder_(input, output);
+      if (input.has_scale()) output.set_scale(input.get_scale());
 
       if (add_axis) {
         tensor::dims out_dims(output_dims);
@@ -822,7 +874,8 @@ struct computation : public primitive_group {
 
   void init(const descriptor_group& adesc,
       const std::vector<tensor::descriptor> &args) {
-    assert(adesc.num_of_inputs() == (int)args.size());
+    IDEEP_ENFORCE(adesc.num_of_inputs() == (int)args.size(),
+        "Unmatch the number of inputs");
     auto n_inputs = (int)args.size();
     auto n_outputs = adesc.num_of_outputs();
     init_internal(adesc, n_inputs, n_outputs);
@@ -858,8 +911,8 @@ struct computation : public primitive_group {
         throw error(mkldnn_runtime_error, "Cannot accept incompatible input");
     } else {
       // Connect outputs
-      assert(inouts_.at((unsigned)index).get_descriptor()
-          == atensor.get_descriptor());
+      IDEEP_ENFORCE(inouts_.at((unsigned)index).get_descriptor()
+          == atensor.get_descriptor(), "Incorrect tensor descriptor");
       inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle<false>());
     }
   }
@@ -912,7 +965,7 @@ struct sum : public computation,
   public utils::computation_cache<sum>,
   public utils::computation_web::node<tensor> {
   struct descriptor : public descriptor_group {
-    descriptor(const std::vector<float> &scales,
+    descriptor(const scale_t &scales,
         const std::vector<tensor::descriptor> &inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
@@ -924,7 +977,7 @@ struct sum : public computation,
       reset(result);
     }
 
-    descriptor(const std::vector<float> &scales,
+    descriptor(const scale_t &scales,
         const std::vector<tensor::descriptor> &inputs,
         const tensor::descriptor output_desc) {
       mkldnn_primitive_desc_t result;
@@ -943,13 +996,13 @@ public:
   using prop_kind_t =
       typename utils::computation_web::node<tensor>::prop_kind_t;
 
-  void init(const std::vector<float> &scales,
+  void init(const scale_t &scales,
       const std::vector<tensor::descriptor> &inputs) {
     descriptor forward_descriptor(scales, inputs);
     computation::init(forward_descriptor, inputs);
   }
 
-  void init(const std::vector<float> &scales,
+  void init(const scale_t &scales,
       const std::vector<tensor::descriptor> &inputs,
       const tensor::descriptor output) {
     descriptor forward_descriptor(scales, inputs, output);
@@ -958,13 +1011,13 @@ public:
 
   sum() = default;
 
-  sum(const std::vector<float> &scales,
+  sum(const scale_t &scales,
       const std::vector<tensor::descriptor> &inputs_desc,
       const tensor::descriptor output_desc) {
     init(scales, inputs_desc, output_desc);
   }
 
-  sum(const std::vector<float>& scales,
+  sum(const scale_t& scales,
       const std::vector<tensor::descriptor>& inputs_desc) {
     init(scales, inputs_desc);
   }
@@ -981,50 +1034,61 @@ public:
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const std::vector<float> &scales,
+  static void compute(const scale_t &scales,
       const std::vector<tensor>& inputs, tensor& output) {
+    std::vector<tensor> inputs_in;
     std::vector<tensor::descriptor> inputs_desc;
-    for_each(inputs.begin(), inputs.end(), [&inputs_desc](tensor in) {
-        inputs_desc.push_back(in.get_descriptor());
-        });
+    for (auto in : inputs) {
+      auto _in = in;
+      if (in.get_data_type() != tensor::data_type::f32) {
+        _in.init<alloc, sum>({in.get_dims(), tensor::data_type::f32});
+        IDEEP_ENFORCE(in.has_scale(), "Can not find scales");
+        IDEEP_ENFORCE(in.get_scale().size() == 1, "Incorrect scale size");
+        auto scale = IDEEP_DEF_SCALE;
+        scale[0] /= in.get_scale()[0];
+        reorder::compute(in, _in, {0, scale});
+      }
+      inputs_in.push_back(_in);
+      inputs_desc.push_back(_in.get_descriptor());
+    }
 
     bool inplace = false;
-    for (auto i : inputs) {
+    for (auto i : inputs_in) {
       if (i.template get_data_handle<false>() ==
           output.template get_data_handle<false>())
         inplace = true;
     }
 
-    if (output != inputs[0]) {
+    if (output != inputs_in[0]) {
       sum comp(scales, inputs_desc);
       output.reinit<alloc, sum>(comp.expected_dst_descriptor());
       // TODO: support inplace in web optimization
       if (web_opt && !inplace) {
         auto cn = utils::computation_web::template computation_node<
             sum, tensor>::create(comp, prop_kind_t::CN_PROP_NA, output);
-        if (cn->build_deps(inputs)) {
+        if (cn->build_deps(inputs_in)) {
           utils::computation_web::template computation_node<
               sum, tensor>::enqueue(cn);
           return;
         }
       }
-      comp.do_compute(inputs, output);
+      comp.do_compute(inputs_in, output);
     } else {
       sum comp(scales, inputs_desc, output.get_descriptor());
       if (web_opt && !inplace) {
-        auto fattr = inputs.size() == 2 ?
+        auto fattr = inputs_in.size() == 2 ?
             fusion_attr_t{ fusion_type_t::CN_FUSION_SUM, {scales[0]}, {}  } :
             fusion_attr_t{ fusion_type_t::CN_FUSION_NA, {}, {} };
 
         auto cn = utils::computation_web::template computation_node<
             sum, tensor>::create(comp, prop_kind_t::CN_PROP_NA, fattr, output);
-        if (cn->build_deps(inputs)) {
+        if (cn->build_deps(inputs_in)) {
           utils::computation_web::template computation_node<
               sum, tensor>::enqueue(cn);
           return;
         }
       }
-      comp.do_compute(inputs, output);
+      comp.do_compute(inputs_in, output);
     }
   }
 
@@ -1077,7 +1141,7 @@ struct convolution_forward: public computation,
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
       mkldnn_memory_desc_t bias_data = bias_desc.format_any();
       mkldnn_memory_desc_t dst_data = dst_desc.format_any();
-      tensor::dims dilates_in = {0, 0};
+      tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1096,7 +1160,6 @@ struct convolution_forward: public computation,
         &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
           "could not create a convolution forward primitive descriptor");
       reset(result);
-      create_reorder_pds({src_desc, weights_desc});
     }
 
     /// Constructor
@@ -1131,7 +1194,7 @@ struct convolution_forward: public computation,
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
       mkldnn_memory_desc_t dst_data = dst_desc.format_any();
-      tensor::dims dilates_in = {0, 0};
+      tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1149,9 +1212,7 @@ struct convolution_forward: public computation,
       error::wrap_c_api(mkldnn_primitive_desc_create_v2(
         &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
         "could not create a convolution forward primitive descriptor");
-
       reset(result);
-      create_reorder_pds({src_desc, weights_desc});
     }
   };
 
@@ -1397,7 +1458,7 @@ struct convolution_forward: public computation,
     if (web_opt) {
       tensor::dims bias_dims = {weights.get_dims().at(0)};
       tensor::descriptor bias_desc = {bias_dims, weights.get_data_type()};
-      std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
+      auto key = utils::create_key(src.get_data_type(), src.get_dims(),
           weights.get_dims(), bias_dims, dst_dims, strides, dilates, padding_l,
           padding_r, attr, aalogorithm, aprop_kind, appading_kind);
 
@@ -1407,7 +1468,7 @@ struct convolution_forward: public computation,
           aprop_kind, appading_kind);
       comp = _comp;
     } else {
-      std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
+      auto key = utils::create_key(src.get_data_type(), src.get_dims(),
           weights.get_dims(), dst_dims, strides, dilates, padding_l,
           padding_r, attr, aalogorithm, aprop_kind, appading_kind);
 
@@ -1457,7 +1518,7 @@ struct convolution_forward: public computation,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     tensor::descriptor result_desc(dst_dims, src.get_data_type());
-    std::string key = utils::create_key(src.get_data_type(), src.get_dims(),
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), dst_dims, strides, dilates,
         padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
 
@@ -1566,6 +1627,266 @@ struct convolution_forward: public computation,
     comp.do_compute(src, _weights, bias, src_in, weights_in, dst);
   }
 
+  template <class alloc, bool web_opt, typename ...Ts>
+  static void compute_impl(const tensor& src,
+      const tensor& weights, const tensor& bias,
+      const tensor::dims& dst_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      const scale_t &src_scales, const scale_t &weights_scales,
+      const scale_t &dst_meaning_max, const descriptor::attr_t attr,
+      Ts&&... args) {
+    int bias_mask = 0;
+    int weights_mask = 0;
+    scale_t dst_scales_in, bias_scales;
+    descriptor::attr_t op_attr;
+    auto post_ops = attr.get_post_ops();
+    auto dst_data_type = src.get_data_type();
+    auto src_format = src.get_internal_format();
+    tensor::descriptor src_desc, weights_desc, bias_desc;
+    auto src_scales_in = src.has_scale() ? src.get_scale()
+      : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
+    auto weights_scales_in = weights.has_scale()
+      ? weights.get_scale() : weights_scales;
+
+    if (!weights_scales_in.empty()) {
+      int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
+      bias_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, false);
+      weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
+
+      // determine dst data type
+      dst_data_type = dst_meaning_max.empty()
+        ? tensor::data_type::f32 : tensor::data_type::s8;
+      if (post_ops.has_op_kind(kind::sum)) {
+        src_format = dst.get_internal_format();
+        dst_data_type = dst.get_data_type();
+      } else if (post_ops.non_negitive_output()){
+        dst_data_type = tensor::data_type::u8;
+      }
+
+      // compute dst scales based-on dst data type
+      dst_scales_in = IDEEP_DEF_SCALE;
+      if (!dst_meaning_max.empty() && dst_data_type != tensor::data_type::f32) {
+        dst_scales_in[0] = dt_max_map.at(dst_data_type) / dst_meaning_max[0];
+      }
+
+      // fill primitive attr
+      scale_t op_scales(scale_size);
+      bias_scales.resize(scale_size);
+      for (int i = 0; i < scale_size; i++) {
+        bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
+        op_scales[i] = dst_scales_in[0] / bias_scales[i];
+      }
+      op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
+      op_attr.set_int_output_round_mode(round_mode::round_nearest);
+
+      if (post_ops.has_op_kind(kind::sum)) {
+        float sum_scale = dst_scales_in[0]
+          / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+        if (post_ops.has_op_kind(kind::eltwise)) {
+          op_attr.set_post_ops(descriptor::post_ops::residual(sum_scale));
+        } else {
+          op_attr.set_post_ops(descriptor::post_ops::sum(sum_scale));
+        }
+      } else if (post_ops.has_op_kind(kind::eltwise)) {
+        op_attr.set_post_ops(descriptor::post_ops::relu());
+      }
+
+      src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
+      weights_desc = {weights.get_dims(), tensor::data_type::s8};
+      bias_desc = {bias.get_dims(), tensor::data_type::s32};
+
+    } else {
+      op_attr = attr;
+      dst_data_type = tensor::data_type::f32;
+      if (post_ops.has_op_kind(kind::sum))
+        src_format = dst.get_internal_format();
+
+      IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32
+          && bias.get_data_type() == tensor::data_type::f32,
+          "Incorrect data type in weights or bias");
+
+      src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
+      weights_desc = weights.get_descriptor();
+      bias_desc = bias.get_descriptor();
+
+      weights_scales_in = IDEEP_DEF_SCALE;
+      bias_scales = IDEEP_DEF_SCALE;
+      if (src.has_scale())
+        src_scales_in[0] = 1.0f / src_scales_in[0];
+      else
+        src_scales_in = IDEEP_DEF_SCALE;
+    }
+
+    tensor::descriptor dst_desc_in(dst_dims, dst_data_type);
+
+    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+        weights_desc.get_dims(), bias_desc.get_dims(), dst_dims,
+        strides, dilates, padding_l, padding_r, op_attr, args...);
+
+    fetch_or_create_m(comp, key, src_desc,
+        weights_desc, bias_desc, dst_desc_in, strides, dilates,
+        padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
+
+    // XXX: Performance evaluation
+    // TODO: Custom allocator support
+    auto src_in = src;
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init<alloc, convolution_forward>(comp.expected_src_descriptor());
+      reorder::compute(src, src_in, {0, src_scales_in});
+    }
+
+    // solve the problem that slow reorder from nchw
+    auto _weights = weights.as_weights();
+    auto weights_in = _weights;
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init<alloc, convolution_forward>(comp.expected_weights_descriptor());
+      reorder::compute(_weights, weights_in, {weights_mask, weights_scales_in});
+    }
+
+    auto bias_in = bias;
+    if (bias.get_descriptor() != bias_desc) {
+      bias_in.init<alloc, convolution_forward>(std::move(bias_desc));
+      reorder::compute(bias, bias_in, {bias_mask, bias_scales});
+    }
+
+    auto dst_desc = comp.expected_dst_descriptor();
+    if (post_ops.has_op_kind(kind::sum))
+      IDEEP_ENFORCE(dst_desc.get_internal_format() == src_format
+          && dst_desc.get_data_type() == dst_data_type,
+          "Unmatch format in Conv Sum fusion");
+    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
+    if (!dst_scales_in.empty()) dst.set_scale(dst_scales_in);
+
+    comp.execute(src_in, weights_in, bias_in, dst);
+    if (post_ops.non_negitive_output() && dst.get_data_type() == tensor::data_type::s8) {
+      dst.set_descriptor({dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()});
+    }
+  }
+
+  template <class alloc, bool web_opt, typename ...Ts>
+  static void compute_impl(const tensor& src,
+      const tensor& weights, const tensor::dims& dst_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      const scale_t &src_scales, const scale_t &weights_scales,
+      const scale_t &dst_meaning_max, const descriptor::attr_t attr,
+      Ts&&... args) {
+    int weights_mask = 0;
+    scale_t dst_scales_in;
+    descriptor::attr_t op_attr;
+    auto post_ops = attr.get_post_ops();
+    auto dst_data_type = src.get_data_type();
+    auto src_format = src.get_internal_format();
+    tensor::descriptor src_desc, weights_desc;
+    auto src_scales_in = src.has_scale() ? src.get_scale()
+      : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
+    auto weights_scales_in = weights.has_scale()
+      ? weights.get_scale() : weights_scales;
+
+    if (!weights_scales_in.empty()) {
+      int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
+      weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
+
+      // determine dst data type
+      dst_data_type = dst_meaning_max.empty()
+        ? tensor::data_type::f32 : tensor::data_type::s8;
+      if (post_ops.has_op_kind(kind::sum)) {
+        src_format = dst.get_internal_format();
+        dst_data_type = dst.get_data_type();
+      } else if (post_ops.non_negitive_output()){
+        dst_data_type = tensor::data_type::u8;
+      }
+
+      // compute dst scales based-on dst data type
+      dst_scales_in = IDEEP_DEF_SCALE;
+      if (!dst_meaning_max.empty() && dst_data_type != tensor::data_type::f32) {
+        dst_scales_in[0] = dt_max_map.at(dst_data_type) / dst_meaning_max[0];
+      }
+
+      // fill primitive attr
+      scale_t op_scales(scale_size);
+      for (int i = 0; i < scale_size; i++) {
+        op_scales[i] = dst_scales_in[0] /
+          (src_scales_in[0] * weights_scales_in[i]);
+      }
+      op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
+      op_attr.set_int_output_round_mode(round_mode::round_nearest);
+
+      if (post_ops.has_op_kind(kind::sum)) {
+        float sum_scale = dst_scales_in[0]
+          / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+        if (post_ops.has_op_kind(kind::eltwise)) {
+          op_attr.set_post_ops(descriptor::post_ops::residual(sum_scale));
+        } else {
+          op_attr.set_post_ops(descriptor::post_ops::sum(sum_scale));
+        }
+      } else if (post_ops.has_op_kind(kind::eltwise)) {
+        op_attr.set_post_ops(descriptor::post_ops::relu());
+      }
+
+      src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
+      weights_desc = {weights.get_dims(), tensor::data_type::s8};
+
+    } else {
+      op_attr = attr;
+      dst_data_type = tensor::data_type::f32;
+      if (post_ops.has_op_kind(kind::sum))
+        src_format = dst.get_internal_format();
+
+      IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32,
+          "Incorrect data type in weights");
+
+      src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
+      weights_desc = weights.get_descriptor();
+
+      weights_scales_in = IDEEP_DEF_SCALE;
+      if (src.has_scale())
+        src_scales_in[0] = 1.0f / src_scales_in[0];
+      else
+        src_scales_in = IDEEP_DEF_SCALE;
+    }
+
+    tensor::descriptor dst_desc_in(dst_dims, dst_data_type);
+
+    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+        weights_desc.get_dims(), dst_dims, strides, dilates,
+        padding_l, padding_r, op_attr, args...);
+
+    fetch_or_create_m(comp, key, src_desc,
+        weights_desc, dst_desc_in, strides, dilates,
+        padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
+
+    // Performance evaluation
+    auto src_in = src;
+    // TODO: cut duplicated function call
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init<alloc, convolution_forward>(comp.expected_src_descriptor());
+      reorder::compute(src, src_in, {0, src_scales_in});
+    }
+
+    // solve the problem that slow reorder from nchw
+    auto _weights = weights.as_weights();
+    auto weights_in = _weights;
+    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
+      weights_in.init<alloc, convolution_forward>(comp.expected_weights_descriptor());
+      reorder::compute(_weights, weights_in, {weights_mask, weights_scales_in});
+    }
+
+    auto dst_desc = comp.expected_dst_descriptor();
+    if (post_ops.has_op_kind(kind::sum))
+      IDEEP_ENFORCE(dst_desc.get_internal_format() == src_format
+          && dst_desc.get_data_type() == dst_data_type,
+          "Unmatch format or data type in Conv Sum fusion");
+    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
+    if (!dst_scales_in.empty()) dst.set_scale(dst_scales_in);
+
+    comp.execute(src_in, weights_in, dst);
+    if (post_ops.non_negitive_output() && dst.get_data_type() == tensor::data_type::s8) {
+      dst.set_descriptor({dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()});
+    }
+  }
+
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
       const tensor::dims result_dims, tensor& dst, const tensor::dims strides,
@@ -1597,33 +1918,42 @@ struct convolution_forward: public computation,
 
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
-      const tensor::dims result_dims, tensor& dst, const tensor::dims strides,
-      const tensor::dims dilates, const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
+      const tensor::dims result_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r, int group,
+      const scale_t &src_scales = scale_t(),
+      const scale_t &weights_scales = scale_t(),
+      const scale_t &dst_meaning_max = scale_t(),
       const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc, web_opt>(src, weights_in, result_dims, dst, strides, dilates,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    compute_impl<alloc, web_opt>(src, weights_in, result_dims, dst,
+        strides, dilates, padding_l, padding_r,
+        src_scales, weights_scales, dst_meaning_max, attr,
+        aalogorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor &src, const tensor& weights,
-      const tensor& bias, const tensor::dims result_dims,
-      tensor& dst, const tensor::dims strides,
-      const tensor::dims dilates, const tensor::dims padding_l,
-      const tensor::dims padding_r, const int group,
+      const tensor& bias, const tensor::dims result_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r, int group,
+      const scale_t &src_scales = scale_t(),
+      const scale_t &weights_scales = scale_t(),
+      const scale_t &dst_meaning_max = scale_t(),
       const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc, web_opt>(src, weights_in, bias, result_dims, dst, strides, dilates,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+    compute_impl<alloc, web_opt>(src, weights_in, bias, result_dims, dst,
+        strides, dilates, padding_l, padding_r,
+        src_scales, weights_scales, dst_meaning_max, attr,
+        aalogorithm, aprop_kind, appading_kind);
   }
 
   virtual void fire_computation_node(
@@ -1672,7 +2002,7 @@ struct convolution_forward: public computation,
     auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
     auto g = grouped ? dims_in[0] : 1;
 
-    tensor::dims dilates_in = {0, 0};
+    tensor::dims dilates_in {0, 0};
     if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
       dilates_in = dilates;
       IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1694,8 +2024,12 @@ struct convolution_forward: public computation,
 
     tensor::dims x_dims = { 1, ic, h, w};
     tensor::dims y_dims = { 1, oc, oh, ow};
-    tensor::descriptor x_desc(x_dims, dtype, format::nchw);
-    tensor::descriptor y_desc(y_dims, dtype, format::nchw);
+    auto x_dtype = (dtype != tensor::data_type::s8)
+      ? dtype : tensor::data_type::u8;
+    auto y_dtype = (dtype != tensor::data_type::s8)
+      ? dtype : tensor::data_type::s32;
+    tensor::descriptor x_desc(x_dims, x_dtype, format::nchw);
+    tensor::descriptor y_desc(y_dims, y_dtype, format::nchw);
     tensor::descriptor weights_desc(dims_in, dtype,
         grouped ? format::goihw : format::oihw);
 
@@ -1748,7 +2082,7 @@ struct convolution_backward_data : public computation,
       mkldnn_memory_desc_t diff_src_any = gradx_desc.format_any();
       mkldnn_memory_desc_t weights_any = weights_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
-      tensor::dims dilates_in = {0, 0};
+      tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1902,7 +2236,7 @@ struct convolution_backward_weights : public computation,
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
       mkldnn_memory_desc_t diff_bias_any = gradb_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
-      tensor::dims dilates_in = {0, 0};
+      tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1941,7 +2275,7 @@ struct convolution_backward_weights : public computation,
       mkldnn_memory_desc_t src_any = x_desc.format_any();
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
-      tensor::dims dilates_in = {0, 0};
+      tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -2204,6 +2538,7 @@ struct lrn_forward : public computation,
 public:
   using computation::expected_dst_descriptor;
   using computation::expected_workspace_descriptor;
+  using computation::expected_src_descriptor;
   using prop_kind_t =
       typename utils::computation_web::node<tensor>::prop_kind_t;
 
@@ -2240,20 +2575,41 @@ public:
       float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels,
       prop_kind aprop_kind = prop_kind::forward_training) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), local_size, alpha, beta, k,
+
+    auto src_in = src;
+    tensor::descriptor src_desc;
+    scale_t src_scales(IDEEP_DEF_SCALE);
+    if (src_in.has_scale()) {
+      IDEEP_ENFORCE(src_in.get_data_type() != tensor::data_type::f32,
+          "Incorrect data type");
+      IDEEP_ENFORCE(src_in.get_scale().size() == 1,
+          "Invalid scale size");
+      src_desc = {src_in.get_dims(), tensor::data_type::f32};
+      src_scales[0] /= src_in.get_scale()[0];
+    } else {
+      src_desc = src_in.get_descriptor();
+      IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
+          "Incorrect src data type");
+    }
+
+    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+        src_desc.get_internal_format(), local_size, alpha, beta, k,
         aalgorithm, aprop_kind);
 
-    fetch_or_create_m(comp, key, src.get_descriptor(),
+    fetch_or_create_m(comp, key, src_desc,
         local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
+    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
+      src_in.init<alloc, lrn_forward>(comp.expected_src_descriptor());
+      reorder::compute(src, src_in, {0, src_scales});
+    }
+
     if (dst != src) { // not inplace
       dst.reinit<alloc, lrn_forward>(comp.expected_dst_descriptor());
       if (with_workspace)
-        dst.init_extra<alloc, lrn_forward>(
-            comp.expected_workspace_descriptor());
+        dst.init_extra<alloc, lrn_forward>(comp.expected_workspace_descriptor());
     }
 
     if (web_opt) {
@@ -2266,7 +2622,7 @@ public:
       }
     }
 
-    comp.do_compute(src, dst);
+    comp.do_compute(src_in, dst);
   }
 
   virtual void fire_computation_node(
@@ -2459,8 +2815,8 @@ public:
     if (dst != src) {
       dst.reinit<alloc, pooling_forward>(comp.expected_dst_descriptor());
       if (with_workspace)
-        dst.init_extra<alloc, pooling_forward>(
-            comp.expected_workspace_descriptor());
+        dst.init_extra<alloc, pooling_forward>(comp.expected_workspace_descriptor());
+      if (src.has_scale()) dst.set_scale(src.get_scale());
     }
 
     if (web_opt) {
@@ -2641,8 +2997,8 @@ struct eltwise_forward : public computation,
 
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(
-                &result, &data, engine::cpu_engine().get(), nullptr)
-        , "could not create a eltwise forward primitive descriptor");
+                &result, &data, engine::cpu_engine().get(), nullptr),
+          "could not create a eltwise forward primitive descriptor");
       reset(result);
     }
   };
@@ -2682,11 +3038,13 @@ public:
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         src.get_internal_format(), alpha, beta, aalogorithm, aprop_kind);
 
-    fetch_or_create_m(comp, key, src.get_descriptor()
-        , alpha, beta, aalogorithm, aprop_kind);
+    fetch_or_create_m(comp, key, src.get_descriptor(),
+        alpha, beta, aalogorithm, aprop_kind);
 
-    if (dst != src)
+    if (dst != src) {
       dst.reinit<alloc, eltwise_forward>(src.get_descriptor());
+      if (src.has_scale()) dst.set_scale(src.get_scale());
+    }
 
     if (web_opt) {
       auto fattr = aalogorithm == algorithm::eltwise_relu ?
@@ -2704,6 +3062,8 @@ public:
     }
 
     comp.do_compute(src, dst);
+    if (dst.has_scale() && dst.get_data_type() == tensor::data_type::s8)
+      dst.set_descriptor({dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()});
   }
 
   virtual void fire_computation_node(
@@ -2831,7 +3191,7 @@ public:
       return;
     }
 #if defined(WIN32)
-# pragma omp parallel for schedule(static)
+    # pragma omp parallel for schedule(static)
 #else
     # pragma omp parallel for collapse(3) schedule(static)
 #endif
@@ -2863,6 +3223,8 @@ public:
     }
 
     dst.reinit_like(src_in);
+    if (src_in.has_scale()) dst.set_scale(src_in.get_scale());
+
     compute_impl(src_in, dst, group);
   }
 };
@@ -3067,24 +3429,48 @@ public:
     else
       dst_dims[axis] = dst_channels;
 
-    reorder reorder_;
+    auto dst_data_type = inputs[0].get_data_type();
+    auto dst_format = inputs[0].get_internal_format();
+    scale_t min_scale(IDEEP_DEF_SCALE);
+    if (dst_data_type != tensor::data_type::f32) {
+      min_scale[0] = std::numeric_limits<float>::max();
+      for (auto i : inputs) {
+        if (i.get_data_type() != dst_data_type) {
+          min_scale = IDEEP_DEF_SCALE;
+          dst_data_type = tensor::data_type::f32;
+          break;
+        }
+        if (i.has_scale() && (min_scale[0] > i.get_scale()[0])) {
+          IDEEP_ENFORCE(i.get_scale().size() == 1, "incorrect scale size");
+          min_scale[0] = i.get_scale()[0];
+        }
+      }
+    }
+
     tensor::dims offset_dims(dst_dims.size(), 0);
     if (add_axis)
-      dst.reinit({dst_dims, inputs[0].get_data_type()});
+      dst.reinit({dst_dims, dst_data_type});
     else
-      dst.reinit({dst_dims, inputs[0].get_data_type(),
-          inputs[0].get_internal_format()});
+      dst.reinit({dst_dims, dst_data_type, dst_format});
+    if (dst_data_type != tensor::data_type::f32)
+      dst.set_scale(min_scale);
+
+    reorder reorder_;
+    scale_t scales(1);
     for (unsigned i = 0; i < inputs.size(); ++i) {
+      scales[0] = min_scale[0] /
+        (inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f);
       if (add_axis) {
         tensor::dims in_dims(inputs[i].get_dims());
         in_dims.insert(in_dims.begin() + axis, 1);
         tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
         auto view = dst.create_view(in_dims, offset_dims);
-        reorder_.init(in_desc, view, dst.get_descriptor());
+        reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
         reorder_({in_desc, inputs[i].get_data_handle()}, dst);
       } else {
         auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
-        reorder_.init(inputs[i].get_descriptor(), view, dst.get_descriptor());
+        reorder_.init(inputs[i].get_descriptor(),
+            view, dst.get_descriptor(), {0, scales});
         reorder_(inputs[i], dst);
       }
       offset_dims[axis] += axis_info[i];
@@ -3246,16 +3632,26 @@ public:
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), 3, epsilon);
+    auto src_in = src;
+    if (src.get_data_type() != tensor::data_type::f32) {
+      src_in.init<alloc, batch_normalization_forward_inference>(
+          {src.get_dims(), tensor::data_type::f32});
+      IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
+      auto src_scales = IDEEP_DEF_SCALE;
+      src_scales[0] /= src.get_scale()[0];
+      reorder::compute(src, src_in, {0, src_scales});
+    }
 
-    fetch_or_create_m(comp, key, src.get_descriptor(),
+    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+        src_in.get_internal_format(), 3, epsilon);
+
+    fetch_or_create_m(comp, key, src_in.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
 
     if (dst != src)
       dst.reinit<alloc, batch_normalization_forward_inference>(
           comp.expected_dst_descriptor());
-    comp.execute(src, scale, shift, dst);
+    comp.execute(src_in, scale, shift, dst);
   }
 
   void do_compute(const tensor& src, const tensor& mean, const tensor& variance,
@@ -3267,10 +3663,20 @@ public:
   static void compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), 5, epsilon);
+    auto src_in = src;
+    if (src.get_data_type() != tensor::data_type::f32) {
+      src_in.init<alloc, batch_normalization_forward_inference>(
+          {src.get_dims(), tensor::data_type::f32});
+      IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
+      auto src_scales = IDEEP_DEF_SCALE;
+      src_scales[0] /= src.get_scale()[0];
+      reorder::compute(src, src_in, {0, src_scales});
+    }
 
-    fetch_or_create_m(comp, key, src.get_descriptor(), epsilon);
+    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+        src_in.get_internal_format(), 5, epsilon);
+
+    fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon);
 
     if (dst != src)
       dst.reinit<alloc, batch_normalization_forward_inference>(
@@ -3283,14 +3689,14 @@ public:
       auto cn = utils::computation_web::template computation_node<
           batch_normalization_forward_inference, tensor>::
           create(comp, prop_kind_t::CN_PROP_FORWARD, fattr, dst);
-      if (cn->build_deps(src, mean, variance, scale, shift)) {
+      if (cn->build_deps(src_in, mean, variance, scale, shift)) {
         utils::computation_web::template computation_node<
             batch_normalization_forward_inference, tensor>::enqueue(cn);
         return;
       }
     }
 
-    comp.do_compute(src, mean, variance, scale, shift, dst);
+    comp.do_compute(src_in, mean, variance, scale, shift, dst);
   }
 
   virtual void fire_computation_node(
@@ -3321,7 +3727,7 @@ public:
   void init(const tensor::descriptor& src_desc, const tensor::descriptor& scale,
       const tensor::descriptor& shift, float momentum, float epsilon,
       unsigned flags = batch_normalization_flag::use_scale_shift) {
-    assert(scale.ndims() == 1 && shift.ndims() == 1);
+    // IDEEP_ENFORCE(scale.ndims() == 1 && shift.ndims() == 1, "Incorrect dims");
     descriptor batch_norm_forward(src_desc, epsilon, flags,
         prop_kind::forward_training);
     computation::init(batch_norm_forward, src_desc);
@@ -3572,7 +3978,7 @@ public:
       const tensor& grady, const tensor& scale, const tensor& gradx,
       const tensor& gradw, const tensor& grad_shift) {
     // protect API integraty, should we use solid check instead of assert?
-    assert(get_prop_kind() == prop_kind::backward);
+    IDEEP_ENFORCE(get_prop_kind() == prop_kind::backward, "Incorrect prop_kind");
     // We can sure that only scale is matter at this place
     // And single thread of memcpy should be fast enough
     std::memcpy(
@@ -3595,7 +4001,8 @@ public:
 
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& grady, const tensor& scale, const tensor& gradx) {
-    assert(get_prop_kind() == prop_kind::backward_data);
+    IDEEP_ENFORCE(get_prop_kind() == prop_kind::backward_data,
+        "Incorrect prop_kind");
     std::memcpy(
         weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
     computation::execute(src, mean, variance, grady, weights_, gradx);
@@ -3774,9 +4181,12 @@ struct inner_product_forward: public computation,
   }
 
   void do_compute(const tensor& src, const tensor& weights, const tensor& bias,
-      tensor& src_in, tensor& weights_in, tensor& dst) {
-    if (src.get_data_handle() != src_in.get_data_handle())
-      reorder::compute(src, src_in);
+      tensor& src_in, tensor& weights_in, tensor& dst,
+      scale_t src_scales=scale_t()) {
+    if (src.get_data_handle() != src_in.get_data_handle()) {
+      if (src_scales.empty()) src_scales = IDEEP_DEF_SCALE;
+      reorder::compute(src, src_in, {0, src_scales});
+    }
 
     if (weights.get_data_handle() != weights_in.get_data_handle())
       reorder::compute(weights, weights_in);
@@ -3803,14 +4213,29 @@ struct inner_product_forward: public computation,
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
         "Invalid dims in src or weights");
+    IDEEP_ENFORCE(!weights_in.has_scale()
+        && weights_in.get_data_type() == tensor::data_type::f32,
+          "INT8 mode is not supported");
 
-    tensor::dims dst_dims = {src.get_dim(0), weights_in.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
+    tensor::descriptor src_desc;
+    scale_t src_scales(IDEEP_DEF_SCALE);
+    if (src_in.get_data_type() != tensor::data_type::f32) {
+      IDEEP_ENFORCE(src_in.has_scale(), "Can not find scale");
+      src_desc = {src_in.get_dims(), tensor::data_type::f32};
+      src_scales[0] /= src_in.get_scale()[0];
+    } else {
+      src_desc = src_in.get_descriptor();
+      IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
+          "Incorrect src data type");
+    }
 
-    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+    tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
+
+    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
         weights_in.get_dims(), bias.get_dims(), dst_dims);
 
-    fetch_or_create_m(comp, key, src_in.get_descriptor(),
+    fetch_or_create_m(comp, key, src_desc,
         weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor())
@@ -3834,13 +4259,16 @@ struct inner_product_forward: public computation,
       }
     }
 
-    comp.do_compute(src, weights, bias, src_in, weights_in, dst);
+    comp.do_compute(src, weights, bias, src_in, weights_in, dst, src_scales);
   }
 
   void do_compute(const tensor& src, const tensor& weights,
-      tensor& src_in, tensor& weights_in, tensor& dst) {
-    if (src.get_data_handle() != src_in.get_data_handle())
-      reorder::compute(src, src_in);
+      tensor& src_in, tensor& weights_in, tensor& dst,
+      scale_t src_scales=scale_t()) {
+    if (src.get_data_handle() != src_in.get_data_handle()) {
+      if (src_scales.empty()) src_scales = IDEEP_DEF_SCALE;
+      reorder::compute(src, src_in, {0, src_scales});
+    }
 
     if (weights.get_data_handle() != weights_in.get_data_handle())
       reorder::compute(weights, weights_in);
@@ -3867,14 +4295,29 @@ struct inner_product_forward: public computation,
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
         "Invalid dims in src or weights");
+    IDEEP_ENFORCE(!weights_in.has_scale()
+        && weights_in.get_data_type() == tensor::data_type::f32,
+          "INT8 mode is not supported");
 
-    tensor::dims dst_dims = {src_in.get_dim(0), weights_in.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src_in.get_data_type());
+    tensor::descriptor src_desc;
+    scale_t src_scales(IDEEP_DEF_SCALE);
+    if (src_in.get_data_type() != tensor::data_type::f32) {
+      IDEEP_ENFORCE(src_in.has_scale(), "Can not find scale");
+      src_desc = {src_in.get_dims(), tensor::data_type::f32};
+      src_scales[0] /= src_in.get_scale()[0];
+    } else {
+      src_desc = src_in.get_descriptor();
+      IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
+          "Incorrect src data type");
+    }
 
-    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+    tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
+    tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
+
+    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
         weights_in.get_dims(), dst_dims);
 
-    fetch_or_create_m(comp, key, src_in.get_descriptor(),
+    fetch_or_create_m(comp, key, src_desc,
         weights_in.get_descriptor(), dst_desc);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor())
@@ -3898,7 +4341,7 @@ struct inner_product_forward: public computation,
       }
     }
 
-    comp.do_compute(src, weights, src_in, weights_in, dst);
+    comp.do_compute(src, weights, src_in, weights_in, dst, src_scales);
   }
 
   virtual void fire_computation_node(
@@ -4120,8 +4563,8 @@ public:
     computation::execute(x, grady, gradw);
   }
 
-  void execute(const tensor& x, const tensor& grady, const tensor& gradw
-      , const tensor& gradb) {
+  void execute(const tensor& x, const tensor& grady, const tensor& gradw,
+     const tensor& gradb) {
     computation::execute(x, grady, gradw, gradb);
   }
 
@@ -4294,6 +4737,7 @@ public:
     comp.ratio_ = ratio;
     mask.reinit<alloc, dropout_forward>(src.get_descriptor());
     dst.reinit<alloc, dropout_forward>(src.get_descriptor());
+    if (src.has_scale()) dst.set_scale(src.get_scale());
 
     if (web_opt) {
       auto cn = utils::computation_web::template computation_node<
@@ -4458,8 +4902,9 @@ public:
   template<class alloc = utils::allocator>
   static void compute(eltwise_binary_op op, tensor &inputA, tensor &inputB,
       tensor &outputC) {
-    assert(inputA.ndims() >= inputB.ndims());
-    assert(inputA.get_descriptor() == outputC.get_descriptor());
+    IDEEP_ENFORCE(inputA.ndims() >= inputB.ndims(), "Incorrect dims");
+    IDEEP_ENFORCE(inputA.get_descriptor() == outputC.get_descriptor(),
+        "Incorrect tensor descriptor");
     if (inputA.get_dims() == inputB.get_dims()) {
       auto* inputB_data = inputB.get_data_handle();
       tensor scratch_tensor;
@@ -4548,10 +4993,10 @@ public:
   template<typename data_t>
   static inline void sum_nChwXC_along_channel(data_t *src,
       tensor::descriptor src_desc, std::vector<int> axis, data_t *dst) {
-    int mb = src_desc.get_dims()[0],
-        ic = src_desc.get_dims()[1],
-        ih = src_desc.get_dims()[2],
-        iw = src_desc.get_dims()[3];
+    int mb = src_desc.get_dim(0),
+        ic = src_desc.get_dim(1),
+        ih = src_desc.get_dim(2),
+        iw = src_desc.get_dim(3);
     const int cg = (int)src_desc.get_mkldnn_memory_desc_t()->format ==
         mkldnn_nChw16c ? 16 : 8;
     int cn = ic / cg;
@@ -4718,7 +5163,7 @@ public:
     comp.axis_ = axis;
 
     tensor dst;
-    dst.init({{src.get_dims()[1]},
+    dst.init({{src.get_dim(1)},
               src.get_data_type(),
               format::x});
 

@@ -15,8 +15,14 @@ using error = mkldnn::error;
         ? mkldnn_success : mkldnn_invalid_arguments, (message));  \
   } while(false) \
 
-#define IDEEP_STD_EQUAL(v, i) \
+#define IDEEP_STD_ALL_EQ(v, i) \
   std::all_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k == i;})
+
+#define IDEEP_STD_ANY_LE(v, i) \
+  std::any_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k <= i;})
+
+#define IDEEP_STD_EACH_SUB(v, i) \
+  for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
 
 // For 2D convolution with grouped weights, the ndims must be 5 (goihw)
 #define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)

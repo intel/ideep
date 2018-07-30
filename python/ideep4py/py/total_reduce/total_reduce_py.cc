@@ -1,5 +1,8 @@
 /*
- *Copyright (c) 2018 Intel Corporation.
+ *COPYRIGHT
+ *All modification made by Intel Corporation: © 2018 Intel Corporation.
+ *Copyright (c) 2015 Preferred Infrastructure, Inc.
+ *Copyright (c) 2015 Preferred Networks, Inc.
  *
  *Permission is hereby granted, free of charge, to any person obtaining a copy
  *of this software and associated documentation files (the "Software"), to deal
@@ -22,22 +25,5 @@
  */
 
 
-%module ideep4py
+#include "total_reduce_py.h"
 
-%init %{
-  import_array();
-  implementation::g_init();
-%}
-
-%include "mdarray.i"
-%include "eltwise.i"
-%include "conv.i"
-%include "pooling.i"
-%include "linear.i"
-%include "bn.i"
-%include "concat.i"
-%include "lrn.i"
-%include "dropout.i"
-%include "basic.i"
-%include "total_reduce.i"
-/* %include "dlcp.i" */

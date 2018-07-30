@@ -105,6 +105,7 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep4py/py/mm',
              '-Iideep4py/py/primitives',
              '-Iideep4py/py/swig_utils',
+             '-Iideep4py/py/total_reduce',
              # '-Iideep4py/py/dlcp'
              ]
 
@@ -125,11 +126,12 @@ includes = ['ideep4py/include',
             'ideep4py/include/ideep',
             'ideep4py/py/mm',
             'ideep4py/py/primitives',
+            'ideep4py/py/total_reduce',
             # 'ideep4py/py/dlcp'
             ]
 
 if os_name == 'Linux':
-    libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
+    libraries = ['mkldnn', 'mklml_intel', 'ideep']  # , 'dlcomp']
     ccxx_opts += ['-fopenmp']
     libraries += ['m']
     link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']

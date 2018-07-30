@@ -184,7 +184,7 @@ static bool total_reduce_check_grace_exit_p()
 }
 
 void total_reduce_allreduce(int id, int priority,
-                            void *send_buf, void *recv_buf, size_t num_elements, TR_Datatype datatype)
+                            void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype)
 {
     struct payload * payload = payload_new_or_reuse(id, priority, ALLREDUCE, num_elements,
                                                     send_buf, recv_buf, datatype, NULL);
@@ -196,13 +196,13 @@ void total_reduce_allreduce(int id, int priority,
 }
 
 void total_reduce_iallreduce(int id, int priority,
-                   void *send_buf, void *recv_buf, size_t num_elements, TR_Datatype datatype,
+                   void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype,
                    void (*callback)(int))
 {
     payload_new_or_reuse(id, priority, ALLREDUCE, num_elements, send_buf, recv_buf, datatype, callback);
 }
 
-void total_reduce_bcast(int id, int priority, void *buffer, size_t num_elements, TR_Datatype datatype, int root)
+void total_reduce_bcast(int id, int priority, void *buffer, size_t num_elements, TR_datatype datatype, int root)
 {
     if (total_reduce_get_rank() !=root) {
         bzero (buffer, num_elements*sizeof(float));

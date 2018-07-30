@@ -8,6 +8,11 @@
 #include "total_reduce.h"
 #include "TR_interface.h"
 
+bool TR_available(void)
+{
+    return true;
+}
+
 void TR_init(void)
 {
     total_reduce_init();
@@ -24,14 +29,14 @@ int TR_get_rank(void)
 }
 
 void TR_allreduce(int id, int priority,
-                  void *send_buf, void *recv_buf, size_t num_elements, TR_Datatype datatype)
+                  void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype)
 {
     assert (id >= 0);
     total_reduce_allreduce(id, priority, send_buf, recv_buf, num_elements, datatype);
 }
 
 void TR_iallreduce(int id, int priority,
-                   void *send_buf, void *recv_buf, size_t num_elements, TR_Datatype datatype,
+                   void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype,
                    void (*callback)(int))
 {
     assert (id >= 0);
@@ -39,7 +44,7 @@ void TR_iallreduce(int id, int priority,
 }
 
 void TR_bcast(int id, int priority,
-              void *buffer, size_t num_elements, TR_Datatype datatype, int root)
+              void *buffer, size_t num_elements, TR_datatype datatype, int root)
 {
     total_reduce_bcast(id, priority, buffer, num_elements, datatype, root);
 }
@@ -58,14 +63,14 @@ void TR_wait(int id)
     }
 }
 
-bool TR_test(int id, enum urgency urgency)
+bool TR_test(int id, TR_urgency urgency)
 {
     struct payload * payload = payload_get_from_id(id);
     if (payload == NULL) {
         return false;
     }
 
-    if (urgency == NEED) {
+    if (urgency == TR_NEED) {
         payload->time_due = get_time();
     }
 
@@ -75,7 +80,7 @@ bool TR_test(int id, enum urgency urgency)
 
 void TR_set_urgent(int id)
 {
-    TR_test(id, NEED);
+    TR_test(id, TR_NEED);
 }
 
 void TR_barrier(void)

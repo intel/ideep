@@ -46,15 +46,30 @@ cd ../python
 python setup.py install
 ```
 
-Multinode support:
+**Multinode support:**
 
-Ideep provide non-blocking multinode data parallelism support.  The system is requried to meet MPICH dependency and user needs to replace the cmake command in build process:
+IDeep provide non-blocking multinode data parallelism support.  The system is requried to meet MPICH dependency and user needs to replace the cmake command in build process:
 
-Make sure your MPI executable is in PATH
+Make sure your MPI executable is in PATH:
 
 ```
 PATH=$PATH:<path-to-mpiexec>
+# use the following line when you execute cmake or cmake3
+# CentOS:
+cmake3 -Dmultinode=ON ..
+# Other:
 cmake -Dmultinode=ON ..
+```
+
+Execute the test:
+```
+cd total_reduce/test
+mpirun -N 4 python3 test_distribute.py
+```
+The commands above will start 4 MPI processes on your machine and conduct a blocking allreduce operation among all 4 processes.  To test it in a real multinode environment, compile your <hostlist> file and use the following commands:
+```
+cd total_reduce/test
+mpirun -f <hostlist> -N 4 python3 test_distribute.py
 ```
 
 ## More information

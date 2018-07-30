@@ -19,7 +19,7 @@ struct payload {
     void *in_buf;
     void *out_buf;
     void *inner_buf;
-    TR_Datatype data_type;
+    TR_datatype data_type;
     int element_size;
     enum total_reduce_algorithm algorithm;
     int send_state;
@@ -41,7 +41,7 @@ struct payload {
 
 void payload_list_init(void);
 struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op op, size_t size,
-                                     void *in_buf, void *out_buf, TR_Datatype data_type, void (*callback)(int));
+                                     void *in_buf, void *out_buf, TR_datatype data_type, void (*callback)(int));
 struct payload *payload_get_from_id(int id);
 bool payload_check_done_p (struct payload *payload);
 struct payload *payload_pick_ready(

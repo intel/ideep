@@ -21,11 +21,11 @@ int total_reduce_get_rank(void);
 int total_reduce_get_pred_rank(void);
 int total_reduce_get_succ_rank(void);
 void total_reduce_allreduce(int id, int priority,
-                            void *send_buf, void *recv_buf, size_t num_elements, TR_Datatype datatype);
+                            void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype);
 void total_reduce_iallreduce(int id, int priority,
-                             void *send_buf, void *recv_buf, size_t num_elements, TR_Datatype datatype,
+                             void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype,
                              void (*callback)(int));
-void total_reduce_bcast(int id, int priority, void *buffer, size_t num_elements, TR_Datatype datatype, int root);
+void total_reduce_bcast(int id, int priority, void *buffer, size_t num_elements, TR_datatype datatype, int root);
 void total_reduce_barrier(void);
 
 void total_reduce_init();

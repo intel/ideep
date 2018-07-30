@@ -30,12 +30,21 @@ endif ()
 if (multinode)
     file(GLOB TOTAL_REDUCE_FILES total_reduce/*.c)
 else ()
-    file(GLOB TOTAL_REDUCE_FILES src/*.c)
+    file(GLOB TOTAL_REDUCE_FILES total_reduce/dummy/TR_dummy_interface.c)
 endif ()
+
 
 add_library(ideep SHARED ${TOTAL_REDUCE_FILES})
 
 if (multinode)
+
+    find_package(MPI REQUIRED)
+    include_directories(SYSTEM ${MPI_INCLUDE_PATH})
+    target_link_libraries(ideep ${MPI_LIBRARIES})
+
     # total reduce tests
     include(cmake/total_reduce.cmake)
+
 endif ()
+
+install(FILES ${CMAKE_BINARY_DIR}/libideep.so DESTINATION lib)

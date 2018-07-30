@@ -49,9 +49,8 @@ static void payload_add(struct payload *payload)
 }
 
 struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op op, size_t count,
-                            void *in_buf, void *out_buf, TR_Datatype data_type, void (*callback)(int))
+                            void *in_buf, void *out_buf, TR_datatype data_type, void (*callback)(int))
 {
-    assert (in_buf);
     assert (out_buf);
     assert (in_buf != out_buf);   // currently only support none inplace only
     assert (op == ALLREDUCE);

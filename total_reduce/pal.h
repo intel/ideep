@@ -7,7 +7,7 @@
 #include "knobs.h"
 
 struct type_handler {
-    enum TR_Datatype type;
+    enum TR_datatype type;
     int element_size;
     void (*calculate2)(
                 #if PRINT_CALC_TRACE

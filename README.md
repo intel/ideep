@@ -14,6 +14,7 @@ Minimum requirements:
 - Numpy 1.13
 - Swig 3.0.12
 - Doxygen 1.8.5
+- (optional) MPICH devel 3.2
 
 
 Other requirements:
@@ -29,12 +30,33 @@ If you use old ``setuptools``, upgrade it:
 pip install -U setuptools
 ```
 
+Make sure your MPI executable is in PATH
+
+```
+PATH=$PATH:<path-to-mpiexec>
+```
+
 Install python package from the source code:
 
+CentOS:
+```
+git submodule update --init && mkdir build && cd build && cmake3 ..
+cd ../python
+python setup.py install
+
+```
+Other:
 ```
 git submodule update --init && mkdir build && cd build && cmake ..
 cd ../python
 python setup.py install
+```
+
+Multinode support:
+
+Ideep provide non-blocking multinode data parallelism support.  The system is requried to meet MPICH dependency and user needs to replace the cmake command in build process:
+```
+cmake -Dmultinode=ON ..
 ```
 
 ## More information

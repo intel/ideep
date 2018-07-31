@@ -30,12 +30,6 @@ If you use old ``setuptools``, upgrade it:
 pip install -U setuptools
 ```
 
-Make sure your MPI executable is in PATH
-
-```
-PATH=$PATH:<path-to-mpiexec>
-```
-
 Install python package from the source code:
 
 CentOS:
@@ -55,7 +49,11 @@ python setup.py install
 Multinode support:
 
 Ideep provide non-blocking multinode data parallelism support.  The system is requried to meet MPICH dependency and user needs to replace the cmake command in build process:
+
+Make sure your MPI executable is in PATH
+
 ```
+PATH=$PATH:<path-to-mpiexec>
 cmake -Dmultinode=ON ..
 ```
 

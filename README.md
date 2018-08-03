@@ -73,7 +73,7 @@ mpirun -f <hostlist> -N 4 python3 test_distribute.py
 ```
 
 ## More information
-- MKL-DNN github: https://github.com/01org/mkl-dnn
+- MKL-DNN github: https://gitlab.devtools.intel.com/ipl/mkl-dnn
 - Chainer github: https://github.com/chainer/chainer
 
 ## License

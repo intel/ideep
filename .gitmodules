@@ -1,6 +1,6 @@
 [submodule "mkl-dnn"]
 	path = mkl-dnn
-	url = https://github.com/01org/mkl-dnn.git
+	url = https://gitlab.devtools.intel.com/ipl/mkl-dnn.git
 [submodule "tests/googletest"]
 	path = tests/googletest
 	url = https://github.com/google/googletest.git

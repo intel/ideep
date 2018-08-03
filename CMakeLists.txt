@@ -24,7 +24,7 @@ install(DIRECTORY include/ DESTINATION include)
 add_subdirectory(tests)
 
 if (multinode)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mavx2 -fvisibility=hidden -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-result -Wno-missing-field-initializers")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mavx -fvisibility=hidden -Wall -Wextra -Werror -Wno-unused-parameter -Wno-unused-result -Wno-missing-field-initializers")
 endif ()
 
 if (multinode)

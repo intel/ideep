@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <immintrin.h>
-#include <avxintrin.h>
 #include <stdlib.h>
 #include <string.h>
 

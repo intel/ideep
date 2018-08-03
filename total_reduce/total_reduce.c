@@ -444,10 +444,14 @@ static void do_start_sending_body(void)
                 payload_check_done_p(sending_payload);
             }
         } else {
-            payload_send_step_body(sending_payload);
-            message_sending_header_p = false;
-            message_sending_body_count++;
-            assert (message_sending_body_count <= SEND_CONCURRENCY);
+            int flag = 0;
+            flag = comm_test(&send_header_request);
+            if (flag) {
+                payload_send_step_body(sending_payload);
+                message_sending_header_p = false;
+                message_sending_body_count++;
+                assert (message_sending_body_count <= SEND_CONCURRENCY);
+            }
         }
 
         #if PROFILE>=1

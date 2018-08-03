@@ -65,8 +65,15 @@ public:
         return TR_get_rank();
     }
 
+    static tr_error_code allreduce(int id, mdarray *send_recv_buf) {
+        return allreduce(id, 0, send_recv_buf);
+    }
     static tr_error_code allreduce(int id, int priority, mdarray *send_recv_buf) {
         return allreduce(id, priority, send_recv_buf, send_recv_buf);
+    }
+
+    static tr_error_code allreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
+        return allreduce(id, 0, send_buf, recv_buf);
     }
 
     static tr_error_code allreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
@@ -100,8 +107,16 @@ public:
         return tr_success;
     }
 
+    static tr_error_code iallreduce(int id, mdarray *send_recv_buf) {
+        return iallreduce(id, 0, send_recv_buf);
+    }
+
     static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf) {
         return iallreduce(id, priority, send_recv_buf, send_recv_buf);
+    }
+
+    static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
+        return iallreduce(id, 0, send_buf, recv_buf);
     }
 
     static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
@@ -133,6 +148,10 @@ public:
                       recv_buf->get()->get_data_handle(), num_elements, datatype, NULL);
 
         return tr_success;
+    }
+
+    static tr_error_code bcast(int id, mdarray *buf, int root) {
+        return bcast(id, buf, root);
     }
 
     static tr_error_code bcast(int id, int priority, mdarray *buf, int root) {

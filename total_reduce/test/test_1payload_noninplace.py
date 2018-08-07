@@ -24,7 +24,7 @@ rank = distribute.get_rank()
 print ("rank = %d" % (rank))
 
 for i in range(shape[0]):
-    src_buf[i] = float(i)/(size+1) + rank
+    src_buf[i] = (i+0.0)/(size+1) + rank
 
 src_buf = ideep4py.mdarray(src_buf)
 dst_buf = ideep4py.mdarray(dst_buf)
@@ -34,7 +34,7 @@ start = time.time()
 
 # non-inplace
 for i in range(iter_num):
-    distribute.allreduce(0, 0, src_buf, dst_buf)
+    distribute.allreduce(0, src_buf, dst_buf)
     distribute.barrier()
 
 end = time.time()

@@ -101,7 +101,7 @@ public:
 
         size_t num_elements = send_buf->get()->get_nelems();
 
-        TR_allreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf,
+        TR_allreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
                      recv_buf->get()->get_data_handle(), num_elements, datatype);
 
         return tr_success;
@@ -144,7 +144,7 @@ public:
 
         size_t num_elements = send_buf->get()->get_nelems();
 
-        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf,
+        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
                       recv_buf->get()->get_data_handle(), num_elements, datatype, NULL);
 
         return tr_success;

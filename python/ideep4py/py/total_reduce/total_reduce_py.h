@@ -111,8 +111,16 @@ public:
         return iallreduce(id, 0, send_recv_buf);
     }
 
+    static tr_error_code iallreduce(int id, mdarray *send_recv_buf, PyObject *callback) {
+        return iallreduce(id, 0, send_recv_buf, callback);
+    }
+
     static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf) {
         return iallreduce(id, priority, send_recv_buf, send_recv_buf);
+    }
+
+    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf, PyObject *callback) {
+        return iallreduce(id, priority, send_recv_buf, send_recv_buf, callback);
     }
 
     static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
@@ -146,6 +154,45 @@ public:
 
         TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
                       recv_buf->get()->get_data_handle(), num_elements, datatype, NULL);
+
+        return tr_success;
+    }
+
+    static tr_error_code iallreduce(int id, int priority,
+                                    mdarray *send_buf, mdarray *recv_buf,
+                                    PyObject *callback) {
+        if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
+            return tr_fail;
+        }
+        if (send_buf->get()->get_data_type() != recv_buf->get()->get_data_type()) {
+            return tr_fail;
+        }
+
+        TR_datatype datatype;
+
+        switch (send_buf->get()->get_data_type()) {
+        case data_type_t::f32:
+            datatype = TR_FP32;
+            break;
+
+        case data_type_t::s32:
+            datatype = TR_INT32;
+            break;
+
+        default:
+            return tr_type_not_supported;
+        }
+
+        size_t num_elements = send_buf->get()->get_nelems();
+
+        if (!PyCallable_Check(callback)) {
+            std::cerr << "Must pass a callable.";
+        }
+        distribute::_cb_map[id] = callback;
+        Py_XINCREF(callback);
+
+        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
+                      recv_buf->get()->get_data_handle(), num_elements, datatype, _callback);
 
         return tr_success;
     }
@@ -196,4 +243,18 @@ public:
     static void finalize() {
         TR_finalize();
     }
+
+private:
+    static void _callback(int id) {
+        //PyGILState_STATE state = PyGILState_Ensure();
+        PyObject *cb = distribute::_cb_map[id];
+        PyObject_CallFunction(cb, "i", id);
+        Py_DECREF(distribute::_cb_map[id]);
+        distribute::_cb_map[id]=NULL;
+        //PyGILState_Release(state);
+    }
+
+    static std::unordered_map<int, PyObject *> _cb_map;
 };
+
+std::unordered_map<int, PyObject *> distribute::_cb_map;

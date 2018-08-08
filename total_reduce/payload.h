@@ -43,7 +43,7 @@ void payload_list_init(void);
 struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op op, size_t size,
                                      void *in_buf, void *out_buf, TR_datatype data_type, void (*callback)(int));
 struct payload *payload_get_from_id(int id);
-bool payload_check_done_p (struct payload *payload);
+bool payload_check_done_p (struct payload *payload, bool external);
 struct payload *payload_pick_ready(
 #if PROFILE>=1
 int *profile_flag
@@ -54,7 +54,7 @@ void
 void print_payload_list(void);
 void free_payload_list(void);
 bool payload_expecting(struct payload *payload, struct message_header *header);
-bool payload_all_done_p(void);
+bool payload_all_done_p(bool external);
 bool payload_send_step_header(struct payload *payload);
 void payload_send_step_body(struct payload *payload);
 void *payload_get_recv_buf  (struct payload *payload);

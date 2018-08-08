@@ -31,6 +31,7 @@
 #define ARTIFICAL_NUMBER
 #define RUN_INPLACE 1
 #define RUN_NON_INPLACE 0
+//#define CALLBACK
 
 static inline int get_layer_size(int id, int num_elements)
 {
@@ -128,6 +129,15 @@ void calc_delta(int id, float* buf1, float* buf2, size_t num_elements)
     }
 }
 
+#ifdef CALLBACK
+void callback (int id)
+{
+    printf ("layer %d finished\n", id);
+}
+#else
+#define callback NULL
+#endif
+
 int main(int argc, char** argv)
 {
     if (argc != 2) {
@@ -190,27 +200,29 @@ int main(int argc, char** argv)
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             size_t num = get_layer_size(i, num_elements);
             total_elements += num;
-            TR_iallreduce(i, i, TR_IN_PLACE, recv_buf[i], num, TR_FP32, NULL);
+            TR_iallreduce(i, i, TR_IN_PLACE, recv_buf[i], num, TR_FP32, callback);
         }
         #else
         if (world_rank % 2) {
             for (int i=0; i<PAYLOAD_COUNT; i++) {
                 size_t num = get_layer_size(i, num_elements);
                 total_elements += num;
-                TR_iallreduce(i, i, TR_IN_PLACE, recv_buf[i], num, TR_FP32, NULL);
+                TR_iallreduce(i, i, TR_IN_PLACE, recv_buf[i], num, TR_FP32, callback);
             }
         } else {
             for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
                 size_t num = get_layer_size(i, num_elements);
                 total_elements += num;
-                TR_iallreduce(i, 0, TR_IN_PLACE, recv_buf[i], num, TR_FP32, NULL);
+                TR_iallreduce(i, 0, TR_IN_PLACE, recv_buf[i], num, TR_FP32, callback);
             }
         }
         #endif
 
+        #ifndef CALLBACK
         for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
             TR_wait(i);
         }
+        #endif
 
         TR_barrier();
 
@@ -234,13 +246,17 @@ int main(int argc, char** argv)
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             size_t num = get_layer_size(i, num_elements);
             total_elements += num;
-            TR_iallreduce(i+PAYLOAD_COUNT, i, send_buf[i], recv_buf[i], num, TR_FP32, NULL);
+            TR_iallreduce(i+PAYLOAD_COUNT, i, send_buf[i], recv_buf[i], num, TR_FP32, callback);
         }
 
+        #ifndef CALLBACK
         for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
             TR_wait(i+PAYLOAD_COUNT);
         }
+        #endif
+
         TR_barrier();
+
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             calc_delta(i, recv_buf_ref[i], recv_buf[i], get_layer_size(i, num_elements));
         }

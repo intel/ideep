@@ -178,7 +178,7 @@ void total_reduce_finalize(void)
 static bool total_reduce_check_grace_exit_p()
 {
     if (!total_reduce_on) {
-        return payload_all_done_p();
+        return payload_all_done_p(false);
     }
     return false;
 }
@@ -190,7 +190,7 @@ void total_reduce_allreduce(int id, int priority,
                                                     send_buf, recv_buf, datatype, NULL);
     payload->time_due = get_time();
     while(1) {
-        if (payload_check_done_p(payload))
+        if (payload_check_done_p(payload, true))
             break;
     }
 }
@@ -212,7 +212,7 @@ void total_reduce_bcast(int id, int priority, void *buffer, size_t num_elements,
 
 void total_reduce_barrier(void)
 {
-    while(!payload_all_done_p());
+    while(!payload_all_done_p(true));
 }
 
 static bool message_sending_header_p   = false;
@@ -441,7 +441,7 @@ static void do_start_sending_body(void)
             if (flag) {
                 message_sending_header_p = false;
                 sending_payload->send_state++;
-                payload_check_done_p(sending_payload);
+                payload_check_done_p(sending_payload, false);
             }
         } else {
             int flag = 0;
@@ -585,7 +585,7 @@ static void do_check_sending_body(void)
                 struct payload *payload = payload_get_from_id(send_body_info[i].id);
                 assert (payload);
                 payload->send_state++;
-                payload_check_done_p(payload);
+                payload_check_done_p(payload, false);
                 send_body_info[i].active_p = false;
                 message_sending_body_count--;
             }

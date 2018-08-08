@@ -57,7 +57,7 @@ void TR_wait(int id)
     }
     payload->time_due = get_time();
     while(1) {
-        if (payload_check_done_p(payload)) {
+        if (payload_check_done_p(payload, true)) {
             break;
         }
     }
@@ -74,7 +74,7 @@ bool TR_test(int id, TR_urgency urgency)
         payload->time_due = get_time();
     }
 
-    bool ret_val = payload_check_done_p(payload);
+    bool ret_val = payload_check_done_p(payload, true);
     return ret_val;
 }
 

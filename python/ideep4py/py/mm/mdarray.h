@@ -276,7 +276,7 @@ public:
           expected_weights_descriptor(get_dims(), get_data_type());
       if (get_descriptor() != desc_in) {
         auto buf = reinterpret_cast<void *>(
-            new scratch_allocator::byte<tensor>[get_size()]);
+            new scratch_allocator::byte<tensor>[desc_in.get_size()]);
         tensor wgt_in = tensor(desc_in, buf);
         reorder::compute(*this, wgt_in);
 

@@ -138,7 +138,9 @@ bool payload_overdue_p (struct payload *payload) {
     return (payload->time_due >= 0.0);
 }
 
-bool payload_check_done_p (struct payload *payload)
+// if called from user thread, external = true
+// if called from total reduce thread, external = false
+bool payload_check_done_p (struct payload *payload, bool external)
 {
     int world_size = total_reduce_get_world_size();
 
@@ -149,8 +151,13 @@ bool payload_check_done_p (struct payload *payload)
             payload->time_end = get_time();
         }
         if (payload->callback != NULL) {
-            payload->callback(payload->id);
-            payload->callback = NULL;
+            if (!external) {
+                payload->callback(payload->id);
+                payload->callback = NULL;
+                return true;
+            } else {
+                return false;
+            }
         }
         return true;
     }
@@ -171,7 +178,7 @@ static bool payload_check_ready_p (struct payload *payload)
         return false;
     if (payload->send_state > payload->comp_state)
         return false;
-    return !payload_check_done_p(payload);
+    return !payload_check_done_p(payload, false);
 }
 
 // pick the payload with highest priority
@@ -197,7 +204,7 @@ struct payload *payload_pick_ready(
 
         // there might be overdue payload that is not ready
         // we should be aware of that
-        if (!has_overdue && !payload_check_done_p(cur)) {
+        if (!has_overdue && !payload_check_done_p(cur, false)) {
             if (payload_overdue_p(cur)) {
                 has_overdue = true;
             }
@@ -319,7 +326,9 @@ bool payload_expecting(struct payload *payload, struct message_header *header)
 
 }
 
-bool payload_all_done_p(void)
+// if called from user thread, external = true
+// if called from total reduce thread, external = false
+bool payload_all_done_p(bool external)
 {
     pthread_mutex_lock(&payload_list_mutex);
 
@@ -328,7 +337,7 @@ bool payload_all_done_p(void)
         cur = cur->next;
 
         // implementation depends on policy, currently using the naive implementation
-        if (!payload_check_done_p(cur)) {
+        if (!payload_check_done_p(cur, external)) {
             pthread_mutex_unlock(&payload_list_mutex);
             return false;
         }
@@ -471,6 +480,6 @@ bool payload_do_compute(struct payload *payload, struct pending_message *message
         payload->comp_state++;
     }
     payload->recv_state++;
-    payload_check_done_p(payload);
+    payload_check_done_p(payload, false);
     return ret_val;
 }

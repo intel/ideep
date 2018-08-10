@@ -15,8 +15,8 @@ if(MPI_COMPILE_FLAGS)
 endif()
 
 if(MPI_LINK_FLAGS)
-  set_target_properties(tests/test_reduce_avg_float PROPERTIES LINK_FLAGS "${MPI_LINK_FLAGS}")
-  set_target_properties(tests/test_reduce_avg_int PROPERTIES LINK_FLAGS "${MPI_LINK_FLAGS}")
+  set_target_properties(tests/test_reduce_avg_float PROPERTIES LINK_FLAGS "-lstdc++ ${MPI_LINK_FLAGS}")
+  set_target_properties(tests/test_reduce_avg_int PROPERTIES LINK_FLAGS "-lstdc++ ${MPI_LINK_FLAGS}")
 endif()
 
 install(FILES ${CMAKE_BINARY_DIR}/libideep.so DESTINATION lib)

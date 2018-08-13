@@ -31,7 +31,6 @@ int TR_get_rank(void)
 void TR_allreduce(int id, int priority,
                   void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype)
 {
-    assert (id >= 0);
     total_reduce_allreduce(id, priority, send_buf, recv_buf, num_elements, datatype);
 }
 
@@ -39,7 +38,6 @@ void TR_iallreduce(int id, int priority,
                    void *send_buf, void *recv_buf, size_t num_elements, TR_datatype datatype,
                    void (*callback)(int))
 {
-    assert (id >= 0);
     total_reduce_iallreduce(id, priority, send_buf, recv_buf, num_elements, datatype, callback);
 }
 

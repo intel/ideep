@@ -14,6 +14,15 @@
 #include "pal.h"
 #include "knobs.h"
 
+struct buf_pool {
+    size_t size;
+    struct buf_pool *next;
+};
+
+static struct buf_pool inner_buf_pool;
+
+static pthread_mutex_t inner_buf_pool_mutex;
+
 // needs MT protection
 static struct payload *payload_list = NULL;
 
@@ -23,8 +32,12 @@ void payload_list_init(void)
 {
     assert (payload_list == NULL);
     pthread_mutex_init(&payload_list_mutex, NULL);
+    pthread_mutex_init(&inner_buf_pool_mutex, NULL);
     payload_list = (struct payload*)alloc_host_mem(sizeof(struct payload));
-    payload_list -> next = NULL;
+    payload_list->next = NULL;
+
+    inner_buf_pool.size = sizeof(inner_buf_pool);
+    inner_buf_pool.next = NULL;
 }
 
 static void payload_add(struct payload *payload)
@@ -48,6 +61,7 @@ static void payload_add(struct payload *payload)
     pthread_mutex_unlock(&payload_list_mutex);
 }
 
+static void* payload_alloc_inner_buf(size_t size);
 struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op op, size_t count,
                             void *in_buf, void *out_buf, TR_datatype data_type, void (*callback)(int))
 {
@@ -69,7 +83,7 @@ struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op 
         payload->op = op;
         payload->in_buf = in_buf;
         if (payload->in_buf == TR_IN_PLACE) {
-            payload->inner_buf = alloc_device_mem(count*payload->element_size);
+            payload->inner_buf = payload_alloc_inner_buf(count*payload->element_size);
         } else {
             payload->inner_buf = NULL;
         }
@@ -98,6 +112,7 @@ struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op 
         assert (payload->priority == priority);
         if (payload->in_buf == TR_IN_PLACE) {
             assert (in_buf == TR_IN_PLACE);
+            payload->inner_buf = payload_alloc_inner_buf(count*payload->element_size);
         } else {
             assert (in_buf != TR_IN_PLACE);
             payload->in_buf = in_buf;
@@ -134,10 +149,12 @@ struct payload *payload_get_from_id(int id)
     return NULL;
 }
 
-bool payload_overdue_p (struct payload *payload) {
+bool payload_overdue_p (struct payload *payload)
+{
     return (payload->time_due >= 0.0);
 }
 
+static void payload_recycle_inner_buf(struct payload *payload);
 // if called from user thread, external = true
 // if called from total reduce thread, external = false
 bool payload_check_done_p (struct payload *payload, bool external)
@@ -154,10 +171,14 @@ bool payload_check_done_p (struct payload *payload, bool external)
             if (!external) {
                 payload->callback(payload->id);
                 payload->callback = NULL;
+                payload_recycle_inner_buf(payload);
                 return true;
             } else {
                 return false;
             }
+        }
+        if (!external) {
+            payload_recycle_inner_buf(payload);
         }
         return true;
     }
@@ -482,4 +503,41 @@ bool payload_do_compute(struct payload *payload, struct pending_message *message
     payload->recv_state++;
     payload_check_done_p(payload, false);
     return ret_val;
+}
+
+static void* payload_alloc_inner_buf(size_t size)
+{
+    struct buf_pool *ptr = &inner_buf_pool;
+    struct buf_pool *ret = NULL;
+
+    pthread_mutex_lock(&inner_buf_pool_mutex);
+    while(ptr->next) {
+        if (ptr->next->size == size) {
+            ret = ptr->next;
+            ptr->next = ret->next;
+            pthread_mutex_unlock(&inner_buf_pool_mutex);
+            return ret;
+        }
+    }
+
+    pthread_mutex_unlock(&inner_buf_pool_mutex);
+    return alloc_device_mem(size);
+}
+
+static void payload_recycle_inner_buf(struct payload *payload)
+{
+    if (payload->inner_buf != NULL) {
+        pthread_mutex_lock(&inner_buf_pool_mutex);
+        size_t size = payload->count*payload->element_size;
+        if (size < sizeof(inner_buf_pool)) {
+            free_device_mem(payload->inner_buf);
+        } else {
+            struct buf_pool *ptr = (struct buf_pool*)payload->inner_buf;
+            ptr->size = size;
+            ptr->next = inner_buf_pool.next;
+            inner_buf_pool.next = ptr;
+        }
+        pthread_mutex_unlock(&inner_buf_pool_mutex);
+        payload->inner_buf = NULL;
+    }
 }

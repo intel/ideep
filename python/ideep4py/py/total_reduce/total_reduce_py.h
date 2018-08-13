@@ -49,34 +49,223 @@ public:
         tr_type_not_supported
     };
 
+    // return value:
+    //      true  - multinode support is enabled in ideep
+    //      false - no multinode support in ideep
     static bool available() {
         return TR_available();
     }
 
+    // call once before using distribute collectives
+    // any distribute collective must be called AFTER this call returns
     static void init() {
+        _implicit_id = -1;
         TR_init();
     }
 
+    // get number of nodes
     static int get_world_size() {
         return TR_get_world_size();
     }
 
+    // get a unique rank of current node, rank is from 0 to number-of-nodes - 1
     static int get_rank() {
         return TR_get_rank();
     }
 
+    /*
+        allreduce interface families
+        variants are:
+            with/without id
+            inplace/non-inplace
+    */
+
+    // blocking allreduce add send_recv_buf together elementwisely across
+    // different nodes with same id
+    // id must >= 0, ids smaller than 0 are reserved
     static tr_error_code allreduce(int id, mdarray *send_recv_buf) {
-        return allreduce(id, 0, send_recv_buf);
-    }
-    static tr_error_code allreduce(int id, int priority, mdarray *send_recv_buf) {
-        return allreduce(id, priority, send_recv_buf, send_recv_buf);
+        assert (id >= 0);
+        return _allreduce(id, 0, send_recv_buf, send_recv_buf);
     }
 
+    // same as above, result is written in recv_buf
     static tr_error_code allreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
-        return allreduce(id, 0, send_buf, recv_buf);
+        assert (id >= 0);
+        return _allreduce(id, 0, send_buf, recv_buf);
     }
 
-    static tr_error_code allreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
+    /* without id */
+
+    // when not supplying id, caller should gurantee call sequence have same order between all nodes
+    // note: you can still use out-of-order call sequence for all call with id
+    static tr_error_code allreduce(mdarray *send_recv_buf) {
+        int id = _get_new_implicit_id();
+        return _allreduce(id, 0, send_recv_buf, send_recv_buf);
+    }
+
+    static tr_error_code allreduce(mdarray *send_buf, mdarray *recv_buf) {
+        int id = _get_new_implicit_id();
+        return _allreduce(id, 0, send_buf, recv_buf);
+    }
+
+    /*
+        iallreduce interface families
+        variants are:
+            with/without id
+            inpace/non-inpace
+            with/without priority
+            with/without callback
+    */
+
+    // non-blocking iallreduce add send_recv_buf together elementwisely across
+    // different nodes with same id
+    static tr_error_code iallreduce(int id, mdarray *send_recv_buf) {
+        assert (id >= 0);
+        return _iallreduce(id, 0, send_recv_buf, send_recv_buf);
+    }
+
+    // same as above, a python callback function is supplied to be called
+    // when iallreduce is done.   The callback is always initiated from
+    // a thread managed by distributed module.  callback implementation is
+    // responsible for thread safety
+    static tr_error_code iallreduce(int id, mdarray *send_recv_buf, PyObject *callback) {
+        assert (id >= 0);
+        return _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
+    }
+
+    // non-blocking iallreduce with priority support
+    // higher priority has higher urgency
+    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf) {
+        assert (id >= 0);
+        return _iallreduce(id, priority, send_recv_buf, send_recv_buf);
+    }
+
+    // same as above with callback support
+    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf, PyObject *callback) {
+        assert (id >= 0);
+        return _iallreduce(id, priority, send_recv_buf, send_recv_buf, callback);
+    }
+
+    // same as above, the result is written in recv_buf
+    static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
+        assert (id >= 0);
+        return _iallreduce(id, 0, send_buf, recv_buf);
+    }
+
+    // same as above with callback
+    static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
+        assert (id >= 0);
+        return _iallreduce(id, 0, send_buf, recv_buf, callback);
+    }
+
+    // same as above with priority support
+    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
+        assert (id >= 0);
+        return _iallreduce(id, priority, send_buf, recv_buf);
+    }
+
+    // same as above with callback support
+    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
+        assert (id >= 0);
+        return _iallreduce(id, priority, send_buf, recv_buf, callback);
+    }
+
+    /* without id */
+
+    static PyObject *iallreduce(mdarray *send_recv_buf) {
+        int id = _get_new_implicit_id();
+        tr_error_code err = _iallreduce(id, 0, send_recv_buf, send_recv_buf);
+        return Py_BuildValue("ii", id, err);
+    }
+
+    static PyObject *iallreduce(mdarray *send_recv_buf, PyObject *callback) {
+        int id = _get_new_implicit_id();
+        tr_error_code err = _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
+        return Py_BuildValue("ii", id, err);
+    }
+
+    static PyObject *iallreduce(mdarray *send_buf, mdarray *recv_buf) {
+        int id = _get_new_implicit_id();
+        tr_error_code err = _iallreduce(id, 0, send_buf, recv_buf);
+        return Py_BuildValue("ii", id, err);
+    }
+
+    static PyObject *iallreduce(mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
+        int id = _get_new_implicit_id();
+        tr_error_code err = _iallreduce(id, 0, send_buf, recv_buf, callback);
+        return Py_BuildValue("ii", id, err);
+    }
+
+    /*
+        bcast
+    */
+
+    // blocking broadcast buf from root node to other nodes
+    static tr_error_code bcast(int id, mdarray *buf, int root) {
+        assert (id >= 0);
+        return _bcast(id, 0, buf, root);
+    }
+
+    /* without id */
+
+    static tr_error_code bcast(mdarray *buf, int root) {
+        int id = _get_new_implicit_id();
+        return _bcast(id, 0, buf, root);
+    }
+
+    // wait for ID to finish
+    static void wait(int id) {
+        TR_wait(id);
+    }
+
+    // check whether collective with id is finished or not
+    // if urgency is tr_greedy, the check is opportunistic
+    // if urgency is tr_need,   caller is indicating the collective is blocking
+    //                          other on going activities
+    static bool test(int id, tr_urgency urgency) {
+        TR_urgency u = TR_GREEDY;
+        switch (urgency) {
+        case tr_need:   u = TR_NEED;   break;
+        case tr_greedy: u = TR_GREEDY; break;
+        default: assert (!"should not get here");
+        }
+        return TR_test(id, u);
+    }
+
+    static bool test(int id) {
+        return TR_test(id, TR_GREEDY);
+    }
+
+    // indicating collective is blocking on going activities
+    static void set_urgent(int id) {
+        TR_set_urgent(id);
+    }
+
+    // wait for all collective to finish before return
+    static void barrier() {
+        TR_barrier();
+    }
+
+    // release all the resources for communication
+    static void finalize() {
+        TR_finalize();
+    }
+
+private:
+    static void _callback(int id) {
+        //PyGILState_STATE state = PyGILState_Ensure();
+        PyObject *cb = distribute::_cb_map[id];
+        PyObject_CallFunction(cb, "i", id);
+        Py_DECREF(distribute::_cb_map[id]);
+        distribute::_cb_map[id]=NULL;
+        //PyGILState_Release(state);
+    }
+
+    static std::unordered_map<int, PyObject *> _cb_map;
+
+    static int _implicit_id;
+
+    static tr_error_code _allreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
         if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
             return tr_fail;
         }
@@ -107,27 +296,7 @@ public:
         return tr_success;
     }
 
-    static tr_error_code iallreduce(int id, mdarray *send_recv_buf) {
-        return iallreduce(id, 0, send_recv_buf);
-    }
-
-    static tr_error_code iallreduce(int id, mdarray *send_recv_buf, PyObject *callback) {
-        return iallreduce(id, 0, send_recv_buf, callback);
-    }
-
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf) {
-        return iallreduce(id, priority, send_recv_buf, send_recv_buf);
-    }
-
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf, PyObject *callback) {
-        return iallreduce(id, priority, send_recv_buf, send_recv_buf, callback);
-    }
-
-    static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
-        return iallreduce(id, 0, send_buf, recv_buf);
-    }
-
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code _iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
         if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
             return tr_fail;
         }
@@ -158,7 +327,7 @@ public:
         return tr_success;
     }
 
-    static tr_error_code iallreduce(int id, int priority,
+    static tr_error_code _iallreduce(int id, int priority,
                                     mdarray *send_buf, mdarray *recv_buf,
                                     PyObject *callback) {
         if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
@@ -197,11 +366,7 @@ public:
         return tr_success;
     }
 
-    static tr_error_code bcast(int id, mdarray *buf, int root) {
-        return bcast(id, buf, root);
-    }
-
-    static tr_error_code bcast(int id, int priority, mdarray *buf, int root) {
+    static tr_error_code _bcast(int id, int priority, mdarray *buf, int root) {
         TR_datatype datatype;
 
         switch (buf->get()->get_data_type()) {
@@ -224,37 +389,13 @@ public:
         return tr_success;
     }
 
-    static void wait(int id) {
-        TR_wait(id);
+    static int _get_new_implicit_id(void) {
+        assert (_implicit_id < 0);
+        int ret_val = _implicit_id;
+        _implicit_id--;
+        return ret_val;
     }
-
-    static bool test(int id, TR_urgency urgency) {
-        return TR_test(id, urgency);
-    }
-
-    static void set_urgent(int id) {
-        TR_set_urgent(id);
-    }
-
-    static void barrier() {
-        TR_barrier();
-    }
-
-    static void finalize() {
-        TR_finalize();
-    }
-
-private:
-    static void _callback(int id) {
-        //PyGILState_STATE state = PyGILState_Ensure();
-        PyObject *cb = distribute::_cb_map[id];
-        PyObject_CallFunction(cb, "i", id);
-        Py_DECREF(distribute::_cb_map[id]);
-        distribute::_cb_map[id]=NULL;
-        //PyGILState_Release(state);
-    }
-
-    static std::unordered_map<int, PyObject *> _cb_map;
 };
 
 std::unordered_map<int, PyObject *> distribute::_cb_map;
+int distribute::_implicit_id;

@@ -44,6 +44,7 @@
 #include "ideep/computations.hpp"
 #include "ideep/allocators.hpp"
 #include "ideep/fast_math.hpp"
+#include "ideep/distribute.hpp"
 
 #endif
 

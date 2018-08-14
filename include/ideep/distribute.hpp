@@ -25,16 +25,16 @@
  */
 
 #pragma once
-#include <Python.h>
-#include "mdarray.h"
+#include "ideep.hpp"
 #include "TR_interface.h"
 #include "tensor.hpp"
 
-//using tensor = ideep::tensor;
+#define null_callback (void(*)(int))NULL
 
+namespace ideep {
 class distribute {
 public:
-    //using tensor = ideep::tensor;
+    using tensor = ideep::tensor;
     using data_type_t = mkldnn::memory::data_type;
 
     enum tr_urgency {
@@ -81,13 +81,13 @@ public:
     // blocking allreduce add send_recv_buf together elementwisely across
     // different nodes with same id
     // id must >= 0, ids smaller than 0 are reserved
-    static tr_error_code allreduce(int id, mdarray *send_recv_buf) {
+    static tr_error_code allreduce(int id, tensor &send_recv_buf) {
         assert (id >= 0);
         return _allreduce(id, 0, send_recv_buf, send_recv_buf);
     }
 
     // same as above, result is written in recv_buf
-    static tr_error_code allreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code allreduce(int id, tensor &send_buf, tensor &recv_buf) {
         assert (id >= 0);
         return _allreduce(id, 0, send_buf, recv_buf);
     }
@@ -96,12 +96,12 @@ public:
 
     // when not supplying id, caller should gurantee call sequence have same order between all nodes
     // note: you can still use out-of-order call sequence for all call with id
-    static tr_error_code allreduce(mdarray *send_recv_buf) {
+    static tr_error_code allreduce(tensor &send_recv_buf) {
         int id = _get_new_implicit_id();
         return _allreduce(id, 0, send_recv_buf, send_recv_buf);
     }
 
-    static tr_error_code allreduce(mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code allreduce(tensor &send_buf, tensor &recv_buf) {
         int id = _get_new_implicit_id();
         return _allreduce(id, 0, send_buf, recv_buf);
     }
@@ -117,81 +117,77 @@ public:
 
     // non-blocking iallreduce add send_recv_buf together elementwisely across
     // different nodes with same id
-    static tr_error_code iallreduce(int id, mdarray *send_recv_buf) {
+    static tr_error_code iallreduce(int id, tensor &send_recv_buf) {
         assert (id >= 0);
-        return _iallreduce(id, 0, send_recv_buf, send_recv_buf);
+        return _iallreduce(id, 0, send_recv_buf, send_recv_buf, null_callback);
     }
 
     // same as above, a python callback function is supplied to be called
     // when iallreduce is done.   The callback is always initiated from
     // a thread managed by distributed module.  callback implementation is
     // responsible for thread safety
-    static tr_error_code iallreduce(int id, mdarray *send_recv_buf, PyObject *callback) {
+    static tr_error_code iallreduce(int id, tensor &send_recv_buf, void (*callback)(int)) {
         assert (id >= 0);
         return _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
     }
 
     // non-blocking iallreduce with priority support
     // higher priority has higher urgency
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf) {
+    static tr_error_code iallreduce(int id, int priority, tensor &send_recv_buf) {
         assert (id >= 0);
-        return _iallreduce(id, priority, send_recv_buf, send_recv_buf);
+        return _iallreduce(id, priority, send_recv_buf, send_recv_buf, null_callback);
     }
 
     // same as above with callback support
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf, PyObject *callback) {
+    static tr_error_code iallreduce(int id, int priority, tensor &send_recv_buf, void (*callback)(int)) {
         assert (id >= 0);
         return _iallreduce(id, priority, send_recv_buf, send_recv_buf, callback);
     }
 
     // same as above, the result is written in recv_buf
-    static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code iallreduce(int id, tensor &send_buf, tensor &recv_buf) {
         assert (id >= 0);
-        return _iallreduce(id, 0, send_buf, recv_buf);
+        return _iallreduce(id, 0, send_buf, recv_buf, null_callback);
     }
 
     // same as above with callback
-    static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
+    static tr_error_code iallreduce(int id, tensor &send_buf, tensor &recv_buf, void (*callback)(int)) {
         assert (id >= 0);
         return _iallreduce(id, 0, send_buf, recv_buf, callback);
     }
 
     // same as above with priority support
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code iallreduce(int id, int priority, tensor &send_buf, tensor &recv_buf) {
         assert (id >= 0);
-        return _iallreduce(id, priority, send_buf, recv_buf);
+        return _iallreduce(id, priority, send_buf, recv_buf, null_callback);
     }
 
     // same as above with callback support
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
+    static tr_error_code iallreduce(int id, int priority, tensor &send_buf, tensor &recv_buf, void (*callback)(int)) {
         assert (id >= 0);
         return _iallreduce(id, priority, send_buf, recv_buf, callback);
     }
 
     /* without id */
 
-    static PyObject *iallreduce(mdarray *send_recv_buf) {
-        int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_recv_buf, send_recv_buf);
-        return Py_BuildValue("ii", id, err);
+    static tr_error_code iallreduce(tensor &send_recv_buf, int &id) {
+        id = _get_new_implicit_id();
+        return _iallreduce(id, 0, send_recv_buf, send_recv_buf, null_callback);
     }
 
-    static PyObject *iallreduce(mdarray *send_recv_buf, PyObject *callback) {
-        int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
-        return Py_BuildValue("ii", id, err);
+    static tr_error_code iallreduce(tensor &send_recv_buf, void (*callback)(int), int &id) {
+        id = _get_new_implicit_id();
+        return _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
     }
 
-    static PyObject *iallreduce(mdarray *send_buf, mdarray *recv_buf) {
-        int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_buf, recv_buf);
-        return Py_BuildValue("ii", id, err);
+    static tr_error_code iallreduce(tensor &send_buf, tensor &recv_buf, int &id) {
+        id = _get_new_implicit_id();
+        return _iallreduce(id, 0, send_buf, recv_buf, null_callback);
     }
 
-    static PyObject *iallreduce(mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
-        int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_buf, recv_buf, callback);
-        return Py_BuildValue("ii", id, err);
+    static tr_error_code iallreduce(tensor &send_buf, tensor &recv_buf, void (*callback)(int), int &id) {
+        id = _get_new_implicit_id();
+        return _iallreduce(id, 0, send_buf, recv_buf, callback);
     }
 
     /*
@@ -199,14 +195,14 @@ public:
     */
 
     // blocking broadcast buf from root node to other nodes
-    static tr_error_code bcast(int id, mdarray *buf, int root) {
+    static tr_error_code bcast(int id, tensor &buf, int root) {
         assert (id >= 0);
         return _bcast(id, 0, buf, root);
     }
 
     /* without id */
 
-    static tr_error_code bcast(mdarray *buf, int root) {
+    static tr_error_code bcast(tensor &buf, int root) {
         int id = _get_new_implicit_id();
         return _bcast(id, 0, buf, root);
     }
@@ -250,28 +246,18 @@ public:
     }
 
 private:
-    static void _callback(int id) {
-        //PyGILState_STATE state = PyGILState_Ensure();
-        PyObject *cb = distribute::_cb_map[id];
-        PyObject_CallFunction(cb, "i", id);
-        Py_DECREF(distribute::_cb_map[id]);
-        distribute::_cb_map[id]=NULL;
-        //PyGILState_Release(state);
-    }
 
-    static std::unordered_map<int, PyObject *> _cb_map;
-
-    static tr_error_code _allreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
-        if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
+    static tr_error_code _allreduce(int id, int priority, tensor &send_buf, tensor &recv_buf) {
+        if (send_buf.get_nelems() != recv_buf.get_nelems()) {
             return tr_fail;
         }
-        if (send_buf->get()->get_data_type() != recv_buf->get()->get_data_type()) {
+        if (send_buf.get_data_type() != recv_buf.get_data_type()) {
             return tr_fail;
         }
 
         TR_datatype datatype;
 
-        switch (send_buf->get()->get_data_type()) {
+        switch (send_buf.get_data_type()) {
         case data_type_t::f32:
             datatype = TR_FP32;
             break;
@@ -284,58 +270,27 @@ private:
             return tr_type_not_supported;
         }
 
-        size_t num_elements = send_buf->get()->get_nelems();
+        size_t num_elements = send_buf.get_nelems();
 
-        TR_allreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
-                     recv_buf->get()->get_data_handle(), num_elements, datatype);
-
-        return tr_success;
-    }
-
-    static tr_error_code _iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
-        if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
-            return tr_fail;
-        }
-        if (send_buf->get()->get_data_type() != recv_buf->get()->get_data_type()) {
-            return tr_fail;
-        }
-
-        TR_datatype datatype;
-
-        switch (send_buf->get()->get_data_type()) {
-        case data_type_t::f32:
-            datatype = TR_FP32;
-            break;
-
-        case data_type_t::s32:
-            datatype = TR_INT32;
-            break;
-
-        default:
-            return tr_type_not_supported;
-        }
-
-        size_t num_elements = send_buf->get()->get_nelems();
-
-        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
-                      recv_buf->get()->get_data_handle(), num_elements, datatype, NULL);
+        TR_allreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf.get_data_handle(),
+                     recv_buf.get_data_handle(), num_elements, datatype);
 
         return tr_success;
     }
 
     static tr_error_code _iallreduce(int id, int priority,
-                                    mdarray *send_buf, mdarray *recv_buf,
-                                    PyObject *callback) {
-        if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
+                                    tensor &send_buf, tensor &recv_buf,
+                                    void (*callback)(int)) {
+        if (send_buf.get_nelems() != recv_buf.get_nelems()) {
             return tr_fail;
         }
-        if (send_buf->get()->get_data_type() != recv_buf->get()->get_data_type()) {
+        if (send_buf.get_data_type() != recv_buf.get_data_type()) {
             return tr_fail;
         }
 
         TR_datatype datatype;
 
-        switch (send_buf->get()->get_data_type()) {
+        switch (send_buf.get_data_type()) {
         case data_type_t::f32:
             datatype = TR_FP32;
             break;
@@ -348,24 +303,18 @@ private:
             return tr_type_not_supported;
         }
 
-        size_t num_elements = send_buf->get()->get_nelems();
+        size_t num_elements = send_buf.get_nelems();
 
-        if (!PyCallable_Check(callback)) {
-            std::cerr << "Must pass a callable.";
-        }
-        distribute::_cb_map[id] = callback;
-        Py_XINCREF(callback);
-
-        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
-                      recv_buf->get()->get_data_handle(), num_elements, datatype, _callback);
+        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf.get_data_handle(),
+                      recv_buf.get_data_handle(), num_elements, datatype, callback);
 
         return tr_success;
     }
 
-    static tr_error_code _bcast(int id, int priority, mdarray *buf, int root) {
+    static tr_error_code _bcast(int id, int priority, tensor &buf, int root) {
         TR_datatype datatype;
 
-        switch (buf->get()->get_data_type()) {
+        switch (buf.get_data_type()) {
         case data_type_t::f32:
             datatype = TR_FP32;
             break;
@@ -378,9 +327,9 @@ private:
             return tr_type_not_supported;
         }
 
-        size_t num_elements = buf->get()->get_nelems();
+        size_t num_elements = buf.get_nelems();
 
-        TR_bcast(id, priority, buf->get()->get_data_handle(), num_elements, datatype, root);
+        TR_bcast(id, priority, buf.get_data_handle(), num_elements, datatype, root);
 
         return tr_success;
     }
@@ -394,4 +343,4 @@ private:
     }
 };
 
-std::unordered_map<int, PyObject *> distribute::_cb_map;
+}

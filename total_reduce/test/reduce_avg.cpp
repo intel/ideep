@@ -20,7 +20,8 @@
 #include <string.h>
 #include <math.h>
 
-#include <TR_interface.h>
+#include <ideep.hpp>
+#include <ideep_pin_singletons.hpp>
 #include "../time.h"
 
 #define ITER 1000
@@ -148,10 +149,10 @@ int main(int argc, char** argv)
     system("/bin/hostname");
     int num_elements = atoi(argv[1]);
 
-    TR_init();
+    ideep::distribute::init();
 
-    int world_size = TR_get_world_size();
-    int world_rank = TR_get_rank();
+    int world_size = ideep::distribute::get_world_size();
+    int world_rank = ideep::distribute::get_rank();
 
     if(world_rank==0) printf ("%d: number of bytes per node is %d, world_size=%d, rank=%d\n\n", getpid(), num_elements*4, world_size, world_rank);
 
@@ -200,31 +201,40 @@ int main(int argc, char** argv)
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             size_t num = get_layer_size(i, num_elements);
             total_elements += num;
-            TR_iallreduce(i, i, TR_IN_PLACE, recv_buf[i], num, TR_FP32, callback);
+            ideep::tensor::dims dim = {(int)num};
+            ideep::tensor::data_type type = ideep::tensor::data_type::f32;
+            ideep::tensor buffer ({dim, type}, const_cast<float *>(recv_buf[i]));
+            ideep::distribute::iallreduce(i, i, buffer, callback);
         }
         #else
         if (world_rank % 2) {
             for (int i=0; i<PAYLOAD_COUNT; i++) {
                 size_t num = get_layer_size(i, num_elements);
                 total_elements += num;
-                TR_iallreduce(i, i, TR_IN_PLACE, recv_buf[i], num, TR_FP32, callback);
+                ideep::tensor::dims dim = {(int)num};
+                ideep::tensor::data_type type = ideep::tensor::data_type::f32;
+                ideep::tensor buffer ({dim, type}, const_cast<float *>(recv_buf[i]));
+                ideep::distribute::iallreduce(i, i, buffer, callback);
             }
         } else {
             for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
                 size_t num = get_layer_size(i, num_elements);
                 total_elements += num;
-                TR_iallreduce(i, 0, TR_IN_PLACE, recv_buf[i], num, TR_FP32, callback);
+                ideep::tensor::dims dim = {(int)num};
+                ideep::tensor::data_type type = ideep::tensor::data_type::f32;
+                ideep::tensor buffer ({dim, type}, const_cast<float *>(recv_buf[i]));
+                ideep::distribute::iallreduce(i, 0, buffer, callback);
             }
         }
         #endif
 
         #ifndef CALLBACK
         for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
-            TR_wait(i);
+            ideep::distribute::wait(i);
         }
         #endif
 
-        TR_barrier();
+        ideep::distribute::barrier();
 
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             calc_delta(i, recv_buf_ref[i], recv_buf[i], get_layer_size(i, num_elements));
@@ -246,16 +256,20 @@ int main(int argc, char** argv)
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             size_t num = get_layer_size(i, num_elements);
             total_elements += num;
-            TR_iallreduce(i+PAYLOAD_COUNT, i, send_buf[i], recv_buf[i], num, TR_FP32, callback);
+            ideep::tensor::dims dim = {(int)num};
+            ideep::tensor::data_type type = ideep::tensor::data_type::f32;
+            ideep::tensor buffer_from ({dim, type}, const_cast<float *>(send_buf[i]));
+            ideep::tensor buffer_to ({dim, type}, const_cast<float *>(recv_buf[i]));
+            ideep::distribute::iallreduce(i+PAYLOAD_COUNT, i, buffer_from, buffer_to, callback);
         }
 
         #ifndef CALLBACK
         for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
-            TR_wait(i+PAYLOAD_COUNT);
+            ideep::distribute::wait(i+PAYLOAD_COUNT);
         }
         #endif
 
-        TR_barrier();
+        ideep::distribute::barrier();
 
         for (int i=0; i<PAYLOAD_COUNT; i++) {
             calc_delta(i, recv_buf_ref[i], recv_buf[i], get_layer_size(i, num_elements));
@@ -263,6 +277,6 @@ int main(int argc, char** argv)
     }
     #endif
 
-    TR_finalize();
+    ideep::distribute::finalize();
     exit(0);
 }

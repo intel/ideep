@@ -8,7 +8,7 @@ if not distribute.available():
            "please use 'cmake -Dmultinode=ON ..' to build ideep")
     exit()
 
-size = 999999
+size = 9999999
 total_size = 0
 nlayer = 10
 shape = [None]*nlayer
@@ -35,15 +35,19 @@ rank = distribute.get_rank()
 print ("rank = %d" % (rank))
 
 for layer in range(nlayer):
-    for i in range(shape[layer][0]):
-        src_bufs[layer][i] = float(i)/(shape[layer][0]+1) + rank + layer*10
+    src_bufs[layer] = (
+        numpy.full(shape[layer], rank+layer*10, numpy.float32)
+        + numpy.linspace(0.0,
+                         (shape[layer][0]+0.0)/(shape[layer][0]+1.0),
+                         num=shape[layer][0], endpoint=False,
+                         dtype=numpy.float32))
 
 for layer in range(nlayer):
     src_bufs[layer] = ideep4py.mdarray(src_bufs[layer])
     src_backups[layer] = ideep4py.mdarray(src_backups[layer])
     ideep4py.basic_copyto(src_backups[layer], src_bufs[layer])
 
-iter_num = 100
+iter_num = 10
 start = time.time()
 
 # inplace
@@ -67,10 +71,11 @@ distribute.finalize()
 if rank == 0:
     print ("Generate expected result...")
 for layer in range(nlayer):
-    for r in range(world_size):
-        for i in range(shape[layer][0]):
-            bufs_expect[layer][i] += (i+0.0)/(shape[layer][0]+1) + r + layer*10
-
+    bufs_expect[layer] = (
+        numpy.full(shape[layer],
+                   (world_size-1)*world_size/2.0 + layer*10*world_size)
+        + numpy.linspace(0, shape[layer][0]/(shape[layer][0]+1.0)*world_size,
+                         num=shape[layer][0], endpoint=False))
 
 for layer in range(nlayer):
     if rank == 0:

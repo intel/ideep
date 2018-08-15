@@ -518,6 +518,7 @@ static void* payload_alloc_inner_buf(size_t size)
             pthread_mutex_unlock(&inner_buf_pool_mutex);
             return ret;
         }
+        ptr = ptr->next;
     }
 
     pthread_mutex_unlock(&inner_buf_pool_mutex);

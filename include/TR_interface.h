@@ -16,7 +16,7 @@ typedef enum TR_datatype {TR_FP32, TR_FP16, TR_INT32} TR_datatype;
 
 EXPORT bool TR_available(void);
 
-EXPORT void TR_init(void);
+EXPORT void TR_init(int affinity);
 
 EXPORT int TR_get_world_size(void);
 EXPORT int TR_get_rank(void);

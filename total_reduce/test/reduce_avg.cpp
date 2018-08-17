@@ -19,20 +19,34 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #include <ideep.hpp>
 #include <ideep_pin_singletons.hpp>
-#include "../time.h"
 
-#define ITER 1000
-#define PAYLOAD_COUNT 10
+#define ITER 10
+#define PAYLOAD_COUNT 1
 #define SMALL_SCALE 0.1
 #define SMALL_SIZE 3
-#define REVERSE_ISSUE
+//#define REVERSE_ISSUE
 #define ARTIFICAL_NUMBER
 #define RUN_INPLACE 1
 #define RUN_NON_INPLACE 0
 //#define CALLBACK
+
+struct timeval t_begin;
+
+void init_time(void)
+{
+    gettimeofday(&t_begin, NULL);
+}
+
+float get_time(void)
+{
+    struct timeval t_now;
+    gettimeofday(&t_now, NULL);
+    return t_now.tv_sec-t_begin.tv_sec+(t_now.tv_usec-t_begin.tv_usec)/1000000.0;
+}
 
 static inline int get_layer_size(int id, int num_elements)
 {
@@ -141,6 +155,7 @@ void callback (int id)
 
 int main(int argc, char** argv)
 {
+    float start, end, span, eff_bw;
     if (argc != 2) {
         fprintf(stderr, "Usage: avg num_elements\n");
         exit(1);
@@ -149,7 +164,9 @@ int main(int argc, char** argv)
     system("/bin/hostname");
     int num_elements = atoi(argv[1]);
 
-    ideep::distribute::init();
+    init_time();
+
+    ideep::distribute::init(6);
 
     int world_size = ideep::distribute::get_world_size();
     int world_rank = ideep::distribute::get_rank();
@@ -189,6 +206,7 @@ int main(int argc, char** argv)
     size_t total_elements;
 
     #if RUN_INPLACE
+    start = get_time();
     for (int index=0; index<ITER; index++) {
         if(world_rank==0) printf ("**************total reduce iallreduce, inplace iTER=%d**************************\r", index);
 
@@ -204,7 +222,7 @@ int main(int argc, char** argv)
             ideep::tensor::dims dim = {(int)num};
             ideep::tensor::data_type type = ideep::tensor::data_type::f32;
             ideep::tensor buffer ({dim, type}, const_cast<float *>(recv_buf[i]));
-            ideep::distribute::iallreduce(i, i, buffer, callback);
+            ideep::distribute::iallreduce(i, buffer, callback);
         }
         #else
         if (world_rank % 2) {
@@ -214,7 +232,7 @@ int main(int argc, char** argv)
                 ideep::tensor::dims dim = {(int)num};
                 ideep::tensor::data_type type = ideep::tensor::data_type::f32;
                 ideep::tensor buffer ({dim, type}, const_cast<float *>(recv_buf[i]));
-                ideep::distribute::iallreduce(i, i, buffer, callback);
+                ideep::distribute::iallreduce(i, buffer, callback);
             }
         } else {
             for (int i=PAYLOAD_COUNT-1; i>=0; i--) {
@@ -240,9 +258,14 @@ int main(int argc, char** argv)
             calc_delta(i, recv_buf_ref[i], recv_buf[i], get_layer_size(i, num_elements));
         }
     }
+    end = get_time();
+    span = (end-start)/ITER;
+    eff_bw = 2.0*(world_size-1)/world_size*total_elements * 32/span/1000000000;
+    printf ("average iter time = %fs, Effective bandwidth = %f\n", span, eff_bw);
     #endif
 
     #if RUN_NON_INPLACE
+    float start = get_time();
     for (int index=0; index<ITER; index++) {
         total_elements = 0;
         if(world_rank==0) printf ("**************total reduce iallreduce, iTER=%d**************************\r", index);
@@ -275,6 +298,10 @@ int main(int argc, char** argv)
             calc_delta(i, recv_buf_ref[i], recv_buf[i], get_layer_size(i, num_elements));
         }
     }
+    end = get_time();
+    span = (end-start)/ITER;
+    eff_bw = 2.0*(world_size-1)/world_size*total_elements * 32/span/1000000000;
+    printf ("Effective bandwidth = %f\n", eff_bw);
     #endif
 
     ideep::distribute::finalize();

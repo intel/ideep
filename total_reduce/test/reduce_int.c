@@ -139,7 +139,8 @@ int main(int argc, char** argv)
     system("/bin/hostname");
     int num_elements = atoi(argv[1]);
 
-    TR_init();
+    // init with no affinity
+    TR_init(-1);
 
     int world_size = TR_get_world_size();
     int world_rank = TR_get_rank();

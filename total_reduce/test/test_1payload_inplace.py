@@ -2,24 +2,23 @@ import time
 import numpy
 import ideep4py
 from ideep4py import distribute
+import os
 
 if not distribute.available():
     print ("Distribute feature not built into iDeep,",
            "please use 'cmake -Dmultinode=ON ..' to build ideep")
     exit()
 
+os.system("cat /etc/hostname")
 size = 99999999
 shape = [size]
 src_backup = numpy.zeros(shape, numpy.float32)
 
-print ("Initialize distributed computation")
-distribute.init()
+distribute.init(6)
 
 world_size = distribute.get_world_size()
-print ("world size = %d" % (world_size))
 
 rank = distribute.get_rank()
-print ("rank = %d" % (rank))
 
 src_buf = (numpy.full(shape, rank, numpy.float32)
            + numpy.linspace(0.0, (shape[0]+0.0)/(shape[0]+1.0), num=shape[0],
@@ -54,7 +53,7 @@ buf_expect = (numpy.full(shape, (world_size-1)*world_size/2.0)
                                num=shape[0], endpoint=False))
 
 if rank == 0:
-    print ("[%d] Validate inplace result:" % (rank))
+    print ("Validate result:")
 
 numpy.testing.assert_allclose(src_buf, buf_expect, rtol=1e-06)
 

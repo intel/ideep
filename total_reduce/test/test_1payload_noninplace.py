@@ -2,6 +2,9 @@ import time
 import numpy
 import ideep4py
 from ideep4py import distribute
+import os
+
+os.system("cat /etc/hostname")
 
 if not distribute.available():
     print ("Distribute feature not built into iDeep,",
@@ -14,14 +17,11 @@ src_buf = numpy.zeros(shape, numpy.float32)
 dst_buf = numpy.zeros(shape, numpy.float32)
 buf_expect = numpy.zeros(shape, numpy.float32)
 
-print ("Initialize distributed computation")
 distribute.init()
 
 world_size = distribute.get_world_size()
-print ("world size = %d" % (world_size))
 
 rank = distribute.get_rank()
-print ("rank = %d" % (rank))
 
 src_buf = (numpy.full(shape, rank, numpy.float32)
            + numpy.linspace(0.0, (shape[0]+0.0)/(shape[0]+1.0), num=shape[0],
@@ -56,8 +56,9 @@ buf_expect = (numpy.full(shape, (world_size-1)*world_size/2.0)
                                num=shape[0], endpoint=False))
 
 if rank == 0:
-    print ("[%d] Validate non-inplace result:" % (rank))
-    numpy.testing.assert_allclose(dst_buf, buf_expect, rtol=1e-06)
+    print ("Validate result:")
+
+numpy.testing.assert_allclose(dst_buf, buf_expect, rtol=1e-06)
 
 if rank == 0:
     print ("pass!")

@@ -58,7 +58,13 @@ public:
     // call once before using distribute collectives
     // any distribute collective must be called AFTER this call returns
     static void init() {
-        TR_init();
+        TR_init(-1);
+    }
+
+    // same as above, but set affinity of work thread to affinity
+    static void init(int affinity) {
+        assert (affinity >= 0);
+        TR_init(affinity);
     }
 
     // get number of nodes
@@ -83,13 +89,13 @@ public:
     // id must >= 0, ids smaller than 0 are reserved
     static tr_error_code allreduce(int id, mdarray *send_recv_buf) {
         assert (id >= 0);
-        return _allreduce(id, 0, send_recv_buf, send_recv_buf);
+        return _allreduce(id, send_recv_buf, send_recv_buf);
     }
 
     // same as above, result is written in recv_buf
     static tr_error_code allreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
         assert (id >= 0);
-        return _allreduce(id, 0, send_buf, recv_buf);
+        return _allreduce(id, send_buf, recv_buf);
     }
 
     /* without id */
@@ -98,12 +104,12 @@ public:
     // note: you can still use out-of-order call sequence for all call with id
     static tr_error_code allreduce(mdarray *send_recv_buf) {
         int id = _get_new_implicit_id();
-        return _allreduce(id, 0, send_recv_buf, send_recv_buf);
+        return _allreduce(id, send_recv_buf, send_recv_buf);
     }
 
     static tr_error_code allreduce(mdarray *send_buf, mdarray *recv_buf) {
         int id = _get_new_implicit_id();
-        return _allreduce(id, 0, send_buf, recv_buf);
+        return _allreduce(id, send_buf, recv_buf);
     }
 
     /*
@@ -111,7 +117,6 @@ public:
         variants are:
             with/without id
             inpace/non-inpace
-            with/without priority
             with/without callback
     */
 
@@ -119,7 +124,7 @@ public:
     // different nodes with same id
     static tr_error_code iallreduce(int id, mdarray *send_recv_buf) {
         assert (id >= 0);
-        return _iallreduce(id, 0, send_recv_buf, send_recv_buf);
+        return _iallreduce(id, send_recv_buf, send_recv_buf);
     }
 
     // same as above, a python callback function is supplied to be called
@@ -128,69 +133,44 @@ public:
     // responsible for thread safety
     static tr_error_code iallreduce(int id, mdarray *send_recv_buf, PyObject *callback) {
         assert (id >= 0);
-        return _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
-    }
-
-    // non-blocking iallreduce with priority support
-    // higher priority has higher urgency
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf) {
-        assert (id >= 0);
-        return _iallreduce(id, priority, send_recv_buf, send_recv_buf);
-    }
-
-    // same as above with callback support
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_recv_buf, PyObject *callback) {
-        assert (id >= 0);
-        return _iallreduce(id, priority, send_recv_buf, send_recv_buf, callback);
+        return _iallreduce(id, send_recv_buf, send_recv_buf, callback);
     }
 
     // same as above, the result is written in recv_buf
     static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
         assert (id >= 0);
-        return _iallreduce(id, 0, send_buf, recv_buf);
+        return _iallreduce(id, send_buf, recv_buf);
     }
 
     // same as above with callback
     static tr_error_code iallreduce(int id, mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
         assert (id >= 0);
-        return _iallreduce(id, 0, send_buf, recv_buf, callback);
-    }
-
-    // same as above with priority support
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
-        assert (id >= 0);
-        return _iallreduce(id, priority, send_buf, recv_buf);
-    }
-
-    // same as above with callback support
-    static tr_error_code iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
-        assert (id >= 0);
-        return _iallreduce(id, priority, send_buf, recv_buf, callback);
+        return _iallreduce(id, send_buf, recv_buf, callback);
     }
 
     /* without id */
 
     static PyObject *iallreduce(mdarray *send_recv_buf) {
         int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_recv_buf, send_recv_buf);
+        tr_error_code err = _iallreduce(id, send_recv_buf, send_recv_buf);
         return Py_BuildValue("ii", id, err);
     }
 
     static PyObject *iallreduce(mdarray *send_recv_buf, PyObject *callback) {
         int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_recv_buf, send_recv_buf, callback);
+        tr_error_code err = _iallreduce(id, send_recv_buf, send_recv_buf, callback);
         return Py_BuildValue("ii", id, err);
     }
 
     static PyObject *iallreduce(mdarray *send_buf, mdarray *recv_buf) {
         int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_buf, recv_buf);
+        tr_error_code err = _iallreduce(id, send_buf, recv_buf);
         return Py_BuildValue("ii", id, err);
     }
 
     static PyObject *iallreduce(mdarray *send_buf, mdarray *recv_buf, PyObject *callback) {
         int id = _get_new_implicit_id();
-        tr_error_code err = _iallreduce(id, 0, send_buf, recv_buf, callback);
+        tr_error_code err = _iallreduce(id, send_buf, recv_buf, callback);
         return Py_BuildValue("ii", id, err);
     }
 
@@ -201,14 +181,14 @@ public:
     // blocking broadcast buf from root node to other nodes
     static tr_error_code bcast(int id, mdarray *buf, int root) {
         assert (id >= 0);
-        return _bcast(id, 0, buf, root);
+        return _bcast(id, buf, root);
     }
 
     /* without id */
 
     static tr_error_code bcast(mdarray *buf, int root) {
         int id = _get_new_implicit_id();
-        return _bcast(id, 0, buf, root);
+        return _bcast(id, buf, root);
     }
 
     // wait for ID to finish
@@ -261,7 +241,7 @@ private:
 
     static std::unordered_map<int, PyObject *> _cb_map;
 
-    static tr_error_code _allreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code _allreduce(int id, mdarray *send_buf, mdarray *recv_buf) {
         if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
             return tr_fail;
         }
@@ -286,13 +266,14 @@ private:
 
         size_t num_elements = send_buf->get()->get_nelems();
 
-        TR_allreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
+        TR_allreduce(id, 0, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
                      recv_buf->get()->get_data_handle(), num_elements, datatype);
 
         return tr_success;
     }
 
-    static tr_error_code _iallreduce(int id, int priority, mdarray *send_buf, mdarray *recv_buf) {
+    static tr_error_code _iallreduce(int id, mdarray *send_buf, mdarray *recv_buf)
+    {
         if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
             return tr_fail;
         }
@@ -317,15 +298,14 @@ private:
 
         size_t num_elements = send_buf->get()->get_nelems();
 
-        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
+        TR_iallreduce(id, 0, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
                       recv_buf->get()->get_data_handle(), num_elements, datatype, NULL);
 
         return tr_success;
     }
 
-    static tr_error_code _iallreduce(int id, int priority,
-                                    mdarray *send_buf, mdarray *recv_buf,
-                                    PyObject *callback) {
+    static tr_error_code _iallreduce(int id, mdarray *send_buf, mdarray *recv_buf, PyObject *callback)
+    {
         if (send_buf->get()->get_nelems() != recv_buf->get()->get_nelems()) {
             return tr_fail;
         }
@@ -356,13 +336,13 @@ private:
         distribute::_cb_map[id] = callback;
         Py_XINCREF(callback);
 
-        TR_iallreduce(id, priority, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
+        TR_iallreduce(id, 0, send_buf==recv_buf?TR_IN_PLACE:send_buf->get()->get_data_handle(),
                       recv_buf->get()->get_data_handle(), num_elements, datatype, _callback);
 
         return tr_success;
     }
 
-    static tr_error_code _bcast(int id, int priority, mdarray *buf, int root) {
+    static tr_error_code _bcast(int id, mdarray *buf, int root) {
         TR_datatype datatype;
 
         switch (buf->get()->get_data_type()) {
@@ -380,7 +360,7 @@ private:
 
         size_t num_elements = buf->get()->get_nelems();
 
-        TR_bcast(id, priority, buf->get()->get_data_handle(), num_elements, datatype, root);
+        TR_bcast(id, 0, buf->get()->get_data_handle(), num_elements, datatype, root);
 
         return tr_success;
     }

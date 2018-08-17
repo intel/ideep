@@ -8,14 +8,18 @@
 #include "total_reduce.h"
 #include "TR_interface.h"
 
+// return whether total reduce is available
 bool TR_available(void)
 {
     return true;
 }
 
-void TR_init(void)
+// initialization with work thread affinity
+// affinity = -1 -- no affinity
+// affinity >= 0 -- set affinity to CPU affinity
+void TR_init(int affinity)
 {
-    total_reduce_init();
+    total_reduce_init(affinity);
 }
 
 int TR_get_world_size(void)

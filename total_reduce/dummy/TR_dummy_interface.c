@@ -8,7 +8,7 @@ bool TR_available(void)
     return false;
 }
 
-void TR_init(void)
+void TR_init(int affinity)
 {
     assert (!"Should not get here");
 }

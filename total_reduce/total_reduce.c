@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -6,6 +7,7 @@
 #include <string.h>
 #include <strings.h>
 #include <math.h>
+
 #include <pthread.h>
 
 #include "pal.h"
@@ -139,7 +141,7 @@ int total_reduce_get_succ_rank(void) { return succ_rank; }
 static pthread_t total_reduce_thread;
 
 // total reduce implementation
-void total_reduce_init(void)
+void total_reduce_init(int affinity)
 {
     // initialize MPI
     comm_init(&my_rank, &world_size);
@@ -166,6 +168,13 @@ void total_reduce_init(void)
     thread_args.succ_rank  = succ_rank;
     thread_args.world_size = world_size;
     pthread_create (&total_reduce_thread, NULL, total_reduce_thread_func, (void*)&thread_args);
+    if (affinity >= 0) {
+        cpu_set_t cpuset;
+
+        CPU_ZERO(&cpuset);
+        CPU_SET(affinity, &cpuset);
+        pthread_setaffinity_np(total_reduce_thread, 1, &cpuset);
+    }
 }
 
 void total_reduce_finalize(void)

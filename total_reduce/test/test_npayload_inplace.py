@@ -2,7 +2,9 @@ import time
 import numpy
 import ideep4py
 from ideep4py import distribute
+import os
 
+os.system("cat /etc/hostname")
 if not distribute.available():
     print ("Distribute feature not built into iDeep,",
            "please use 'cmake -Dmultinode=ON ..' to build ideep")
@@ -25,14 +27,11 @@ for layer in range(nlayer):
     src_backups[layer] = numpy.zeros(shape[layer], numpy.float32)
     bufs_expect[layer] = numpy.zeros(shape[layer], numpy.float32)
 
-print ("Initialize distributed computation")
-distribute.init()
+distribute.init(6)
 
 world_size = distribute.get_world_size()
-print ("world size = %d" % (world_size))
 
 rank = distribute.get_rank()
-print ("rank = %d" % (rank))
 
 for layer in range(nlayer):
     src_bufs[layer] = (
@@ -77,11 +76,11 @@ for layer in range(nlayer):
         + numpy.linspace(0, shape[layer][0]/(shape[layer][0]+1.0)*world_size,
                          num=shape[layer][0], endpoint=False))
 
+if rank == 0:
+    print ("Validate result:")
 for layer in range(nlayer):
-    if rank == 0:
-        print ("[%d] Validate inplace result for layer %d:" % (rank, layer))
     numpy.testing.assert_allclose(src_bufs[layer],
                                   bufs_expect[layer],
                                   rtol=1e-06)
-    if rank == 0:
-        print ("pass!")
+if rank == 0:
+    print ("pass!")

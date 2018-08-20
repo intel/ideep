@@ -401,8 +401,18 @@ public:
 
     static void trigger_evaluation(const param_t& t) {
       auto d = dag_build<param_t>::fetch_dag(t);
-      if (d.get() == nullptr)
+      if (d.get() == nullptr) {
+        if (t.creator().get() != nullptr) {
+          auto cn_deps = t.creator()->deps();
+          for (auto cd : cn_deps)
+            parameter<param_t>::computation_param_materialize(cd);
+          t.creator()->fire();
+          t.creator()->clear();
+          DBG("fire scattered cn 0x%llx\n",
+              (unsigned long long)t.creator().get());
+        }
         return;
+      }
 
       prop_kind_t pre_pkind;
       if (prop_kind_change(d->prop_kind(), pre_pkind)) {
@@ -581,7 +591,12 @@ public:
           }
         }
 
-        DBG("build dag related_cns %d\n", (int)related_cns.size());
+        DBG("build dag 0x%llx related_cns %d tail 0x%llx\n",
+            (unsigned long long)d.get(), (int)related_cns.size(),
+            (unsigned long long)d->get_tail().get());
+        for (int i = 0; i < (int)related_cns.size(); i++)
+          DBG("build dag related_cns 0x%llx\n",
+              (unsigned long long)related_cns[i].get());
 
         // case-1 (expand): node added in the end of only related dag
         if (related_cns.size() == 1 &&

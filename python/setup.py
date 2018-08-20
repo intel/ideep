@@ -31,9 +31,12 @@ def install_mkldnn():
     else:
         cmake = 'cmake'
 
-    os.system('%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
-              && %s --build %s --target install'
-              % (cmake, ideep4py_dir, ideep_build_dir, cmake, ideep_build_dir))
+    ret = os.system('%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
+                    && %s --build %s --target install'
+                    % (cmake, ideep4py_dir, ideep_build_dir,
+                       cmake, ideep_build_dir))
+    if ret != 0:
+        exit(1)
 
 
 ###############################################################################

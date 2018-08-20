@@ -332,7 +332,13 @@ public:
 
     bool check_or_clear(const param_t& t) {
       auto workable = t.computation_param_own_of_memory();
-      if (!workable) clear();
+      if (!workable) {
+        for (auto tar: tars()) {
+          tar.mark_materialized();
+          tar.reset_creator();
+        }
+        clear();
+      }
       return workable;
     }
 

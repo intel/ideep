@@ -29,18 +29,22 @@ src_backup = ideep4py.mdarray(src_backup)
 ideep4py.basic_copyto(src_backup, src_buf)
 
 iter_num = 10
-start = time.time()
 
 # inplace
+
+total = 0.0
+
 for i in range(iter_num):
     ideep4py.basic_copyto(src_buf, src_backup)
+    start = time.time()
     distribute.allreduce(0, src_buf)
     distribute.barrier()
+    end = time.time()
+    total = total + end - start
 
-end = time.time()
 
-avg_time = (end-start)/iter_num
-eff_bw = 2.0*(world_size-1)/world_size * shape[0] * 32 / avg_time/1000000000
+avg_time = total/iter_num
+eff_bw = 2.0*(world_size-1)/world_size * shape[0] * 32 / avg_time / 1000000000
 print ("[%d] Allreduce done in %f seconds, bw=%fGbps"
        % (rank, avg_time, eff_bw))
 distribute.finalize()

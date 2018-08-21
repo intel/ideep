@@ -47,21 +47,23 @@ for layer in range(nlayer):
     ideep4py.basic_copyto(src_backups[layer], src_bufs[layer])
 
 iter_num = 10
-start = time.time()
 
 # inplace
+total = 0.0
 for i in range(iter_num):
     for layer in range(nlayer):
         ideep4py.basic_copyto(src_bufs[layer], src_backups[layer])
+    start = time.time()
     for layer in range(nlayer):
         distribute.iallreduce(layer, src_bufs[layer])
     for layer in range(nlayer):
         distribute.wait(nlayer-1-layer)
     distribute.barrier()
+    end = time.time()
+    total = total + end - start
 
-end = time.time()
 
-avg_time = (end-start)/iter_num
+avg_time = total/iter_num
 eff_bw = 2.0*(world_size-1)/world_size * total_size * 32 / avg_time/1000000000
 print ("[%d] Allreduce done in %f seconds, bw=%fGbps"
        % (rank, avg_time, eff_bw))

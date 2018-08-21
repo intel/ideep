@@ -180,6 +180,9 @@ public:
       return dummy;
     }
 
+    virtual void set_scattered() {}
+    virtual bool scattered() { return true; }
+
   private:
     cn_t successor_;
   };
@@ -212,14 +215,14 @@ public:
         comp_(std::make_shared<comp_inst_t>(inst)),
         params_(std::make_shared<computation_param>(computation_param())),
         fattr_(std::make_shared<fusion_attr_t>(fattr)),
-        pkind_(pkind) {}
+        pkind_(pkind), scattered_(false) {}
 
     computation_node(std::shared_ptr<node<param_t>>& inst_ptr, prop_kind_t pkind,
         fusion_attr_t fattr = { fusion_type_t::CN_FUSION_NA, {}, {} }) :
         comp_(inst_ptr),
         params_(std::make_shared<computation_param>(computation_param())),
         fattr_(std::make_shared<fusion_attr_t>(fattr)),
-        pkind_(pkind) {}
+        pkind_(pkind), scattered_(false) {}
 
     ~computation_node() {
       if ((unsigned long long)this < 0x20000000)
@@ -353,6 +356,7 @@ public:
       DBG("enqueue cn 0x%llx %s\n",
           (unsigned long long)cn.get(), typeid(cn).name());
       computation_web::template executor<param_t>::lazy_evaluate(cn);
+      cn->unset_scattered();
     }
 
     void fire() {
@@ -381,11 +385,16 @@ public:
 
     prop_kind_t prop_kind() { return pkind_; }
 
+    void set_scattered() { scattered_ = true; }
+    void unset_scattered() { scattered_ = false; }
+    bool scattered() { return scattered_; }
+
   private:
     std::shared_ptr<node<param_t>> comp_;
     std::shared_ptr<computation_param> params_;
     std::shared_ptr<fusion_attr_t> fattr_;
     prop_kind_t pkind_;
+    bool scattered_;
   };
 
   template<typename param_t>
@@ -401,18 +410,8 @@ public:
 
     static void trigger_evaluation(const param_t& t) {
       auto d = dag_build<param_t>::fetch_dag(t);
-      if (d.get() == nullptr) {
-        if (t.creator().get() != nullptr) {
-          auto cn_deps = t.creator()->deps();
-          for (auto cd : cn_deps)
-            parameter<param_t>::computation_param_materialize(cd);
-          t.creator()->fire();
-          t.creator()->clear();
-          DBG("fire scattered cn 0x%llx\n",
-              (unsigned long long)t.creator().get());
-        }
+      if (d.get() == nullptr)
         return;
-      }
 
       prop_kind_t pre_pkind;
       if (prop_kind_change(d->prop_kind(), pre_pkind)) {
@@ -527,7 +526,20 @@ public:
 
     void execute() {
       for (auto cn = head_; cn.get() != nullptr; cn = cn->successor()) {
-        DBG("fire cn 0x%llx\n", (unsigned long long)cn.get());
+      #ifdef _DBG_
+        DBG("fire cn 0x%llx deps' creator ", (unsigned long long)cn.get());
+        for (auto d : cn->deps())
+          DBG("0x%llx ", (unsigned long long)d.creator().get());
+        DBG("\n");
+      #endif
+        for (auto dep : cn->deps()) {
+          if (dep.creator().get() != nullptr && dep.creator()->scattered()) {
+            dep.creator()->fire();
+            dep.creator()->clear();
+            DBG("fire scattered cn 0x%llx\n",
+                (unsigned long long)dep.creator().get());
+          }
+        }
         cn->fire(); cn->clear();
       }
       return;
@@ -642,6 +654,7 @@ public:
       // cut down pre_cn with cn
       pre_cn->reset_successor();
       pre_cn->reset_creator();
+      pre_cn->set_scattered();
       cn->reset_successor();
       cn->reset_creator();
       cn->clear();

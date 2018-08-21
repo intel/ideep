@@ -43,6 +43,7 @@ def cb(id):
 for i in range(iter_num):
     ideep4py.basic_copyto(src_buf, src_backup)
     distribute.iallreduce(1, src_buf, cb)
+    distribute.wait(1)
     distribute.barrier()
 
 end = time.time()

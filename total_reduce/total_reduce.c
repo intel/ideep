@@ -221,7 +221,8 @@ void total_reduce_bcast(int id, int priority, void *buffer, size_t num_elements,
 
 void total_reduce_barrier(void)
 {
-    while(!payload_all_done_p(true));
+    int dummy[1] = {0};
+    total_reduce_allreduce(-1, 0, TR_IN_PLACE, dummy, 1, TR_INT32);
 }
 
 static bool message_sending_header_p   = false;

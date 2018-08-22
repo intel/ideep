@@ -366,7 +366,9 @@ private:
     }
 
     static int _get_new_implicit_id(void) {
-        static int implicit_id = -1;
+        // implicity id is negative and start from -2, then goes like -3, -4, -5, etc.
+        // -1 is reserved for internal purpose
+        static int implicit_id = -2;
         assert (implicit_id < 0);
         int ret_val = implicit_id;
         implicit_id--;

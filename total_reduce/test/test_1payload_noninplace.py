@@ -30,17 +30,20 @@ src_buf = (numpy.full(shape, rank, numpy.float32)
 src_buf = ideep4py.mdarray(src_buf)
 dst_buf = ideep4py.mdarray(dst_buf)
 
-iter_num = 1
-start = time.time()
+iter_num = 50
+
+distribute.barrier()
 
 # non-inplace
+total = 0.0
 for i in range(iter_num):
+    start = time.time()
     distribute.allreduce(0, src_buf, dst_buf)
     distribute.barrier()
+    end = time.time()
+    total = total + end - start
 
-end = time.time()
-
-avg_time = (end-start)/iter_num
+avg_time = total/iter_num
 eff_bw = 2.0*(world_size-1)/world_size * shape[0] * 32 / avg_time/1000000000
 
 print ("[%d] Allreduce done in %f seconds, bw=%fGbps"

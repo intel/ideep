@@ -46,7 +46,9 @@ for layer in range(nlayer):
     src_backups[layer] = ideep4py.mdarray(src_backups[layer])
     ideep4py.basic_copyto(src_backups[layer], src_bufs[layer])
 
-iter_num = 10
+iter_num = 50
+
+distribute.barrier()
 
 # inplace
 total = 0.0

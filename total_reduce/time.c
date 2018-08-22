@@ -1,6 +1,8 @@
+#define _POSIX_C_SOURCE 199309L
 #include <time.h>
 #include <sys/time.h>
 #include <assert.h>
+#include <errno.h>
 #include "time.h"
 
 #if PROFILE>=1
@@ -24,8 +26,18 @@ float get_time(void)
 void sleepf(float second)
 {
     assert (second>=0);
-    float start = get_time();
-    while (get_time() - start <= second);
+    struct timespec span, remain, *val, *rem, *swap_temp;
+    span.tv_sec = (int)second;
+    span.tv_nsec = (second - (int)second) * 1000000000;
+
+    val = &span;
+    rem = &remain;
+
+    while (nanosleep(val, rem) && errno==EINTR) {
+        swap_temp = val;
+        val = rem;
+        rem = swap_temp;
+    }
 }
 
 #if PROFILE>=1

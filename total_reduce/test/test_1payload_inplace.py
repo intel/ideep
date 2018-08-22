@@ -28,11 +28,13 @@ src_buf = ideep4py.mdarray(src_buf)
 src_backup = ideep4py.mdarray(src_backup)
 ideep4py.basic_copyto(src_backup, src_buf)
 
-iter_num = 10
+iter_num = 50
 
 # inplace
 
 total = 0.0
+
+distribute.barrier()
 
 for i in range(iter_num):
     ideep4py.basic_copyto(src_buf, src_backup)

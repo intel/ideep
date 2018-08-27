@@ -3549,6 +3549,7 @@ public:
         flags, aprop_kind);
     computation::init(batch_norm_backward);
     weights_.init(batch_norm_backward.expected_weights_descriptor());
+    grad_scale_shift_.init(batch_norm_backward.expected_weights_descriptor());
   }
 
   batch_normalization_backward() = default;
@@ -3576,9 +3577,19 @@ public:
     // And single thread of memcpy should be fast enough
     std::memcpy(
         weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    computation::execute(src, mean, variance, grady, weights_, gradx, gradw);
+
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), get_epsilon());
+    fetch_or_create_m(comp, key, src.get_descriptor(),
+        src.get_descriptor(), get_epsilon());
+    grad_scale_shift_.reinit(comp.expected_gradw_descriptor());
+
+    computation::execute(src, mean, variance, grady, weights_, gradx, grad_scale_shift_);
+    std::memcpy(gradw.get_data_handle(),
+        (char *)grad_scale_shift_.get_data_handle(),
+        gradw.get_size());
     std::memcpy(grad_shift.get_data_handle(),
-        (char *)gradw.get_data_handle() + grad_shift.get_size(),
+        (char *)grad_scale_shift_.get_data_handle() + gradw.get_size(),
         grad_shift.get_size());
   }
 
@@ -3629,7 +3640,6 @@ public:
       tensor& gradx, tensor& grad_scale, tensor& grad_shift) {
     execute(
         src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
-    grad_scale.set_descriptor(mean.get_descriptor());
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -3644,7 +3654,7 @@ public:
 
     gradx.reinit<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
-    grad_scale.reinit(comp.expected_gradw_descriptor());
+    grad_scale.reinit(mean.get_descriptor());
     grad_shift.reinit(mean.get_descriptor());
 
     if (web_opt) {
@@ -3675,6 +3685,7 @@ public:
 
 private:
   tensor weights_;
+  tensor grad_scale_shift_;
 };
 
 struct inner_product_forward: public computation,

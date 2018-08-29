@@ -69,7 +69,7 @@ struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op 
     assert (in_buf != out_buf);   // currently only support none inplace only
     assert (op == ALLREDUCE);
 
-    struct payload *payload = payload_get_from_id(id);
+    struct payload *payload = payload_get_from_id_nolock(id);
     if (payload == NULL) {
         payload = (struct payload*)alloc_host_mem(sizeof(struct payload));
 
@@ -104,8 +104,6 @@ struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op 
         payload_add(payload);
     } else {
         pthread_mutex_lock(&payload_list_mutex);
-        payload->recv_state = 0;
-        payload->comp_state = 0;
         assert (payload->count == count);
         assert (payload->data_type == data_type);
         assert (payload->op == op);
@@ -127,6 +125,8 @@ struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op 
         payload->time_due = -1.0;
 
         payload->callback = callback;
+        payload->recv_state = 0;
+        payload->comp_state = 0;
         payload->send_state = 0;
         pthread_mutex_unlock(&payload_list_mutex);
     }
@@ -146,6 +146,18 @@ struct payload *payload_get_from_id(int id)
         }
     }
     pthread_mutex_unlock(&payload_list_mutex);
+    return NULL;
+}
+
+struct payload *payload_get_from_id_nolock(int id)
+{
+    struct payload *cur = payload_list;
+    while (cur->next) {
+        cur = cur->next;
+        if (cur->id == id) {
+            return cur;
+        }
+    }
     return NULL;
 }
 

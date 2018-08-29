@@ -2,8 +2,8 @@
 #define __KNOBS__H__
 
 // how many concurrent isend body and irecv body can coexist
-#define SEND_CONCURRENCY 5
-#define RECV_CONCURRENCY 5
+#define SEND_CONCURRENCY 1
+#define RECV_CONCURRENCY 1
 
 // the size of CHUNK that is considered 'large'.  There will be only one large chunk in flight
 #define LARGE_CHUNK_SIZE 10000

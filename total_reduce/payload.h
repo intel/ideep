@@ -43,6 +43,7 @@ void payload_list_init(void);
 struct payload *payload_new_or_reuse(int id, int priority, enum total_reduce_op op, size_t size,
                                      void *in_buf, void *out_buf, TR_datatype data_type, void (*callback)(int));
 struct payload *payload_get_from_id(int id);
+struct payload *payload_get_from_id_nolock(int id);
 bool payload_check_done_p (struct payload *payload, bool external);
 struct payload *payload_pick_ready(
 #if PROFILE>=1

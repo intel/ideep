@@ -21,7 +21,7 @@ class sum_test: public ::testing::TestWithParam<sum_test_params> {
                   const std::vector<float> &scale,
                   const tensor &dst)
   {
-    const data_t *dst_data = (const data_t *)dst.get_data_handle();
+    const float *dst_data = (const float *)dst.get_data_handle();
     const auto &dst_d =
         mkldnn::memory::desc(*dst.get_mkldnn_memory_desc_t());
     const auto dst_dims = dst.get_dims();
@@ -88,14 +88,17 @@ protected:
 
         fill_data<data_t>(src.get_size() / sizeof(data_t),
             reinterpret_cast<data_t *>(src.get_data_handle()));
+        src.set_scale(IDEEP_DEF_SCALE);
         srcs.push_back(src);
       }
 
+      // XXX: The data type of dst is always f32 because sum op
+      // must be fallback-ed to f32 to avoid variance.
       tensor::descriptor dst_desc(static_cast<tensor::dims>(p.dims),
-          data_traits<data_t>::data_type, static_cast<format>(p.dst_format));
+          tensor::data_type::f32, static_cast<format>(p.dst_format));
       dst1.init(dst_desc);
-      data_t *dst_data = (data_t *)dst1.get_data_handle();
-      const size_t sz = dst1.get_size() / sizeof(data_t);
+      float *dst_data = (float *)dst1.get_data_handle();
+      const size_t sz = dst1.get_size() / sizeof(float);
       // overwriting dst to prevent false positives for test cases.
 #     pragma omp parallel for
       for (size_t i = 0; i < sz; i++) {

@@ -73,25 +73,6 @@ public:
   }
 };
 
-/// C wrappers which form a functioning complex, in case multiple
-/// Primitives needed to finish certain task.
-template <typename T>
-class c_wrapper_complex : public c_wrapper<T> {
-public:
-  using size_type = typename std::vector<c_wrapper<T>>::size_type;
-  constexpr static int max_reorder_needed = 3;
-
-  c_wrapper_complex() {}
-
-  inline bool need_reorder_input(int pos) const {
-    if (pos < max_reorder_needed/* auxiliaries_.size()*/)
-      return auxiliaries_[pos] != nullptr;
-    return false;
-  }
-protected:
-  c_wrapper<T> auxiliaries_[max_reorder_needed];
-};
-
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
 using scale_t = std::vector<float>;
@@ -190,6 +171,8 @@ struct stream: public mkldnn::stream {
     return stream(mkldnn::stream::kind::eager);
   }
 };
+
+using key_t = std::string;
 
 using kind = mkldnn::primitive::kind;
 using prop_kind = mkldnn::prop_kind;

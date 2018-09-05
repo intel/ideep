@@ -81,7 +81,7 @@ inline tensor::data_type tensor::descriptor::type_to_id<signed char>() {
 
 /// A group of primitive descriptors, pack related reorder descriptors
 /// with computational descriptor.
-class descriptor_group: public c_wrapper_complex<mkldnn_primitive_desc_t> {
+class descriptor_group: public c_wrapper<mkldnn_primitive_desc_t> {
   friend class primitive_group;
 public:
   /// Post ops for fusion operations
@@ -344,7 +344,7 @@ protected:
 public:
   /// Empty construction
   descriptor_group()
-    : c_wrapper_complex() {}
+    : c_wrapper() {}
 
   /// Query interface
   ///
@@ -442,41 +442,15 @@ public:
       return mkldnn_primitive_desc_query_s32(get(),
          mkldnn::convert_to_c(mkldnn::num_of_outputs_s32), 0);
   }
-
-protected:
-  void create_reorder_pds(std::vector<tensor::descriptor> descriptors,
-      std::vector<attr_t> attrs = std::vector<attr_t>()) {
-    for (unsigned i = 0; i < descriptors.size(); i ++) {
-      IDEEP_ENFORCE((int)i < num_of_inputs(), "Incorrect input number");
-      auto &provided = descriptors[i];
-      auto expected = expected_input_descriptor((int)i);
-      if (expected != provided) {
-        mkldnn_primitive_desc_t result;
-        if (attrs.empty()) {
-          error::wrap_c_api(mkldnn_reorder_primitive_desc_create(
-                &result, provided.get(), expected.get()),
-              "could not create reorder primitive descriptor");
-        } else {
-          IDEEP_ENFORCE(!(provided.get_data_type() == tensor::data_type::s8
-                && expected.get_data_type() == tensor::data_type::u8),
-              "Not support the reorder of s8 to u8 to avoid overflow.");
-          error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
-                &result, provided.get(), expected.get(), attrs[i].get()),
-              "could not create reorder primitive descriptor with attr");
-        }
-        auxiliaries_[i].reset(result);
-      }
-    }
-  }
 };
 
 /// A group of primitives, pack related reorder with computation.
 /// It serves as a base class of computation
-class primitive_group: public c_wrapper_complex<mkldnn_primitive_t> {
+class primitive_group: public c_wrapper<mkldnn_primitive_t> {
 public:
   /// Empty constructor
   primitive_group()
-    : c_wrapper_complex() {}
+    : c_wrapper() {}
 
   /// Returns the internal structure of primitive descriptor.
   const_mkldnn_primitive_desc_t get_mkldnn_primitive_desc_t() const {
@@ -500,19 +474,6 @@ public:
   }
 
 protected:
-  void create_reorder_for(unsigned index,
-     const descriptor_group &g, param& in, param& out) {
-    mkldnn_primitive_t result;
-    mkldnn_primitive_at_t inputs[] = { {in.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out.get() };
-
-    error::wrap_c_api(mkldnn_primitive_create(&result,
-          g.auxiliaries_[index].get(), inputs, outputs),
-        "could not create a reorder");
-
-    auxiliaries_[index].reset(result);
-  }
-
   /// Specific query interface, not valid for all computations.
   ///
   tensor::descriptor expected_input_descriptor(int index) const {
@@ -563,18 +524,8 @@ protected:
     std::vector<mkldnn_primitive_t> execution_sequence;
     mkldnn_primitive_t c_api_error_primitive;
 
-    // TODO: varadic needed
-    if (need_reorder_input(0))
-      execution_sequence.push_back(auxiliaries_[0].get());
-
-    if (need_reorder_input(1))
-      execution_sequence.push_back(auxiliaries_[1].get());
-
     // Operator
     execution_sequence.push_back(get());
-
-    // if (need_reorder_input(3))
-    //   execution_sequence.push_back(auxiliaries_[3].get());
 
     __itt_frame_begin_v3(instruments::domain::ideep(), nullptr);
     error::wrap_c_api(
@@ -814,34 +765,6 @@ public:
 struct computation : public primitive_group {
   computation() = default;
 
-  void connect_reorder_for(const descriptor_group& adesc,
-      const std::vector<tensor::descriptor>& args) {
-    for (int i = 0; (unsigned)i < args.size(); i ++) {
-      connect_reorder_for(i, adesc, args[(unsigned)i]);
-    }
-  }
-
-  void connect_reorder_for(int, const descriptor_group&) {
-    // dummy, do nothing
-  }
-
-  template<typename... Ts>
-  void connect_reorder_for(int index, const descriptor_group &adesc,
-      const tensor::descriptor& first, const Ts&... rest) {
-    connect_reorder_for(index, adesc, first);
-    connect_reorder_for(index + 1, adesc, rest...);
-  }
-
-  void connect_reorder_for(int index, const descriptor_group &adesc,
-      const tensor::descriptor &desc) {
-    if (adesc.need_reorder_input(index)) {
-      inouts_[index] = tensor { desc, nullptr };
-      create_reorder_for(
-          (unsigned)index, adesc, inouts_[(unsigned)index],
-          primitive_inputs_[(unsigned)index]);
-    }
-  }
-
   inline void init_internal(
       const descriptor_group &adesc, int n_inputs, int n_outputs) {
     // init contents
@@ -879,7 +802,6 @@ struct computation : public primitive_group {
     auto n_inputs = (int)args.size();
     auto n_outputs = adesc.num_of_outputs();
     init_internal(adesc, n_inputs, n_outputs);
-    connect_reorder_for(adesc, args);
   }
 
   template<typename... Ts>
@@ -887,7 +809,6 @@ struct computation : public primitive_group {
     auto n_inputs = adesc.num_of_inputs();
     auto n_outputs = adesc.num_of_outputs();
     init_internal(adesc, n_inputs, n_outputs);
-    connect_reorder_for(0, adesc, args...);
   }
 
   void connect_handle_for(int index, const tensor& atensor) {
@@ -904,9 +825,6 @@ struct computation : public primitive_group {
         primitive_inputs_[(unsigned)index].dematerialize();
         primitive_inputs_[(unsigned)index].set_data_handle(
             atensor.get_data_handle());
-
-        // We throw the reorder away.
-        auxiliaries_[index].reset(nullptr);
       } else
         throw error(mkldnn_runtime_error, "Cannot accept incompatible input");
     } else {
@@ -1628,7 +1546,7 @@ struct convolution_forward: public computation,
   }
 
   template <class alloc, bool web_opt, typename ...Ts>
-  static void compute_impl(const tensor& src,
+  static void compute_impl(key_t &key, const tensor& src,
       const tensor& weights, const tensor& bias,
       const tensor::dims& dst_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims dilates,
@@ -1720,9 +1638,11 @@ struct convolution_forward: public computation,
 
     tensor::descriptor dst_desc_in(dst_dims, dst_data_type);
 
-    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+    if (key.empty()) {
+      key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
         weights_desc.get_dims(), bias_desc.get_dims(), dst_dims,
         strides, dilates, padding_l, padding_r, op_attr, args...);
+    }
 
     fetch_or_create_m(comp, key, src_desc,
         weights_desc, bias_desc, dst_desc_in, strides, dilates,
@@ -1765,7 +1685,7 @@ struct convolution_forward: public computation,
   }
 
   template <class alloc, bool web_opt, typename ...Ts>
-  static void compute_impl(const tensor& src,
+  static void compute_impl(key_t &key, const tensor& src,
       const tensor& weights, const tensor::dims& dst_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
@@ -1849,9 +1769,11 @@ struct convolution_forward: public computation,
 
     tensor::descriptor dst_desc_in(dst_dims, dst_data_type);
 
-    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+    if (key.empty()) {
+      key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
         weights_desc.get_dims(), dst_dims, strides, dilates,
         padding_l, padding_r, op_attr, args...);
+    }
 
     fetch_or_create_m(comp, key, src_desc,
         weights_desc, dst_desc_in, strides, dilates,
@@ -1917,7 +1839,7 @@ struct convolution_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor &src, const tensor& weights,
+  static void compute(key_t &key, const tensor &src, const tensor& weights,
       const tensor::dims result_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r, int group,
@@ -1930,14 +1852,14 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc, web_opt>(src, weights_in, result_dims, dst,
+    compute_impl<alloc, web_opt>(key, src, weights_in, result_dims, dst,
         strides, dilates, padding_l, padding_r,
         src_scales, weights_scales, dst_meaning_max, attr,
         aalogorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor &src, const tensor& weights,
+  static void compute(key_t &key, const tensor &src, const tensor& weights,
       const tensor& bias, const tensor::dims result_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r, int group,
@@ -1950,7 +1872,7 @@ struct convolution_forward: public computation,
       const padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
-    compute_impl<alloc, web_opt>(src, weights_in, bias, result_dims, dst,
+    compute_impl<alloc, web_opt>(key, src, weights_in, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r,
         src_scales, weights_scales, dst_meaning_max, attr,
         aalogorithm, aprop_kind, appading_kind);
@@ -2099,7 +2021,6 @@ struct convolution_backward_data : public computation,
             &data, engine::cpu_engine().get(), hint_.get()),
       "could not create a convolution backward data primitive descriptor");
       reset(result);
-      create_reorder_pds({grady_desc, weights_desc});
     }
   private:
     convolution_forward::descriptor hint_;
@@ -2254,7 +2175,6 @@ struct convolution_backward_weights : public computation,
             &result, &data, engine::cpu_engine().get(), hint_.get()),
           "could not create a convolution backward weights primitive descriptor");
       reset(result);
-      create_reorder_pds({x_desc, grady_desc});
     }
     descriptor(const tensor::descriptor &x_desc,
         const tensor::descriptor &grady_desc,
@@ -2292,7 +2212,6 @@ struct convolution_backward_weights : public computation,
             &result, &data, engine::cpu_engine().get(), hint_.get()),
           "could not create a convolution backward weights primitive descriptor");
       reset(result);
-      create_reorder_pds({x_desc, grady_desc});
     }
   private:
     convolution_forward::descriptor hint_;
@@ -2532,7 +2451,6 @@ struct lrn_forward : public computation,
               &result, &data, engine::cpu_engine().get(), nullptr),
           "could not create a lrn forward primitive descriptor");
       reset(result);
-      // create_reorder_pds({x_desc});
     }
   };
 public:
@@ -4122,7 +4040,6 @@ struct inner_product_forward: public computation,
             &result, &data, engine::cpu_engine().get(), nullptr),
           "could not create a inner product forward primitive descriptor");
       reset(result);
-      create_reorder_pds({src_desc, weights_desc});
     }
 
     descriptor(const tensor::descriptor &src_desc,
@@ -4146,7 +4063,6 @@ struct inner_product_forward: public computation,
             &result, &data, engine::cpu_engine().get(), nullptr),
           "could not create a inner product forward primitive descriptor");
       reset(result);
-      create_reorder_pds({src_desc, weights_desc});
     }
   };
  public:

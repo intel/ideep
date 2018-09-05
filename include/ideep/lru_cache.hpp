@@ -433,8 +433,6 @@ inline bytestring to_bytes(T&& arg, Ts&&... args) {
   return bytes;
 }
 
-using key_t = std::string;
-
 template <typename ...Ts>
 inline key_t create_key(Ts&&... args) {
   return to_bytes(std::forward<Ts>(args)...);

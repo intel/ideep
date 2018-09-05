@@ -38,17 +38,17 @@ cd ../python
 python setup.py install
 ```
 ### Install python package via PYPI:
-
 ```
 pip install ideep4py
 ```
+Suggest installing Python package using [virtualenv](https://packaging.python.org/key_projects/#virtualenv) to avoid installing Python packages globally which could break system tools or other projects.
 ### Install python package via Conda:
 
 ```
 conda install -c intel ideep4py
 ```
 ### Install python package via Docker: 
-we are providing the official Docker images based on different platforms on [Docker Hub](https://hub.docker.com/r/chainer/chainer/tags). 
+We are providing the official Docker images based on different platforms on [Docker Hub](https://hub.docker.com/r/chainer/chainer/tags). 
 ```
 docker pull chainer/chainer:latest-intel-python2
 docker run -it chainer/chainer:latest-intel-python2 /bin/bash

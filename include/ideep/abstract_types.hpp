@@ -9,8 +9,6 @@
 
 namespace ideep {
 
-using error = mkldnn::error;
-
 #if defined (__GNUC__)
 #define IDEEP_DEPRECATED __attribute__((deprecated))
 #elif defined(_MSC_VER)
@@ -42,6 +40,20 @@ using error = mkldnn::error;
 
 #define IDEEP_MOD_PTR(ptr, bytes) (((uintptr_t)(ptr)) & ((bytes) - 1))
 #define IDEEP_IS_ALIGNED_PTR(ptr, bytes) ((IDEEP_MOD_PTR(ptr, bytes)) == 0)
+
+struct error: public std::exception {
+    mkldnn_status_t status;
+    std::string message;
+
+    error(mkldnn_status_t astatus, std::string amessage)
+        : status(astatus), message(amessage) {}
+
+    static void wrap_c_api(mkldnn_status_t status, const char * message) {
+      if (status != mkldnn_success) {
+        throw error(status, std::string(message));
+      }
+    }
+};
 
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance

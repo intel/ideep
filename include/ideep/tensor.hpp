@@ -535,7 +535,7 @@ public:
             "could not set int output round mode");
       }
 
-      void set_output_scales(int mask, scale_t scales) {
+      void set_output_scales(int mask, const scale_t &scales) {
         error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(get(),
               (int)scales.size(), mask, &scales[0]),
             "could not set int output scales");
@@ -582,7 +582,7 @@ public:
           mkldnn_stream_submit(stream::default_stream().get(),
            execution_sequence.size(), &execution_sequence[0],
            &c_api_error_primitive),
-         "could not execute reorder", &c_api_error_primitive);
+         "could not execute reorder");
     }
   };
 

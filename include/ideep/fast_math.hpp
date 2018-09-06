@@ -50,6 +50,10 @@ public:
     return _mm256_add_ps(v1, v2);
   }
 
+  static inline TF sub_ps(TF v1, TF v2) {
+    return _mm256_sub_ps(v1, v2);
+  }
+
   static inline TF mul_ps(TF v1, TF v2) {
     return _mm256_mul_ps(v1, v2);
   }

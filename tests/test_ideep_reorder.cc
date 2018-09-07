@@ -67,7 +67,7 @@ protected:
 
     test_simple_params<reorder_types> p
         = ::testing::TestWithParam<decltype(p)>::GetParam();
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
       return;
 
     check_reorder(mpd_i_, mpd_o_, src_data_.get(), dst_data_.get());

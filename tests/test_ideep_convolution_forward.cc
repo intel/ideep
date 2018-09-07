@@ -104,7 +104,7 @@ TEST_P(convolution_test, TestManipulation) {
         tensor::dims {cd.dilh, cd.dilw}, tensor::dims {cd.padh, cd.padw }, padR_);
   };
 
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
   auto dup = comp;
@@ -147,7 +147,7 @@ TEST_P(convolution_test, TestCompute) {
           padR_);
   };
 
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
   tensor ref_dst(dst.get_descriptor());
@@ -176,7 +176,7 @@ TEST_P(convolution_test, TestCompute) {
 //
 //   };
 //
-//   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+//   if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
 //     return;
 //
 //   // We expect the guessings are right.

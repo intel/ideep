@@ -10,6 +10,33 @@
 
 namespace ideep {
 
+template<typename F> bool catch_ideep_expected_failures(const F &f,
+        bool expect_to_fail, mkldnn_status_t expected_status)
+{
+    try {
+        f();
+    } catch (const ideep::error &e) {
+        // Rethrow the exception if it is not expected or the error status did
+        // not match.
+        if (!(expect_to_fail) || e.status != (expected_status)) {
+            // Ignore unimplemented
+            if (e.status == mkldnn_unimplemented)
+                return true;
+            else
+                throw e;
+        }
+        // Return normally if the failure is expected
+        if (expect_to_fail)
+            return true;
+    }
+
+    // Throw an exception if the failure is expected but did not happen
+    if (expect_to_fail)
+        throw std::exception();
+
+    return false;
+}
+
 // Helpers for migrating MKL-DNN test
 inline size_t map_index(const mkldnn_memory_desc_t *md, size_t index) {
   using fmt = mkldnn::memory::format;

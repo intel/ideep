@@ -114,10 +114,10 @@ protected:
       sum::compute(p.scale, srcs, dst2);
     };
 
-    if (catch_expected_failures(test1, p.expect_to_fail, p.expected_status))
+    if (catch_ideep_expected_failures(test1, p.expect_to_fail, p.expected_status))
       return;
 
-    if (catch_expected_failures(test2, p.expect_to_fail, p.expected_status))
+    if (catch_ideep_expected_failures(test2, p.expect_to_fail, p.expected_status))
       return;
 
     check_data(srcs, p.scale, dst1);

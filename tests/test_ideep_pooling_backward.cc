@@ -51,7 +51,7 @@ protected:
           prop_kind::forward_training, padding_kind::zero);
  //   };
 
- //   if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+ //   if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
  //       return;
 
     check_pool_fwd<data_t>(p, x_, y_);
@@ -68,7 +68,7 @@ protected:
           p.aalgorithm, padding_kind::zero);
 //    };
 
-//    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+//    if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
 //      return;
 
     check_pool_bwd<data_t>(p, gradx, grady_, y_);
@@ -85,7 +85,7 @@ TEST_P(pooling_bwd_test_float, TestsPoolingBackward) {
       Forward();
       Backward();
     };
-    if (catch_expected_failures(testcommon, p.expect_to_fail, p.expected_status))
+    if (catch_ideep_expected_failures(testcommon, p.expect_to_fail, p.expected_status))
         return;
 }
 

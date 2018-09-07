@@ -66,7 +66,7 @@ TEST_P(inner_product_test_float, TestsForward) {
       inner_product_forward::compute(src_, weights_, dst);
   };
 
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
   compute_ref_inner_product_fwd<float>(

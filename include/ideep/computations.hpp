@@ -1879,6 +1879,44 @@ struct convolution_forward: public computation,
         aalogorithm, aprop_kind, appading_kind);
   }
 
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor &src, const tensor& weights,
+      const tensor::dims result_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r, int group,
+      const scale_t &src_scales = scale_t(),
+      const scale_t &weights_scales = scale_t(),
+      const scale_t &dst_scales = scale_t(),
+      const descriptor::attr_t attr = descriptor::attr_t(),
+      algorithm aalogorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind appading_kind = padding_kind::zero) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, weights, result_dims, dst,
+        strides, dilates, padding_l, padding_r, group,
+        src_scales, weights_scales, dst_scales, attr,
+        aalogorithm, aprop_kind, appading_kind);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor &src, const tensor& weights,
+      const tensor& bias, const tensor::dims result_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims dilates,
+      const tensor::dims padding_l, const tensor::dims padding_r, int group,
+      const scale_t &src_scales = scale_t(),
+      const scale_t &weights_scales = scale_t(),
+      const scale_t &dst_scales = scale_t(),
+      const descriptor::attr_t attr = descriptor::attr_t(),
+      algorithm aalogorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind appading_kind = padding_kind::zero) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, weights, bias, result_dims, dst,
+        strides, dilates, padding_l, padding_r, group,
+        src_scales, weights_scales, dst_scales, attr,
+        aalogorithm, aprop_kind, appading_kind);
+  }
+
   virtual void fire_computation_node(
       std::vector<tensor>& deps, std::vector<tensor>& tars) {
     if (deps.size() == 5)
@@ -2490,8 +2528,8 @@ public:
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor& src, tensor& dst, int local_size,
-      float alpha, float beta, float k = 1.0,
+  static void compute(key_t &key, const tensor& src, tensor& dst,
+      int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels,
       prop_kind aprop_kind = prop_kind::forward_training) {
 
@@ -2511,9 +2549,10 @@ public:
           "Incorrect src data type");
     }
 
-    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
-        src_desc.get_internal_format(), local_size, alpha, beta, k,
-        aalgorithm, aprop_kind);
+    if (key.empty())
+      key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+          src_desc.get_internal_format(), local_size, alpha, beta, k,
+          aalgorithm, aprop_kind);
 
     fetch_or_create_m(comp, key, src_desc,
         local_size, alpha, beta, k, aalgorithm, aprop_kind);
@@ -2542,6 +2581,16 @@ public:
     }
 
     comp.do_compute(src_in, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, tensor& dst, int local_size,
+      float alpha, float beta, float k = 1.0,
+      algorithm aalgorithm = algorithm::lrn_across_channels,
+      prop_kind aprop_kind = prop_kind::forward_training) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, dst, local_size, alpha, beta, k,
+        aalgorithm, aprop_kind);
   }
 
   virtual void fire_computation_node(
@@ -2712,17 +2761,18 @@ public:
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor& src,
+  static void compute(key_t &key, const tensor& src,
       const tensor::dims dst_dims, tensor& dst,
       const tensor::dims strides, const tensor::dims kernel,
       const tensor::dims padding_l, const tensor::dims padding_r,
       algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
       const padding_kind apadding_kind = padding_kind::zero) {
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), dst_dims, strides, kernel, padding_l,
-        padding_r, aalgorithm, aprop_kind, apadding_kind);
+    if (key.empty())
+      key = utils::create_key(src.get_data_type(), src.get_dims(),
+          src.get_internal_format(), dst_dims, strides, kernel, padding_l,
+          padding_r, aalgorithm, aprop_kind, apadding_kind);
 
+    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
     fetch_or_create_m(comp, key, src.get_descriptor(),
         dst_desc, strides, kernel, padding_l, padding_r, aalgorithm,
         aprop_kind, apadding_kind);
@@ -2750,6 +2800,18 @@ public:
     }
 
     comp.do_compute(src, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src,
+      const tensor::dims dst_dims, tensor& dst,
+      const tensor::dims strides, const tensor::dims kernel,
+      const tensor::dims padding_l, const tensor::dims padding_r,
+      algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
+      const padding_kind apadding_kind = padding_kind::zero) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, dst_dims, dst, strides, kernel,
+        padding_l, padding_r, aalgorithm, aprop_kind, apadding_kind);
   }
 
   virtual void fire_computation_node(
@@ -2950,12 +3012,13 @@ public:
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor& src, tensor& dst,
+  static void compute(key_t &key, const tensor& src, tensor& dst,
       algorithm aalogorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
-    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), alpha, beta, aalogorithm, aprop_kind);
+    if (key.empty())
+      key = utils::create_key(src.get_data_type(), src.get_dims(),
+          src.get_internal_format(), alpha, beta, aalogorithm, aprop_kind);
 
     fetch_or_create_m(comp, key, src.get_descriptor(),
         alpha, beta, aalogorithm, aprop_kind);
@@ -2983,6 +3046,16 @@ public:
     comp.do_compute(src, dst);
     if (dst.has_scale() && dst.get_data_type() == tensor::data_type::s8)
       dst.set_descriptor({dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()});
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, tensor& dst,
+      algorithm aalogorithm = algorithm::eltwise_relu,
+      prop_kind aprop_kind = prop_kind::forward,
+      float alpha = 0.0, float beta = 0.0) {
+    key_t key;
+    compute<alloc, web_opt>(
+        key, src, dst, aalogorithm, aprop_kind, alpha, beta);
   }
 
   virtual void fire_computation_node(
@@ -3267,7 +3340,8 @@ public:
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(std::vector<tensor>& inputs, int axis, tensor& output) {
+  static void compute(key_t &key, std::vector<tensor>& inputs,
+      int axis, tensor& output) {
     std::vector<tensor::descriptor> tdesc;
     std::vector<tensor::data_type> inputs_dt;
     std::vector<tensor::dims> inputs_dims;
@@ -3279,7 +3353,8 @@ public:
       inputs_format.push_back(elems.get_internal_format());
     }
 
-    auto key = utils::create_key(inputs_dt, inputs_dims, inputs_format, axis);
+    if (key.empty())
+      key = utils::create_key(inputs_dt, inputs_dims, inputs_format, axis);
 
     // FIXME
     // currently align all inputs format with first one
@@ -3309,6 +3384,12 @@ public:
     }
 
     comp.do_compute(inputs, inputs_in, output);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(std::vector<tensor>& inputs, int axis, tensor& output) {
+    key_t key;
+    compute<alloc, web_opt>(key, inputs, axis, output);
   }
 
   virtual void fire_computation_node(
@@ -3549,7 +3630,7 @@ public:
 
   // Inplace support?
   template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& scale,
+  static void compute(key_t &key, const tensor& src, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tensor::data_type::f32) {
@@ -3561,8 +3642,9 @@ public:
       reorder::compute(src, src_in, {0, src_scales});
     }
 
-    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
-        src_in.get_internal_format(), 3, epsilon);
+    if (key.empty())
+      key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+          src_in.get_internal_format(), 3, epsilon);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(),
         batch_normalization_flag::use_scale_shift, epsilon);
@@ -3579,7 +3661,7 @@ public:
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor& src, const tensor& mean,
+  static void compute(key_t &key, const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
@@ -3592,8 +3674,9 @@ public:
       reorder::compute(src, src_in, {0, src_scales});
     }
 
-    auto key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
-        src_in.get_internal_format(), 5, epsilon);
+    if (key.empty())
+      key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+          src_in.get_internal_format(), 5, epsilon);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon);
 
@@ -3621,6 +3704,22 @@ public:
   virtual void fire_computation_node(
       std::vector<tensor>& deps, std::vector<tensor>& tars) {
     do_compute(deps[0], deps[1], deps[2], deps[3], deps[4], tars[0]);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src, const tensor& scale,
+      const tensor& shift, tensor& dst, float epsilon) {
+    key_t key;
+    compute<alloc>(key, src, scale, shift, dst, epsilon);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, const tensor& mean,
+      const tensor& variance, const tensor& scale,
+      const tensor& shift, tensor& dst, float epsilon) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, mean, variance, scale,
+        shift, dst, epsilon);
   }
 
 private:
@@ -4112,7 +4211,7 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(const tensor& src, const tensor& weights,
+  static void compute(key_t &key, const tensor& src, const tensor& weights,
       const tensor& bias, tensor& dst) {
     auto src_in = src;
     auto weights_in = weights;
@@ -4149,8 +4248,9 @@ struct inner_product_forward: public computation,
     tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
 
-    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
-        weights_in.get_dims(), bias.get_dims(), dst_dims);
+    if (key.empty())
+      key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+          weights_in.get_dims(), bias.get_dims(), dst_dims);
 
     fetch_or_create_m(comp, key, src_desc,
         weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
@@ -4179,6 +4279,13 @@ struct inner_product_forward: public computation,
     comp.do_compute(src, weights, bias, src_in, weights_in, dst, src_scales);
   }
 
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, const tensor& weights,
+      const tensor& bias, tensor& dst) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, weights, bias, dst);
+  }
+
   void do_compute(const tensor& src, const tensor& weights,
       tensor& src_in, tensor& weights_in, tensor& dst,
       scale_t src_scales=scale_t()) {
@@ -4194,8 +4301,8 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
-  static void compute(
-      const tensor& src, const tensor& weights, tensor& dst) {
+  static void compute(key_t & key, const tensor& src,
+      const tensor& weights, tensor& dst) {
     auto src_in = src;
     auto weights_in = weights;
     if (src_in.ndims() != weights_in.ndims()) {
@@ -4231,8 +4338,9 @@ struct inner_product_forward: public computation,
     tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
 
-    auto key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
-        weights_in.get_dims(), dst_dims);
+    if (key.empty())
+      key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
+          weights_in.get_dims(), dst_dims);
 
     fetch_or_create_m(comp, key, src_desc,
         weights_in.get_descriptor(), dst_desc);
@@ -4259,6 +4367,12 @@ struct inner_product_forward: public computation,
     }
 
     comp.do_compute(src, weights, src_in, weights_in, dst, src_scales);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, const tensor& weights, tensor& dst) {
+    key_t key;
+    compute<alloc, web_opt>(key, src, weights, dst);
   }
 
   virtual void fire_computation_node(

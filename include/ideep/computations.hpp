@@ -4265,22 +4265,32 @@ public:
 
     reorder reorder_;
     scale_t scales(1);
+
+    if (!add_axis) {
+      for (int i = 0; i < inputs.size(); ++i) {
+        float input_scale = inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f;
+        if (inputs[i].get_data_type() != dst_data_type || input_scale - min_scale[0] != 0) {
+          scales[0] = min_scale[0] / input_scale;
+          tensor input_fp = inputs[i];
+          input_fp.reinit({inputs[i].get_dims(), dst_data_type, inputs[i].get_internal_format()});
+          reorder_.init(inputs[i].get_descriptor(), input_fp.get_descriptor(), {0, scales});
+          reorder_(inputs[i], input_fp);
+          inputs[i] = input_fp;
+        }
+      }
+      compute(inputs, axis, dst);
+      return axis_info;
+    }
+
     for (unsigned i = 0; i < inputs.size(); ++i) {
       scales[0] = min_scale[0] /
         (inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f);
-      if (add_axis) {
-        tensor::dims in_dims(inputs[i].get_dims());
-        in_dims.insert(in_dims.begin() + axis, 1);
-        tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
-        auto view = dst.create_view(in_dims, offset_dims);
-        reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
-        reorder_({in_desc, inputs[i].get_data_handle()}, dst);
-      } else {
-        auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
-        reorder_.init(inputs[i].get_descriptor(),
-            view, dst.get_descriptor(), {0, scales});
-        reorder_(inputs[i], dst);
-      }
+      tensor::dims in_dims(inputs[i].get_dims());
+      in_dims.insert(in_dims.begin() + axis, 1);
+      tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
+      auto view = dst.create_view(in_dims, offset_dims);
+      reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
+      reorder_({in_desc, inputs[i].get_data_handle()}, dst);
       offset_dims[axis] += axis_info[i];
     }
 

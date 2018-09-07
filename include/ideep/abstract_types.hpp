@@ -95,7 +95,6 @@ using round_mode = mkldnn::round_mode;
   (((scale_size) > 1) ? ((grouped) ? 3 : 1) : 0)
 
 const scale_t IDEEP_DEF_SCALE {1.0f};
-constexpr int IDEEP_MEANING_MAX = 0;
 
 constexpr int IDEEP_U8_MAX = 0xFF;
 constexpr int IDEEP_S8_MAX = 0x7F;

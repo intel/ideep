@@ -1551,7 +1551,7 @@ struct convolution_forward: public computation,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
       const scale_t &src_scales, const scale_t &weights_scales,
-      const scale_t &dst_meaning_max, const descriptor::attr_t attr,
+      const scale_t &dst_scales, const descriptor::attr_t attr,
       Ts&&... args) {
     int bias_mask = 0;
     int weights_mask = 0;
@@ -1565,14 +1565,16 @@ struct convolution_forward: public computation,
       : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
     auto weights_scales_in = weights.has_scale()
       ? weights.get_scale() : weights_scales;
+    auto key_invalid = key.empty() || (find(key) == end());
 
     if (!weights_scales_in.empty()) {
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
       bias_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, false);
       weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
+      dst_scales_in = dst_scales.empty() ? IDEEP_DEF_SCALE : dst_scales;
 
       // determine dst data type
-      dst_data_type = dst_meaning_max.empty()
+      dst_data_type = dst_scales.empty()
         ? tensor::data_type::f32 : tensor::data_type::s8;
       if (post_ops.has_op_kind(kind::sum)) {
         src_format = dst.get_internal_format();
@@ -1581,50 +1583,49 @@ struct convolution_forward: public computation,
         dst_data_type = tensor::data_type::u8;
       }
 
-      // compute dst scales based-on dst data type
-      dst_scales_in = IDEEP_DEF_SCALE;
-      if (!dst_meaning_max.empty() && dst_data_type != tensor::data_type::f32) {
-        dst_scales_in[0] = dt_max_map.at(dst_data_type) / dst_meaning_max[0];
-      }
-
-      // fill primitive attr
-      scale_t op_scales(scale_size);
-      bias_scales.resize(scale_size);
-      for (int i = 0; i < scale_size; i++) {
-        bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
-        op_scales[i] = dst_scales_in[0] / bias_scales[i];
-      }
-      op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
-      op_attr.set_int_output_round_mode(round_mode::round_nearest);
-
-      if (post_ops.has_op_kind(kind::sum)) {
-        float sum_scale = dst_scales_in[0]
-          / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
-        if (post_ops.has_op_kind(kind::eltwise)) {
-          op_attr.set_post_ops(descriptor::post_ops::residual(sum_scale));
-        } else {
-          op_attr.set_post_ops(descriptor::post_ops::sum(sum_scale));
+      if (key_invalid) {
+        // fill primitive attr
+        scale_t op_scales(scale_size);
+        bias_scales.resize(scale_size);
+        for (int i = 0; i < scale_size; i++) {
+          bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
+          op_scales[i] = dst_scales_in[0] / bias_scales[i];
         }
-      } else if (post_ops.has_op_kind(kind::eltwise)) {
-        op_attr.set_post_ops(descriptor::post_ops::relu());
-      }
+        op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
+        op_attr.set_int_output_round_mode(round_mode::round_nearest);
 
-      src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
-      weights_desc = {weights.get_dims(), tensor::data_type::s8};
+        if (post_ops.has_op_kind(kind::sum)) {
+          float sum_scale = dst_scales_in[0]
+            / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+          if (post_ops.has_op_kind(kind::eltwise)) {
+            op_attr.set_post_ops(descriptor::post_ops::residual(sum_scale));
+          } else {
+            op_attr.set_post_ops(descriptor::post_ops::sum(sum_scale));
+          }
+        } else if (post_ops.has_op_kind(kind::eltwise)) {
+          op_attr.set_post_ops(descriptor::post_ops::relu());
+        }
+
+        src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
+        weights_desc = {weights.get_dims(), tensor::data_type::s8};
+      }
       bias_desc = {bias.get_dims(), tensor::data_type::s32};
 
     } else {
-      op_attr = attr;
       dst_data_type = tensor::data_type::f32;
       if (post_ops.has_op_kind(kind::sum))
         src_format = dst.get_internal_format();
 
-      IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32
-          && bias.get_data_type() == tensor::data_type::f32,
-          "Incorrect data type in weights or bias");
+      if (key_invalid) {
+        op_attr = attr;
 
-      src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
-      weights_desc = weights.get_descriptor();
+        IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32
+            && bias.get_data_type() == tensor::data_type::f32,
+            "Incorrect data type in weights or bias");
+
+        src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
+        weights_desc = weights.get_descriptor();
+      }
       bias_desc = bias.get_descriptor();
 
       weights_scales_in = IDEEP_DEF_SCALE;
@@ -1689,7 +1690,7 @@ struct convolution_forward: public computation,
       const tensor::dims strides, const tensor::dims dilates,
       const tensor::dims padding_l, const tensor::dims padding_r,
       const scale_t &src_scales, const scale_t &weights_scales,
-      const scale_t &dst_meaning_max, const descriptor::attr_t attr,
+      const scale_t &dst_scales, const descriptor::attr_t attr,
       Ts&&... args) {
     int weights_mask = 0;
     scale_t dst_scales_in;
@@ -1702,13 +1703,15 @@ struct convolution_forward: public computation,
       : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
     auto weights_scales_in = weights.has_scale()
       ? weights.get_scale() : weights_scales;
+    auto key_invalid = key.empty() || (find(key) == end());
 
     if (!weights_scales_in.empty()) {
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
       weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
+      dst_scales_in = dst_scales.empty() ? IDEEP_DEF_SCALE : dst_scales;
 
       // determine dst data type
-      dst_data_type = dst_meaning_max.empty()
+      dst_data_type = dst_scales.empty()
         ? tensor::data_type::f32 : tensor::data_type::s8;
       if (post_ops.has_op_kind(kind::sum)) {
         src_format = dst.get_internal_format();
@@ -1717,47 +1720,46 @@ struct convolution_forward: public computation,
         dst_data_type = tensor::data_type::u8;
       }
 
-      // compute dst scales based-on dst data type
-      dst_scales_in = IDEEP_DEF_SCALE;
-      if (!dst_meaning_max.empty() && dst_data_type != tensor::data_type::f32) {
-        dst_scales_in[0] = dt_max_map.at(dst_data_type) / dst_meaning_max[0];
-      }
-
-      // fill primitive attr
-      scale_t op_scales(scale_size);
-      for (int i = 0; i < scale_size; i++) {
-        op_scales[i] = dst_scales_in[0] /
-          (src_scales_in[0] * weights_scales_in[i]);
-      }
-      op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
-      op_attr.set_int_output_round_mode(round_mode::round_nearest);
-
-      if (post_ops.has_op_kind(kind::sum)) {
-        float sum_scale = dst_scales_in[0]
-          / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
-        if (post_ops.has_op_kind(kind::eltwise)) {
-          op_attr.set_post_ops(descriptor::post_ops::residual(sum_scale));
-        } else {
-          op_attr.set_post_ops(descriptor::post_ops::sum(sum_scale));
+      if (key_invalid) {
+        // fill primitive attr
+        scale_t op_scales(scale_size);
+        for (int i = 0; i < scale_size; i++) {
+          op_scales[i] = dst_scales_in[0] /
+            (src_scales_in[0] * weights_scales_in[i]);
         }
-      } else if (post_ops.has_op_kind(kind::eltwise)) {
-        op_attr.set_post_ops(descriptor::post_ops::relu());
-      }
+        op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
+        op_attr.set_int_output_round_mode(round_mode::round_nearest);
 
-      src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
-      weights_desc = {weights.get_dims(), tensor::data_type::s8};
+        if (post_ops.has_op_kind(kind::sum)) {
+          float sum_scale = dst_scales_in[0]
+            / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+          if (post_ops.has_op_kind(kind::eltwise)) {
+            op_attr.set_post_ops(descriptor::post_ops::residual(sum_scale));
+          } else {
+            op_attr.set_post_ops(descriptor::post_ops::sum(sum_scale));
+          }
+        } else if (post_ops.has_op_kind(kind::eltwise)) {
+          op_attr.set_post_ops(descriptor::post_ops::relu());
+        }
+
+        src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
+        weights_desc = {weights.get_dims(), tensor::data_type::s8};
+      }
 
     } else {
-      op_attr = attr;
       dst_data_type = tensor::data_type::f32;
       if (post_ops.has_op_kind(kind::sum))
         src_format = dst.get_internal_format();
 
-      IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32,
-          "Incorrect data type in weights");
+      if (key_invalid) {
+        op_attr = attr;
 
-      src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
-      weights_desc = weights.get_descriptor();
+        IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32,
+            "Incorrect data type in weights");
+
+        src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
+        weights_desc = weights.get_descriptor();
+      }
 
       weights_scales_in = IDEEP_DEF_SCALE;
       if (src.has_scale())
@@ -1844,7 +1846,7 @@ struct convolution_forward: public computation,
       const tensor::dims padding_l, const tensor::dims padding_r, int group,
       const scale_t &src_scales = scale_t(),
       const scale_t &weights_scales = scale_t(),
-      const scale_t &dst_meaning_max = scale_t(),
+      const scale_t &dst_scales = scale_t(),
       const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -1853,7 +1855,7 @@ struct convolution_forward: public computation,
     weights_in.make_group(group);
     compute_impl<alloc, web_opt>(key, src, weights_in, result_dims, dst,
         strides, dilates, padding_l, padding_r,
-        src_scales, weights_scales, dst_meaning_max, attr,
+        src_scales, weights_scales, dst_scales, attr,
         aalogorithm, aprop_kind, appading_kind);
   }
 
@@ -1864,7 +1866,7 @@ struct convolution_forward: public computation,
       const tensor::dims padding_l, const tensor::dims padding_r, int group,
       const scale_t &src_scales = scale_t(),
       const scale_t &weights_scales = scale_t(),
-      const scale_t &dst_meaning_max = scale_t(),
+      const scale_t &dst_scales = scale_t(),
       const descriptor::attr_t attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -1873,7 +1875,7 @@ struct convolution_forward: public computation,
     weights_in.make_group(group);
     compute_impl<alloc, web_opt>(key, src, weights_in, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r,
-        src_scales, weights_scales, dst_meaning_max, attr,
+        src_scales, weights_scales, dst_scales, attr,
         aalogorithm, aprop_kind, appading_kind);
   }
 

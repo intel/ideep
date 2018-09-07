@@ -987,7 +987,6 @@ public:
   inline void set_tensor_buffer(
       const std::shared_ptr<char>& buffer) {buffer_ = buffer;}
 
-protected:
   // Internal use only
   // Please use feed_from, instead.
   void reorder_from(const param &src) {
@@ -1022,6 +1021,7 @@ protected:
       reorder_to({{get_dims(), get_data_type(), public_format_}, array});
   }
 
+protected:
   // mirror descriptor's same information
   format public_format_;
   std::shared_ptr<char> buffer_;

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
-#include <cassert>
+#include <string>
 #include "abstract_types.hpp"
 #include "allocators.hpp"
 #include "web.hpp"
@@ -827,9 +827,67 @@ public:
       reorder_to({{get_dims(), get_data_type(), public_format_}, array});
   }
 
+  void transpose_from(const param& src, const std::vector<int>& axes) {
+    IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims tensor");
+    IDEEP_ENFORCE(static_cast<int>(axes.size()) == src.ndims(),
+        "Axes should be size like source tensor.");
+    auto axes_sorted = axes;
+    std::sort(axes_sorted.begin(), axes_sorted.end());
+    for (auto i = 0; i < axes_sorted.size(); ++i) {
+      IDEEP_ENFORCE(static_cast<float>(axes_sorted[i]) == i,
+          "Axes should be a permutation of 0 to ndim.");
+    }
+
+    const auto src_dims = src.get_dims();
+    std::vector<int> Y_dims(src.ndims());
+    for (int i = 0; i < src.ndims(); ++i) {
+      Y_dims[i] = src_dims[axes[i]];
+    }
+    if (Y_dims != this->get_dims()) {
+      this->set_descriptor(src.get_descriptor().reshape(Y_dims));
+    }
+    const auto* Xdata = static_cast<float*>(src.get_data_handle());
+    auto* Ydata = static_cast<float*>(this->get_data_handle());
+    if ((axes[0] == axes_sorted[1]) &&
+        (axes[1] == axes_sorted[0]) &&
+        (axes[2] == axes_sorted[2]) &&
+        (axes[3] == axes_sorted[3])) {
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(static)
+#endif
+      for (int i = 0; i < src_dims[0]; i++) {
+        for (int j = 0; j < src_dims[1]; j++) {
+          auto Y_off = (j * src_dims[0] + i) * (src_dims[2] * src_dims[3]);
+          auto X_off = (i * src_dims[1] + j) * (src_dims[2] * src_dims[3]);
+          std::memcpy((void*)&Ydata[Y_off], (void*)&Xdata[X_off],
+              src_dims[2] * src_dims[3] * sizeof(float));
+        }
+      }
+    } else {
+      int dim[4];
+#ifdef _OPENMP
+#pragma omp parallel for private(dim) collapse(4) schedule(static)
+#endif
+      for (int i = 0; i < src_dims[0]; i++) {
+        for (int o = 0; o < src_dims[1]; o++) {
+          for (int h = 0; h < src_dims[2]; h++) {
+            for (int w = 0; w < src_dims[3]; w++) {
+              dim[0] = i; dim[1] = o; dim[2] = h; dim[3] = w;
+              auto Y_off = ((dim[axes[0]] * Y_dims[1] + dim[axes[1]])
+                  * Y_dims[2] + dim[axes[2]]) * Y_dims[3] + dim[axes[3]];
+              auto X_off = ((dim[0] * src_dims[1] + dim[1])
+                  * src_dims[2] + dim[2]) * src_dims[3] + dim[3];
+              Ydata[Y_off] = Xdata[X_off];
+            }
+          }
+        }
+      }
+    }
+  }
+
   inline int canonical_axis_index(int axis_index) const {
-    assert(axis_index >= -ndims());
-    assert(axis_index < ndims());
+    IDEEP_ENFORCE((axis_index >= -ndims()) && (axis_index < ndims()),
+        "Invalid axis index");
     if (axis_index < 0) {
       return axis_index + ndims();
     }

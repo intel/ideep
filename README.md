@@ -5,7 +5,7 @@ A Chainer module providing numpy like API and DNN acceleration using MKL-DNN.
 
 ## Requirements
 
-This preview version is tested on Ubuntu 16.04 and OS X.
+This preview version is tested on Ubuntu 16.04, Centos 7.4 and OS X.
 
 Minimum requirements:
 - cmake 3.0.0+

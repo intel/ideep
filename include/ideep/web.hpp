@@ -58,7 +58,7 @@ public:
         materialized_(std::make_shared<bool>(true)), creator_(nullptr),
         opts_(std::make_shared<std::vector<param_t>>(std::vector<param_t> {})) {}
     parameter(const parameter& t) :
-        materialized_(t.materialized()), creator_(t.creator()),
+        materialized_(t.get_materialized()), creator_(t.creator()),
         opts_(t.opts()) {}
 
     using cn_t = typename utils::computation_web::node<param_t>::cn_t;
@@ -74,10 +74,10 @@ public:
     inline void unmark_materialized() { *materialized_.get() = false; }
     inline void mark_materialized() { *materialized_.get() = true; }
     inline bool is_materialized() const { return *materialized_.get(); }
-    inline std::shared_ptr<bool> materialized() const { return materialized_; }
+    inline std::shared_ptr<bool> get_materialized() const { return materialized_; }
 
     inline bool computation_param_is_same(const parameter& t) const {
-      return t.materialized().get() == materialized_.get() &&
+      return t.get_materialized().get() == materialized_.get() &&
           t.creator().get() == creator_.get() ? true : false;
     }
 
@@ -88,7 +88,7 @@ public:
 
     inline std::shared_ptr<std::vector<param_t>> opts() const { return opts_; }
     inline void set_opts(param_t& t) { opts_->push_back(t); }
-    inline bool has_opts() const { /*printf("has_opts opts @ 0x%llx\n", (unsigned long long)opts_.get());*/ return opts_.get() != nullptr && opts_->size() != 0; }
+    inline bool has_opts() const { return opts_.get() != nullptr && opts_->size() != 0; }
 
     virtual bool computation_param_own_of_memory() const { return false; }
 

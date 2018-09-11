@@ -858,8 +858,8 @@ struct computation : public primitive_group {
         throw error(mkldnn_runtime_error, "Cannot accept incompatible input");
     } else {
       // Connect outputs
-      assert(inouts_.at((unsigned)index).get_descriptor()
-          == atensor.get_descriptor());
+      //assert(inouts_.at((unsigned)index).get_descriptor()
+      //    == atensor.get_descriptor());
       inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle<false>());
     }
   }
@@ -3850,6 +3850,7 @@ public:
     do_compute(ins, ints, tars[0]);
   }
 
+  template<class alloc = utils::allocator, bool web_opt = false>
   static std::vector<int32_t> compute(
       std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
     IDEEP_ENFORCE(axis < (inputs[0].ndims() + (add_axis ? 1 : 0)),
@@ -3869,11 +3870,27 @@ public:
       dst_channels += axis_info[k];
     }
 
+    // FIXME: To avoid view issue in mkldnn
+    if (!add_axis) {
+      compute(inputs, axis, dst);
+      return axis_info;
+    }
+
     tensor::dims dst_dims(inputs[0].get_dims());
     if (add_axis)
       dst_dims.insert(dst_dims.begin() + axis, dst_channels);
     else
       dst_dims[axis] = dst_channels;
+
+    // FIXME: To avoid view issue in mkldnn
+    if (!add_axis && dst_dims.size() != 3 && dst_dims.size() < 6) {
+      for (unsigned k = 0; k < inputs.size(); k++) {
+        if (!inputs[k].is_blockable()) {
+          compute<alloc, web_opt>(inputs, axis, dst);
+          return axis_info;
+        }
+      }
+    }
 
     reorder reorder_;
     tensor::dims offset_dims(dst_dims.size(), 0);
@@ -3882,6 +3899,7 @@ public:
     else
       dst.reinit({dst_dims, inputs[0].get_data_type(),
           inputs[0].get_internal_format()});
+
     for (unsigned i = 0; i < inputs.size(); ++i) {
       if (add_axis) {
         tensor::dims in_dims(inputs[i].get_dims());

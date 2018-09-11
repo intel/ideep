@@ -955,6 +955,16 @@ public:
     }
   }
 
+  bool is_blockable() {
+    auto &blocking = get_mkldnn_memory_desc_t()->layout_desc.blocking.block_dims;
+    for (auto i = 0; i < ndims(); i++) {
+      if (get_dim(i) < blocking[i]) continue;
+      if (get_dim(i) % blocking[i] == 0) continue;
+      return false;
+    }
+    return true;
+  }
+
   inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }
   inline void set_tensor_buffer(
       const std::shared_ptr<char>& buffer) {buffer_ = buffer;}

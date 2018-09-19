@@ -3870,12 +3870,6 @@ public:
       dst_channels += axis_info[k];
     }
 
-    // FIXME: To avoid view issue in mkldnn
-    if (!add_axis) {
-      compute(inputs, axis, dst);
-      return axis_info;
-    }
-
     tensor::dims dst_dims(inputs[0].get_dims());
     if (add_axis)
       dst_dims.insert(dst_dims.begin() + axis, dst_channels);

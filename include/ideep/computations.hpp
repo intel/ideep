@@ -3951,7 +3951,8 @@ public:
     fetch_or_create_m(comp, key, grady_in.get_descriptor(),
         src.get_descriptor(), alpha, beta, aalogorithm);
 
-    gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
+    if (grady != gradx)
+      gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());
 
     if (web_opt) {
       auto cn = utils::computation_web::template computation_node<

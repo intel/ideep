@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
-#include <cstring>
+#include <string>
 #include "abstract_types.hpp"
 #include "allocators.hpp"
 #include "web.hpp"
@@ -914,72 +914,6 @@ public:
       || get_data_type() != data_type::f32;
   }
 
-  void transpose_from(const param& src, const std::vector<int>& axes) {
-    IDEEP_ENFORCE(
-        static_cast<int>(axes.size()) == src.ndims(), "Axes should be size like source tensor.");
-    std::vector<int> axes_sorted = axes;
-    std::sort(axes_sorted.begin(), axes_sorted.end());
-    for (std::size_t i = 0; i < axes_sorted.size(); ++i) {
-      IDEEP_ENFORCE(
-          static_cast<float>(axes_sorted[i]) == i, "Axes should be a permutation of 0 to ndim.");
-    }
-
-    const std::vector<int> src_dims = src.get_dims();
-    std::vector<int> Y_dims(src.ndims());
-    for (int i = 0; i < src.ndims(); ++i) {
-      Y_dims[i] = src_dims[axes[i]];
-    }
-    if (Y_dims != this->get_dims()) {
-      this->set_descriptor(src.get_descriptor().reshape(Y_dims));
-    };
-    const float* Xdata = static_cast<float*>(src.get_data_handle());
-    float* Ydata = static_cast<float*>(this->get_data_handle());
-    if ((axes.at(0) == axes_sorted.at(1)) &&
-        (axes.at(1) == axes_sorted.at(0)) &&
-        (axes.at(2) == axes_sorted.at(2)) &&
-        (axes.at(3) == axes_sorted.at(3))) {
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(static)
-#endif
-      for (int i = 0; i < src_dims.at(0); i++) {
-        for (int j = 0; j < src_dims.at(1); j++) {
-          memcpy(
-              (void*)&Ydata
-                  [(j * src_dims.at(0) + i) *
-                   (src_dims.at(2) * src_dims.at(3))],
-              (void*)&Xdata
-                  [(i * src_dims.at(1) + j) *
-                   (src_dims.at(2) * src_dims.at(3))],
-              src_dims.at(2) * src_dims.at(3) * sizeof(float));
-        }
-      }
-    } else {
-      int dim[4];
-#ifdef _OPENMP
-#pragma omp parallel for private(dim) collapse(4) schedule(static)
-#endif
-      for (int i = 0; i < src_dims.at(0); i++)
-        for (int o = 0; o < src_dims.at(1); o++)
-          for (int h = 0; h < src_dims.at(2); h++)
-            for (int w = 0; w < src_dims.at(3); w++) {
-              dim[0] = i;
-              dim[1] = o;
-              dim[2] = h;
-              dim[3] = w;
-              Ydata
-                  [((dim[axes.at(0)] * Y_dims[1] + dim[axes.at(1)]) *
-                        Y_dims[2] +
-                    dim[axes.at(2)]) *
-                       Y_dims[3] +
-                   dim[axes.at(3)]] = Xdata
-                      [((dim[0] * src_dims.at(1) + dim[1]) * src_dims.at(2) +
-                        dim[2]) *
-                           src_dims.at(3) +
-                       dim[3]];
-            }
-    }
-  }
-
   inline int canonical_axis_index(int axis_index) const {
     IDEEP_ENFORCE((axis_index >= -ndims()) && (axis_index < ndims()),
         "Invalid axis index");
@@ -1292,6 +1226,65 @@ public:
   // XXX: ???
   tensor& _reshape(dims new_dims) {
     return reshape(new_dims);
+  }
+
+  void transpose_from(const tensor& src, const std::vector<int>& axes) {
+    IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims tensor");
+    IDEEP_ENFORCE(static_cast<int>(axes.size()) == src.ndims(),
+        "Axes should be size like source tensor.");
+    auto axes_sorted = axes;
+    std::sort(axes_sorted.begin(), axes_sorted.end());
+    for (auto i = 0; i < axes_sorted.size(); ++i) {
+      IDEEP_ENFORCE(static_cast<float>(axes_sorted[i]) == i,
+          "Axes should be a permutation of 0 to ndim.");
+    }
+
+    const auto src_dims = src.get_dims();
+    std::vector<int> Y_dims(src.ndims());
+    for (int i = 0; i < src.ndims(); ++i) {
+      Y_dims[i] = src_dims[axes[i]];
+    }
+    if (Y_dims != this->get_dims()) {
+      this->set_descriptor(src.get_descriptor().reshape(Y_dims));
+    }
+
+    const auto* Xdata = static_cast<float*>(src.get_data_handle());
+    auto* Ydata = static_cast<float*>(this->get_data_handle());
+    if ((axes[0] == axes_sorted[1])
+        && (axes[1] == axes_sorted[0])
+        && (axes[2] == axes_sorted[2])
+        && (axes[3] == axes_sorted[3])) {
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) schedule(static)
+#endif
+      for (int i = 0; i < src_dims[0]; i++) {
+        for (int j = 0; j < src_dims[1]; j++) {
+          auto Y_off = (j * src_dims[0] + i) * (src_dims[2] * src_dims[3]);
+          auto X_off = (i * src_dims[1] + j) * (src_dims[2] * src_dims[3]);
+          std::memcpy((void*)&Ydata[Y_off], (void*)&Xdata[X_off],
+              src_dims[2] * src_dims[3] * sizeof(float));
+        }
+      }
+    } else {
+      int dim[4];
+#ifdef _OPENMP
+#pragma omp parallel for private(dim) collapse(4) schedule(static)
+#endif
+      for (int i = 0; i < src_dims[0]; i++) {
+        for (int o = 0; o < src_dims[1]; o++) {
+          for (int h = 0; h < src_dims[2]; h++) {
+            for (int w = 0; w < src_dims[3]; w++) {
+              dim[0] = i; dim[1] = o; dim[2] = h; dim[3] = w;
+              auto Y_off = ((dim[axes[0]] * Y_dims[1] + dim[axes[1]])
+                  * Y_dims[2] + dim[axes[2]]) * Y_dims[3] + dim[axes[3]];
+              auto X_off = ((dim[0] * src_dims[1] + dim[1])
+                  * src_dims[2] + dim[2]) * src_dims[3] + dim[3];
+              Ydata[Y_off] = Xdata[X_off];
+            }
+          }
+        }
+      }
+    }
   }
 
   /// Fill the tensor with a src tensor

@@ -1954,7 +1954,8 @@ struct convolution_forward: public computation,
       const tensor::dims padding_l = {0, 0},
       const tensor::dims padding_r = {0, 0},
       const tensor::dims dilates = {0, 0},
-      int group = 1) {
+      int group = 1,
+      algorithm aalgorithm = algorithm::convolution_direct) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -1995,7 +1996,8 @@ struct convolution_forward: public computation,
         grouped ? format::goihw : format::oihw);
 
     convolution_forward comp(x_desc, weights_desc, y_desc,
-        strides, dilates, padding_l, padding_r);
+        strides, dilates, padding_l, padding_r,
+        descriptor::attr_t(), aalgorithm);
     return comp.expected_weights_descriptor();
   }
 

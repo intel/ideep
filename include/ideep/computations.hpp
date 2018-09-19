@@ -4687,8 +4687,15 @@ public:
         comp.expected_dst_descriptor());
     mean.reinit(comp.expected_statistic_descriptor());
     variance.reinit(comp.expected_statistic_descriptor());
-    running_mean.reinit(comp.expected_statistic_descriptor());
-    running_var.reinit(comp.expected_statistic_descriptor());
+    if (running_mean.get_descriptor() != comp.expected_statistic_descriptor()){
+      running_mean.reinit(comp.expected_statistic_descriptor());
+      std::memset(running_mean.get_data_handle(), 0, running_mean.get_size());
+    }
+    if (running_var.get_descriptor() != comp.expected_statistic_descriptor()){
+      running_var.reinit(comp.expected_statistic_descriptor());
+      auto p = static_cast<float *>(running_var.get_data_handle());
+      std::fill_n(p, running_var.get_nelems(), 1);
+    }
 
     if (web_opt) {
       auto cn = utils::computation_web::template computation_node<

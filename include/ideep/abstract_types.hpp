@@ -9,6 +9,14 @@ namespace ideep {
 
 using error = mkldnn::error;
 
+#ifdef _WIN32
+#define IDEEP_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__)
+#define IDEEP_EXPORT __attribute__((__visibility__("default")))
+#else
+#define IDEEP_EXPORT
+#endif
+
 #define IDEEP_ENFORCE(condition, message) \
   do {  \
     error::wrap_c_api((condition) \
@@ -109,7 +117,7 @@ struct engine: public mkldnn::engine {
   void operator =(engine const &) = delete;
 
   /// Singleton CPU engine for all primitives
-  static engine &cpu_engine();
+  static engine &cpu_engine() IDEEP_EXPORT;
 
   /// Put this global engine in only one library
   #define INIT_GLOBAL_ENGINE \

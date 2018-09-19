@@ -1347,6 +1347,16 @@ public:
     return ret;
   }
 
+  bool is_limited_blockable() {
+    auto &blocking = get_mkldnn_memory_desc_t()->layout_desc.blocking.block_dims;
+    for (auto i = 0; i < ndims(); i++) {
+      if (get_dim(i) < blocking[i]) continue;
+      if (get_dim(i) % blocking[i] == 0) continue;
+      return false;
+    }
+    return true;
+  }
+
   virtual bool computation_param_own_of_memory() const {
     if (get_tensor_buffer().get() == nullptr)
       return false;

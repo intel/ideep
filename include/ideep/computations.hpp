@@ -4214,6 +4214,7 @@ public:
     do_compute(ins, ints, tars[0]);
   }
 
+  template<class alloc = utils::allocator, bool web_opt = false>
   static std::vector<int32_t> compute(
       std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
     IDEEP_ENFORCE(axis < (inputs[0].ndims() + (add_axis ? 1 : 0)),
@@ -4267,32 +4268,45 @@ public:
 
     reorder reorder_;
     scale_t scales(1);
-
-    if (!add_axis) {
-      for (int i = 0; i < inputs.size(); ++i) {
-        float input_scale = inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f;
-        if (inputs[i].get_data_type() != dst_data_type || input_scale - min_scale[0] != 0) {
-          scales[0] = min_scale[0] / input_scale;
-          tensor input_fp = inputs[i];
-          input_fp.reinit({inputs[i].get_dims(), dst_data_type, inputs[i].get_internal_format()});
-          reorder_.init(inputs[i].get_descriptor(), input_fp.get_descriptor(), {0, scales});
-          reorder_(inputs[i], input_fp);
-          inputs[i] = input_fp;
+    // FIXME: To avoid view issue in mkldnn
+    // NOTE: In mkldnn concat, dim 3 and 6+ are not supported.
+    // Morewhile, the tensor shape must be blockable to create a view.
+    if (!add_axis && dst_dims.size() != 3 && dst_dims.size() < 6) {
+      for (unsigned k = 0; k < inputs.size(); k++) {
+        if (!inputs[k].is_limited_blockable()) {
+          for (int i = 0; i < inputs.size(); ++i) {
+            float input_scale = inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f;
+            if (inputs[i].get_data_type() != dst_data_type || input_scale - min_scale[0] != 0) {
+              scales[0] = min_scale[0] / input_scale;
+              tensor input_fp = inputs[i];
+              input_fp.reinit({inputs[i].get_dims(), dst_data_type, inputs[i].get_internal_format()});
+              reorder_.init(inputs[i].get_descriptor(), input_fp.get_descriptor(), {0, scales});
+              reorder_(inputs[i], input_fp);
+              inputs[i] = input_fp;
+            }
+          }
+          compute<alloc, web_opt>(inputs, axis, dst);
+          return axis_info;
         }
       }
-      compute(inputs, axis, dst);
-      return axis_info;
     }
 
     for (unsigned i = 0; i < inputs.size(); ++i) {
       scales[0] = min_scale[0] /
         (inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f);
-      tensor::dims in_dims(inputs[i].get_dims());
-      in_dims.insert(in_dims.begin() + axis, 1);
-      tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
-      auto view = dst.create_view(in_dims, offset_dims);
-      reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
-      reorder_({in_desc, inputs[i].get_data_handle()}, dst);
+      if (add_axis) {
+        tensor::dims in_dims(inputs[i].get_dims());
+        in_dims.insert(in_dims.begin() + axis, 1);
+        tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
+        auto view = dst.create_view(in_dims, offset_dims);
+        reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
+        reorder_({in_desc, inputs[i].get_data_handle()}, dst);
+      } else {
+        auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
+        reorder_.init(inputs[i].get_descriptor(),
+            view, dst.get_descriptor(), {0, scales});
+        reorder_(inputs[i], dst);
+      }
       offset_dims[axis] += axis_info[i];
     }
 

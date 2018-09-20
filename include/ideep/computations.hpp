@@ -28,7 +28,6 @@
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 #include <assert.h>
 #include <stdlib.h>
-#include <omp.h>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -42,6 +41,15 @@
 #include <random>
 #include <atomic>
 #include <chrono>
+
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_max_threads() 1
+#define omp_get_num_threads() 1
+#define omp_get_thread_num()  0
+#define omp_in_parallel()     0
+#endif
 
 #include "abstract_types.hpp"
 #include "tensor.hpp"
@@ -4133,6 +4141,6 @@ private:
   }
 };
 
-} // namespace mkldnn
+} // namespace ideep
 
 #endif

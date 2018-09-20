@@ -27,7 +27,6 @@
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
 #include <stdlib.h>
-#include <omp.h>
 #include <algorithm>
 #include <memory>
 #include <vector>
@@ -6325,6 +6324,6 @@ private:
   }
 };
 
-} // namespace mkldnn
+} // namespace ideep
 
 #endif

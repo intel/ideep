@@ -925,7 +925,7 @@ private:
 /// Tensor that describes data buffer and its explanation.
 /// It also integrates an optional tensor as an intemediate results, used in
 /// Pooling/LRN
-class tensor : public param {
+class IDEEP_EXPORT tensor : public param {
 public:
   using param::param;
 

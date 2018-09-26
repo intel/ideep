@@ -15,9 +15,51 @@
 namespace ideep {
 namespace utils {
 
+// Shallow copied vector
+template <class T, class Alloc = std::allocator<T>>
+class s_vector {
+  using size_type = typename std::vector<T, Alloc>::size_type;
+  using reference = typename std::vector<T, Alloc>::reference;
+  using const_reference = typename std::vector<T, Alloc>::const_reference;
+
+  s_vector() : storage_() {}
+  explicit s_vector(size_type count, const Alloc& alloc = Alloc())
+    : storage_(alloc.allocate(count), [alloc, count](void *p) {
+        alloc.deallocate(p, count); }) {
+  }
+  s_vector(std::initializer_list<T> init, const Alloc& alloc = Alloc())
+    : storage_(init.size(), alloc) {
+      auto arr = storage_.get();
+      auto src = init.begin();
+      for (int i = 0; i < init.size(); i ++)
+        arr[i] = src[i];
+  }
+
+  s_vector(const s_vector& other) : storage_(other.storage_) {}
+  s_vector(s_vector &&other) noexcept :storage_(std::move(other.storage_)) {}
+
+  s_vector& operator=(const s_vector &other) {
+    storage_ = other.storage_;
+    return *this;
+  }
+  s_vector& operator=(s_vector&& other) noexcept {
+    storage_ = std::move(other.storage_);
+    return *this;
+  }
+
+  reference operator[]( size_type pos ) {
+    return storage_.get()[pos];
+  }
+  const_reference operator[] (size_type pos) const {
+    return storage_.get()[pos];
+  }
+
+protected:
+  std::shared_ptr<T []> storage_;
+};
+
 // Fast alternative to heavy string method
 using bytestring = std::string;
-
 
 inline bytestring to_bytes(const int arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);

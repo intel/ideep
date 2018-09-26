@@ -165,6 +165,24 @@ public:
             mkldnn_primitive_desc_query_memory_d(adesc)->format))) {
     }
 
+    /// Initiate a descriptor from primitive_desc_t struct
+    ///
+    /// @param adesc Pointer to a primitive_desct_t C struct
+    /// @param aformat Specify public format for current descriptor
+    descriptor(const_mkldnn_primitive_desc_t adesc, format aformat)
+      :c_wrapper(const_cast<mkldnn_primitive_desc_t>(adesc), true),
+      public_format_(aformat) {
+    }
+
+    /// Initiate a descriptor from primitive_desc_t struct
+    ///
+    /// @param adesc Pointer to a primitive_desct_t C struct
+    descriptor(const_mkldnn_primitive_desc_t adesc) : descriptor(adesc,
+      public_format(
+          convert_to_public_format(
+            mkldnn_primitive_desc_query_memory_d(adesc)->format))) {
+    }
+
     /// Initiate a descriptor from another, share resource
     ///
     /// @param adesc is a reference to another descriptor
@@ -764,6 +782,10 @@ public:
   }
 
   descriptor get_descriptor() const {
+    return descriptor(get_mkldnn_primitive_desc_t(), public_format_);
+  }
+
+  descriptor dup_descriptor() const {
     mkldnn_primitive_desc_t clone;
     error::wrap_c_api(mkldnn_primitive_desc_clone(&clone,
           get_mkldnn_primitive_desc_t()),
@@ -771,6 +793,7 @@ public:
 
     return descriptor(clone, public_format_);
   }
+
 
   /// Set a descriptor into param to replace the older one, keep buffer
   /// It is caller's responsibility to make sure the original buffer is large

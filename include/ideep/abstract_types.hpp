@@ -32,10 +32,12 @@ namespace ideep {
   } while(false) \
 
 #define IDEEP_STD_ALL_EQ(v, i) \
-  std::all_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k == i;})
+  std::all_of(v.begin(), v.end(), []( \
+        std::remove_reference<decltype(v)>::type::value_type k){return k == i;})
 
 #define IDEEP_STD_ANY_LE(v, i) \
-  std::any_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k <= i;})
+  std::any_of(v.begin(), v.end(), []( \
+        std::remove_reference<decltype(v)>::type::value_type k){return k <= i;})
 
 #define IDEEP_STD_EACH_SUB(v, i) \
   for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
@@ -51,14 +53,14 @@ namespace ideep {
 
 struct error: public std::exception {
     mkldnn_status_t status;
-    std::string message;
+    const char *message;
 
-    error(mkldnn_status_t astatus, std::string amessage)
+    error(mkldnn_status_t astatus, const char* amessage)
         : status(astatus), message(amessage) {}
 
     static void wrap_c_api(mkldnn_status_t status, const char * message) {
       if (status != mkldnn_success) {
-        throw error(status, std::string(message));
+        throw error(status, message);
       }
     }
 };

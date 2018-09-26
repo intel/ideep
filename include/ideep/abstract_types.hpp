@@ -146,7 +146,7 @@ struct engine: public mkldnn::engine {
   void operator =(engine const &) = delete;
 
   /// Singleton CPU engine for all primitives
-  static engine &cpu_engine() IDEEP_EXPORT;
+  static IDEEP_EXPORT engine &cpu_engine();
 
   /// Put this global engine in only one library
   #define INIT_GLOBAL_ENGINE \

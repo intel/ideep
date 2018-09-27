@@ -2005,15 +2005,13 @@ struct convolution_forward: public computation,
       const tensor::dims& result_dims, tensor& dst,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
-      const scale_t& src_scales = scale_t(),
-      const scale_t& weights_scales = scale_t(),
-      const scale_t& dst_scales = scale_t(),
+      const scale_t& src_scales, const scale_t& weights_scales, const scale_t& dst_scales,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
-    key_t key;
-    compute<alloc, web_opt>(key, src, weights, result_dims, dst,
+    key_t dummy_key_;
+    compute<alloc, web_opt>(dummy_key_, src, weights, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         src_scales, weights_scales, dst_scales, attr,
         aalogorithm, aprop_kind, appading_kind);
@@ -2024,17 +2022,47 @@ struct convolution_forward: public computation,
       const tensor& bias, const tensor::dims& result_dims, tensor& dst,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
-      const scale_t& src_scales = scale_t(),
-      const scale_t& weights_scales = scale_t(),
-      const scale_t& dst_scales = scale_t(),
+      const scale_t& src_scales, const scale_t& weights_scales, const scale_t& dst_scales,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalogorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
-    key_t key;
-    compute<alloc, web_opt>(key, src, weights, bias, result_dims, dst,
+    key_t dummy_key_;
+    compute<alloc, web_opt>(dummy_key_, src, weights, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         src_scales, weights_scales, dst_scales, attr,
+        aalogorithm, aprop_kind, appading_kind);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor &src, const tensor& weights,
+      const tensor::dims& result_dims, tensor& dst,
+      const tensor::dims& strides, const tensor::dims& dilates,
+      const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
+      const descriptor::attr_t& attr = descriptor::attr_t(),
+      algorithm aalogorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      padding_kind appading_kind = padding_kind::zero) {
+    scale_t dummy_scale_;
+    compute<alloc, web_opt>(src, weights, result_dims, dst,
+        strides, dilates, padding_l, padding_r, group,
+        dummy_scale_, dummy_scale_, dummy_scale_, attr,
+        aalogorithm, aprop_kind, appading_kind);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor &src, const tensor& weights,
+      const tensor& bias, const tensor::dims& result_dims, tensor& dst,
+      const tensor::dims& strides, const tensor::dims& dilates,
+      const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
+      const descriptor::attr_t& attr = descriptor::attr_t(),
+      algorithm aalogorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      padding_kind appading_kind = padding_kind::zero) {
+    scale_t dummy_scale_;
+    compute<alloc, web_opt>(src, weights, bias, result_dims, dst,
+        strides, dilates, padding_l, padding_r, group,
+        dummy_scale_, dummy_scale_, dummy_scale_, attr,
         aalogorithm, aprop_kind, appading_kind);
   }
 

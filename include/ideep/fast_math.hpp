@@ -1,7 +1,7 @@
 #ifndef _FAST_MATH_HPP_
 #define _FAST_MATH_HPP_
-#include <string>
 #include <bitset>
+#include <cstring>
 #include <type_traits>
 #include <immintrin.h>
 #include "abstract_types.hpp"

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
-#include <string>
+#include <cstring>
 #include "abstract_types.hpp"
 #include "allocators.hpp"
 #include "web.hpp"
@@ -1261,7 +1261,7 @@ public:
         for (int j = 0; j < src_dims[1]; j++) {
           auto Y_off = (j * src_dims[0] + i) * (src_dims[2] * src_dims[3]);
           auto X_off = (i * src_dims[1] + j) * (src_dims[2] * src_dims[3]);
-          std::memcpy((void*)&Ydata[Y_off], (void*)&Xdata[X_off],
+          std::memcpy(&Ydata[Y_off], &Xdata[X_off],
               src_dims[2] * src_dims[3] * sizeof(float));
         }
       }

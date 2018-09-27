@@ -904,26 +904,20 @@ public:
 struct computation : public primitive_group {
   computation() = default;
 
-  inline void init_internal(
-      const descriptor_group &adesc, int n_inputs, int n_outputs) {
+  inline void init_internal(const descriptor_group &adesc) {
     // init contents
-    primitive_inputs_ = std::vector<tensor>((unsigned)n_inputs);
-    inouts_ = std::vector<tensor>((unsigned)(n_inputs + n_outputs));
+    inouts_ = std::vector<tensor>((unsigned)(inputs_num_ + outputs_num_));
 
-    std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [n_inputs]);
-    for (int i =0; i < n_inputs; i ++) {
-      primitive_inputs_[i] = {
-        adesc.expected_input_descriptor(i), nullptr };
-      // connect real inputs and primitive inputs
-      inouts_[i] = primitive_inputs_[i];
-      inputs[i] = { primitive_inputs_[i].get(), 0 };
+    std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [inputs_num_]);
+    for (int i =0; i < inputs_num_; i ++) {
+      inouts_[i] = {adesc.expected_input_descriptor(i), nullptr };
+      inputs[i] = { inouts_[i].get(), 0 };
     }
 
-    std::unique_ptr<const_mkldnn_primitive_t []> outputs(new const_mkldnn_primitive_t [n_outputs]);
-    for (int i = 0; i < n_outputs; i ++) {
-      inouts_[i + n_inputs] = {
-        adesc.expected_output_descriptor(i), nullptr };
-      outputs[i] = inouts_[i + n_inputs].get();
+    std::unique_ptr<const_mkldnn_primitive_t []> outputs(new const_mkldnn_primitive_t [outputs_num_]);
+    for (int i = 0; i < outputs_num_; i ++) {
+      inouts_[i + inputs_num_] = {adesc.expected_output_descriptor(i), nullptr };
+      outputs[i] = inouts_[i + inputs_num_].get();
     }
 
     mkldnn_primitive_t result;
@@ -938,40 +932,23 @@ struct computation : public primitive_group {
       const std::vector<tensor::descriptor> &args) {
     IDEEP_ENFORCE(adesc.num_of_inputs() == (int)args.size(),
         "Unmatch the number of inputs");
-    auto n_inputs = (int)args.size();
-    auto n_outputs = adesc.num_of_outputs();
-    init_internal(adesc, n_inputs, n_outputs);
+    inputs_num_ = (int)args.size();
+    outputs_num_ = adesc.num_of_outputs();
+    init_internal(adesc);
   }
 
   template<typename... Ts>
   void init(const descriptor_group &adesc, const Ts&... args) {
-    auto n_inputs = adesc.num_of_inputs();
-    auto n_outputs = adesc.num_of_outputs();
-    init_internal(adesc, n_inputs, n_outputs);
+    inputs_num_ = adesc.num_of_inputs();
+    outputs_num_ = adesc.num_of_outputs();
+    init_internal(adesc);
   }
 
   void connect_handle_for(int index, const tensor& atensor) {
-    if ((unsigned)index < primitive_inputs_.size() &&
-        inouts_[index] != primitive_inputs_[index]) {
-      // Connect inputs
-      if (inouts_.at((unsigned)index).get_descriptor()
-          == atensor.get_descriptor()) {
-        inouts_[(unsigned)index].set_data_handle(atensor.get_data_handle());
-        primitive_inputs_[(unsigned)index].materialize();
-      } else if(primitive_inputs_.at((unsigned)index).get_descriptor()
-          == atensor.get_descriptor()) {
-        // Destructional move, assume we never change back
-        primitive_inputs_[(unsigned)index].dematerialize();
-        primitive_inputs_[(unsigned)index].set_data_handle(
-            atensor.get_data_handle());
-      } else
-        throw error(mkldnn_runtime_error, "Cannot accept incompatible input");
-    } else {
-      // Connect outputs
-      IDEEP_ENFORCE(inouts_.at((unsigned)index).get_descriptor()
-          == atensor.get_descriptor(), "Incorrect tensor descriptor");
-      inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle<false>());
-    }
+    // Connect inputs/outputs
+    IDEEP_ENFORCE(inouts_.at((unsigned)index).get_descriptor()
+        == atensor.get_descriptor(), "Incorrect tensor descriptor");
+    inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle<false>());
   }
 
   void connect_handle_for(const std::vector<tensor>& inputs,
@@ -1004,18 +981,23 @@ struct computation : public primitive_group {
   }
 
   int num_of_inputs() const {
-    return primitive_inputs_.size();
+    IDEEP_ENFORCE(inouts_.size() == (inputs_num_ + outputs_num_),
+        "Incorrect number of inputs and outputs");
+    return inputs_num_;
   }
 
   int num_of_outputs() const {
-    return inouts_.size() - primitive_inputs_.size();
+    IDEEP_ENFORCE(inouts_.size() == (inputs_num_ + outputs_num_),
+        "Incorrect number of inputs and outputs");
+    return outputs_num_;
   }
 
 private:
   // outputs after inputs
   // TODO: turn in into share_ptr
+  int inputs_num_;
+  int outputs_num_;
   std::vector<tensor> inouts_;
-  std::vector<tensor> primitive_inputs_;
 };
 
 struct sum : public computation,

@@ -129,7 +129,7 @@ public:
     inline void set_opts(param_t& t) { return; }
     inline bool has_opts() const { return false; }
 
-    virtual bool computation_param_own_of_memory() const { return false; }
+    bool computation_param_own_of_memory() const { return false; }
   };
 #endif
 

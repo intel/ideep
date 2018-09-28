@@ -18,14 +18,22 @@ namespace utils {
 // Shallow copied vector
 template <class T, class Alloc = std::allocator<T>>
 class s_vector {
+public:
   using size_type = typename std::vector<T, Alloc>::size_type;
   using reference = typename std::vector<T, Alloc>::reference;
   using const_reference = typename std::vector<T, Alloc>::const_reference;
 
-  s_vector() : storage_() {}
+  s_vector() : n_elems_(0), storage_() {}
   explicit s_vector(size_type count, const Alloc& alloc = Alloc())
-    : storage_(alloc.allocate(count), [alloc, count](void *p) {
-        alloc.deallocate(p, count); }) {
+    : n_elems_(count) {
+    Alloc dup_alloc(alloc);
+
+    storage_.reset(new (dup_alloc.allocate(count)) T [count] (),
+       [dup_alloc, count](T *p) mutable {
+      for (int i =0; i < count; i ++)
+        p[i].~T();
+      dup_alloc.deallocate(p, count);
+    });
   }
   s_vector(std::initializer_list<T> init, const Alloc& alloc = Alloc())
     : storage_(init.size(), alloc) {
@@ -35,15 +43,19 @@ class s_vector {
         arr[i] = src[i];
   }
 
-  s_vector(const s_vector& other) : storage_(other.storage_) {}
-  s_vector(s_vector &&other) noexcept :storage_(std::move(other.storage_)) {}
+  s_vector(const s_vector& other) : n_elems_(other.n_elems_),
+    storage_(other.storage_) {}
+  s_vector(s_vector &&other) noexcept : n_elems_(other.n_elems_),
+    storage_(std::move(other.storage_)) {}
 
   s_vector& operator=(const s_vector &other) {
     storage_ = other.storage_;
+    n_elems_ = other.n_elems_;
     return *this;
   }
   s_vector& operator=(s_vector&& other) noexcept {
     storage_ = std::move(other.storage_);
+    n_elems_ = other.n_elems_;
     return *this;
   }
 
@@ -54,8 +66,12 @@ class s_vector {
     return storage_.get()[pos];
   }
 
+  size_type size() const noexcept {
+    return n_elems_;
+  }
 protected:
-  std::shared_ptr<T []> storage_;
+  size_type n_elems_;
+  std::shared_ptr<T> storage_;
 };
 
 // Fast alternative to heavy string method

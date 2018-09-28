@@ -52,6 +52,7 @@ public:
   template<typename param_t> class _node;
 
 public:
+#if _IDEEP4PY_WEB_OPT_ == true
   template<typename param_t>
   class parameter {
   public:
@@ -99,6 +100,38 @@ public:
     cn_t creator_;
     std::shared_ptr<std::vector<param_t>> opts_;
   };
+#else
+  template<typename param_t>
+  class parameter {
+  public:
+    parameter() {}
+
+    using cn_t = typename utils::computation_web::node<param_t>::cn_t;
+
+    static void computation_param_materialize(const param_t& t) { return; }
+
+  public:
+    inline void unmark_materialized() { return; }
+    inline void mark_materialized() { return; }
+    inline bool is_materialized() const { return false; }
+    inline std::shared_ptr<bool> get_materialized() const { return std::make_shared<bool>(false); }
+
+    inline bool computation_param_is_same(const parameter& t) const {
+      return false;
+    }
+
+  public:
+    inline cn_t creator() const { return nullptr; }
+    inline void set_creator(cn_t cn) { return; }
+    inline void reset_creator() { return; }
+
+    inline std::shared_ptr<std::vector<param_t>> opts() const { return nullptr; }
+    inline void set_opts(param_t& t) { return; }
+    inline bool has_opts() const { return false; }
+
+    virtual bool computation_param_own_of_memory() const { return false; }
+  };
+#endif
 
   template<typename param_t>
   class node {

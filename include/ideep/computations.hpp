@@ -508,7 +508,6 @@ public:
     return dup_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
-
   /// Query number of inputs
   ///
   int num_of_inputs() const {
@@ -903,10 +902,12 @@ public:
 ///
 struct computation : public primitive_group {
   computation() = default;
+  template<class ...T>
+  using s_vector = utils::s_vector<T...>;
 
   inline void init_internal(const descriptor_group &adesc) {
     // init contents
-    inouts_ = std::vector<tensor>((unsigned)(inputs_num_ + outputs_num_));
+    inouts_ = s_vector<tensor>((unsigned)(inputs_num_ + outputs_num_));
 
     std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [inputs_num_]);
     for (int i =0; i < inputs_num_; i ++) {
@@ -946,9 +947,9 @@ struct computation : public primitive_group {
 
   void connect_handle_for(int index, const tensor& atensor) {
     // Connect inputs/outputs
-    IDEEP_ENFORCE(inouts_.at((unsigned)index).get_descriptor()
+    IDEEP_ENFORCE(inouts_[(unsigned)index].get_descriptor()
         == atensor.get_descriptor(), "Incorrect tensor descriptor");
-    inouts_.at((unsigned)index).set_data_handle(atensor.get_data_handle<false>());
+    inouts_[(unsigned)index].set_data_handle(atensor.get_data_handle<false>());
   }
 
   void connect_handle_for(const std::vector<tensor>& inputs,
@@ -997,7 +998,7 @@ private:
   // TODO: turn in into share_ptr
   int inputs_num_;
   int outputs_num_;
-  std::vector<tensor> inouts_;
+  s_vector<tensor> inouts_;
 };
 
 struct sum : public computation,
@@ -1344,12 +1345,12 @@ struct convolution_forward: public computation,
         weights.get_descriptor())});
     reorder::compute(weights, _weights);
 
-    size_t blk = _weights.get_dims().at(1) *
-        _weights.get_dims().at(2) *
-        _weights.get_dims().at(3);
+    size_t blk = _weights.get_dims()[1] *
+        _weights.get_dims()[2] *
+        _weights.get_dims()[3];
     auto w_base = reinterpret_cast<data_type_t *>(_weights.get_data_handle());
     auto f_base = reinterpret_cast<data_type_t *>(factor.get_data_handle());
-    for (ssize_t o = 0; o < _weights.get_dims().at(0); o++)
+    for (ssize_t o = 0; o < _weights.get_dims()[0]; o++)
       cblas_sscal(blk, f_base[o], w_base + o * blk, 1);
 
     tensor _weights_res = _weights;
@@ -1495,7 +1496,7 @@ struct convolution_forward: public computation,
     convolution_forward comp;
     tensor::descriptor result_desc(dst_dims, src.get_data_type());
     if (web_opt) {
-      tensor::dims bias_dims = {weights.get_dims().at(0)};
+      tensor::dims bias_dims = {weights.get_dims()[0]};
       tensor::descriptor bias_desc = {bias_dims, weights.get_data_type()};
       auto key = utils::create_key(src.get_data_type(), src.get_dims(),
           weights.get_dims(), bias_dims, dst_dims, strides, dilates, padding_l,
@@ -4291,9 +4292,9 @@ public:
   void do_compute(const std::vector<tensor>& inputs,
       std::vector<tensor>& inputs_in, tensor& output) {
     for (size_t i = 1; i < inputs.size(); i++) {
-      if (inputs.at(i).get_data_handle() !=
-          inputs_in.at(i).get_data_handle())
-        reorder::compute(inputs.at(i), inputs_in.at(i));
+      if (inputs[i].get_data_handle() !=
+          inputs_in[i].get_data_handle())
+        reorder::compute(inputs[i], inputs_in[i]);
     }
 
     execute(inputs_in, output);
@@ -4319,7 +4320,7 @@ public:
     // FIXME
     // currently align all inputs format with first one
     std::vector<tensor> inputs_in;
-    inputs_in.push_back(inputs.at(0));
+    inputs_in.push_back(inputs[0]);
     for (int i = 1; i < tdesc.size(); i++) {
       auto src_in = inputs[i];
       if (inputs_format[i] != inputs_format[0])

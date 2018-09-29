@@ -1059,7 +1059,6 @@ class IDEEP_EXPORT tensor : public param,
   public utils::computation_web::parameter<tensor> {
 public:
   using param::param;
-  virtual ~tensor() { twin_.reset(); }
 
   /// Pack an extra tensor into current one, allocate buffer using specified
   /// allocator.
@@ -1373,7 +1372,7 @@ public:
     return true;
   }
 
-  virtual bool computation_param_own_of_memory() const {
+  bool computation_param_own_of_memory() const {
     if (get_tensor_buffer().get() == nullptr)
       return false;
     return true;

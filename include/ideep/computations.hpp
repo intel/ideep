@@ -543,12 +543,9 @@ public:
   /// Query interface
   tensor::descriptor expected_descriptor_of(mkldnn::query q,
       int index = 0) const {
-    // mkldnn_primitive_desc_t cdesc;
     const_mkldnn_primitive_desc_t const_cdesc =
         mkldnn_primitive_desc_query_pd(get_mkldnn_primitive_desc_t(),
             mkldnn::convert_to_c(q), index);
-    //error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
-    //    "could not clone a src primititve descriptor");
     return tensor::descriptor(const_cdesc);
   }
 
@@ -1688,7 +1685,8 @@ struct convolution_forward: public computation,
       : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
     auto weights_scales_in = weights.has_scale()
       ? weights.get_scale() : weights_scales;
-    auto key_invalid = key.empty() || (find(key) == end());
+    auto comp_it = key.empty() ? end() : find(key);
+    auto key_invalid = (comp_it == end());
 
     if (!weights_scales_in.empty()) {
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
@@ -1767,9 +1765,9 @@ struct convolution_forward: public computation,
         strides, dilates, padding_l, padding_r, op_attr, args...);
     }
 
-    fetch_or_create_m(comp, key, src_desc,
-        weights_desc, bias_desc, dst_desc_in, strides, dilates,
-        padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
+    auto comp = !key_invalid ? fetch(comp_it)
+      : fetch(create(key, src_desc, weights_desc, bias_desc, dst_desc_in,
+            strides, dilates, padding_l, padding_r, op_attr, std::forward<Ts>(args)...));
 
     // XXX: Performance evaluation
     // TODO: Custom allocator support
@@ -1798,7 +1796,8 @@ struct convolution_forward: public computation,
       IDEEP_ENFORCE(dst_desc.get_internal_format() == src_format
           && dst_desc.get_data_type() == dst_data_type,
           "Unmatch format in Conv Sum fusion");
-    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
+    if (dst.get_descriptor() != dst_desc)
+      dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
     if (!dst_scales_in.empty()) dst.set_scale(dst_scales_in);
 
     comp.execute(src_in, weights_in, bias_in, dst);
@@ -1826,7 +1825,8 @@ struct convolution_forward: public computation,
       : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
     auto weights_scales_in = weights.has_scale()
       ? weights.get_scale() : weights_scales;
-    auto key_invalid = key.empty() || (find(key) == end());
+    auto comp_it = key.empty() ? end() : find(key);
+    auto key_invalid = (comp_it == end());
 
     if (!weights_scales_in.empty()) {
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
@@ -1899,9 +1899,9 @@ struct convolution_forward: public computation,
         padding_l, padding_r, op_attr, args...);
     }
 
-    fetch_or_create_m(comp, key, src_desc,
-        weights_desc, dst_desc_in, strides, dilates,
-        padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
+    auto comp = !key_invalid ? fetch(comp_it)
+      : fetch(create(key, src_desc, weights_desc, dst_desc_in, strides,
+        dilates, padding_l, padding_r, op_attr, std::forward<Ts>(args)...));
 
     // Performance evaluation
     auto src_in = src;
@@ -1924,7 +1924,8 @@ struct convolution_forward: public computation,
       IDEEP_ENFORCE(dst_desc.get_internal_format() == src_format
           && dst_desc.get_data_type() == dst_data_type,
           "Unmatch format or data type in Conv Sum fusion");
-    dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
+    if (dst.get_descriptor() != dst_desc)
+      dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
     if (!dst_scales_in.empty()) dst.set_scale(dst_scales_in);
 
     comp.execute(src_in, weights_in, dst);

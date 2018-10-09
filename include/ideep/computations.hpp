@@ -4935,6 +4935,7 @@ struct batch_normalization_backward : public computation,
   }
 
 public:
+  using computation::expected_input_descriptor;
   using computation::expected_gradx_descriptor;
   using prop_kind_t =
       typename utils::computation_web::node<tensor>::prop_kind_t;
@@ -5021,8 +5022,10 @@ public:
 
   void do_compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
-      tensor& gradx, tensor& gradw) {
-    execute(src, mean, variance, grady, scale, gradx, gradw);
+      tensor& grady_in, tensor& gradx, tensor& gradw) {
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
+    execute(src, mean, variance, grady_in, scale, gradx, gradw);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -5035,6 +5038,11 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
+    auto grady_in = grady;
+    if (grady_in.get_descriptor() != comp.expected_input_descriptor(3))
+      grady_in.reinit<alloc, batch_normalization_backward>(
+          comp.expected_input_descriptor(3));
+
     gradx.reinit<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
     gradw.reinit(comp.expected_gradw_descriptor());
@@ -5043,21 +5051,23 @@ public:
       auto cn = utils::computation_web::template computation_node<
           batch_normalization_backward, tensor>::create(
           comp, prop_kind_t::CN_PROP_BACKWARD, gradx, gradw);
-      if (cn->build_deps(src, mean, variance, grady, scale)) {
+      if (cn->build_deps(src, mean, variance, grady, scale, grady_in)) {
         utils::computation_web::template computation_node<
             batch_normalization_backward, tensor>::enqueue(cn);
         return;
       }
     }
 
-    comp.do_compute(src, mean, variance, grady, scale, gradx, gradw);
+    comp.do_compute(src, mean, variance, grady, scale, grady_in, gradx, gradw);
   }
 
   void do_compute(const tensor& src, const tensor& mean,
       const tensor& variance, const tensor& grady, const tensor& scale,
-      tensor& gradx, tensor& grad_scale, tensor& grad_shift) {
+      tensor& grady_in, tensor& gradx, tensor& grad_scale, tensor& grad_shift) {
+    if (grady.get_data_handle() != grady_in.get_data_handle())
+      reorder::compute(grady, grady_in);
     execute(
-        src, mean, variance, grady, scale, gradx, grad_scale, grad_shift);
+        src, mean, variance, grady_in, scale, gradx, grad_scale, grad_shift);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -5070,6 +5080,11 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(),
         src.get_descriptor(), epsilon);
 
+    auto grady_in = grady;
+    if (grady_in.get_descriptor() != comp.expected_input_descriptor(3))
+      grady_in.reinit<alloc, batch_normalization_backward>(
+          comp.expected_input_descriptor(3));
+
     gradx.reinit<alloc, batch_normalization_backward>(
         comp.expected_gradx_descriptor());
     grad_scale.reinit(mean.get_descriptor());
@@ -5080,7 +5095,7 @@ public:
           batch_normalization_backward, tensor>::
           create(comp, prop_kind_t::CN_PROP_BACKWARD,
           gradx, grad_scale, grad_shift);
-      if (cn->build_deps(src, mean, variance, grady, scale)) {
+      if (cn->build_deps(src, mean, variance, grady, scale, grady_in)) {
         utils::computation_web::template computation_node<
             batch_normalization_backward, tensor>::enqueue(cn);
         return;
@@ -5088,17 +5103,17 @@ public:
     }
 
     comp.do_compute(src, mean, variance, grady,
-        scale, gradx, grad_scale, grad_shift);
+        scale, grady_in, gradx, grad_scale, grad_shift);
   }
 
   virtual void fire_computation_node(
       std::vector<tensor>& deps, std::vector<tensor>& tars) {
     if (tars.size() == 2)
       do_compute(deps[0], deps[1], deps[2], deps[3], deps[4],
-          tars[0], tars[1]);
+          deps[5], tars[0], tars[1]);
     else if (tars.size() == 3)
       do_compute(deps[0], deps[1], deps[2], deps[3], deps[4],
-          tars[0], tars[1], tars[2]);
+          deps[5], tars[0], tars[1], tars[2]);
   }
 
 private:

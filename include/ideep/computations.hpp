@@ -1395,16 +1395,16 @@ struct convolution_forward: public computation,
       const tensor& bias, const tensor::dims& dst_dims,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
-      algorithm aalogorithm, prop_kind aprop_kind,
+      algorithm aalgorithm, prop_kind aprop_kind,
       padding_kind appading_kind) {
     auto conv_fuse = [src, weights, bias, dst_dims, strides, dilates,
-        padding_l, padding_r, aalogorithm, aprop_kind, appading_kind] (
+        padding_l, padding_r, aalgorithm, aprop_kind, appading_kind] (
         tensor& dst, descriptor::attr_t _attr) -> cn_t {
       tensor _weights, src_in, weights_in;
       auto fused_comp = convolution_forward::create_computation<alloc,
           web_opt>(src, weights, bias, dst_dims, dst, _weights,
           src_in, weights_in, strides, dilates, padding_l, padding_r,
-          _attr, aalogorithm, aprop_kind, appading_kind);
+          _attr, aalgorithm, aprop_kind, appading_kind);
       auto fused_cn = utils::computation_web::template computation_node<
           convolution_forward, tensor>::create(
           fused_comp, prop_kind_t::CN_PROP_FORWARD, dst);
@@ -1423,11 +1423,11 @@ struct convolution_forward: public computation,
       const tensor& bias, const tensor::dims& dst_dims, tensor& src_in,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
-      algorithm aalogorithm, prop_kind aprop_kind,
+      algorithm aalgorithm, prop_kind aprop_kind,
       padding_kind appading_kind) {
     // TODO: unify fuse and folding lambda to reduce memory overhead
     auto conv_bn_folding = [src, weights, bias, dst_dims, src_in,
-        strides, dilates, padding_l, padding_r, aalogorithm,
+        strides, dilates, padding_l, padding_r, aalgorithm,
         aprop_kind, appading_kind] (
         std::shared_ptr<utils::computation_web::node<tensor>> pre_comp,
         tensor& dst, std::vector<tensor>& deps, float epsilon) mutable -> cn_t {
@@ -1465,7 +1465,7 @@ struct convolution_forward: public computation,
 
       comp->init_web_opt_fusion<alloc, web_opt>(
           src, folded_w, folded_b, dst_dims, strides, dilates,
-          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+          padding_l, padding_r, aalgorithm, aprop_kind, appading_kind);
       auto fused_cn = utils::computation_web::template computation_node<
           convolution_forward, tensor>::create(
           pre_comp, prop_kind_t::CN_PROP_FORWARD, dst);
@@ -1487,7 +1487,7 @@ struct convolution_forward: public computation,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
       const descriptor::attr_t& attr,
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     convolution_forward comp;
@@ -1497,21 +1497,21 @@ struct convolution_forward: public computation,
       tensor::descriptor bias_desc = {bias_dims, weights.get_data_type()};
       auto key = utils::create_key(src.get_data_type(), src.get_dims(),
           weights.get_dims(), bias_dims, dst_dims, strides, dilates, padding_l,
-          padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+          padding_r, attr, aalgorithm, aprop_kind, appading_kind);
 
       fetch_or_create_m(_comp, key, src.get_descriptor(),
           weights.get_descriptor(), bias_desc, result_desc, strides,
-          dilates, padding_l, padding_r, attr, aalogorithm,
+          dilates, padding_l, padding_r, attr, aalgorithm,
           aprop_kind, appading_kind);
       comp = _comp;
     } else {
       auto key = utils::create_key(src.get_data_type(), src.get_dims(),
           weights.get_dims(), dst_dims, strides, dilates, padding_l,
-          padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+          padding_r, attr, aalgorithm, aprop_kind, appading_kind);
 
       fetch_or_create_m(_comp, key, src.get_descriptor(),
           weights.get_descriptor(), result_desc, strides,
-          dilates, padding_l, padding_r, attr, aalogorithm,
+          dilates, padding_l, padding_r, attr, aalgorithm,
           aprop_kind, appading_kind);
       comp = _comp;
     }
@@ -1535,10 +1535,10 @@ struct convolution_forward: public computation,
     if (web_opt) {
       comp.init_web_opt_fusion<alloc, web_opt>(
           src, _weights, comp.zero_bias(), dst_dims, strides, dilates,
-          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+          padding_l, padding_r, aalgorithm, aprop_kind, appading_kind);
       comp.init_web_opt_folding<alloc, web_opt>(
           src, _weights, comp.zero_bias(), dst_dims, src_in, strides, dilates,
-          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+          padding_l, padding_r, aalgorithm, aprop_kind, appading_kind);
     }
 
     return comp;
@@ -1551,17 +1551,17 @@ struct convolution_forward: public computation,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
       const descriptor::attr_t& attr,
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     tensor::descriptor result_desc(dst_dims, src.get_data_type());
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
         weights.get_dims(), bias.get_dims(), dst_dims, strides, dilates,
-        padding_l, padding_r, attr, aalogorithm, aprop_kind, appading_kind);
+        padding_l, padding_r, attr, aalgorithm, aprop_kind, appading_kind);
 
     fetch_or_create_m(comp, key, src.get_descriptor(),
         weights.get_descriptor(), bias.get_descriptor(), result_desc,
-        strides, dilates, padding_l, padding_r, attr, aalogorithm,
+        strides, dilates, padding_l, padding_r, attr, aalgorithm,
         aprop_kind, appading_kind);
 
     src_in = src;
@@ -1582,10 +1582,10 @@ struct convolution_forward: public computation,
     if (web_opt) {
       comp.init_web_opt_fusion<alloc, web_opt>(
           src, _weights, bias, dst_dims, strides, dilates,
-          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+          padding_l, padding_r, aalgorithm, aprop_kind, appading_kind);
       comp.init_web_opt_folding<alloc, web_opt>(
           src, _weights, bias, dst_dims, src_in, strides, dilates,
-          padding_l, padding_r, aalogorithm, aprop_kind, appading_kind);
+          padding_l, padding_r, aalgorithm, aprop_kind, appading_kind);
     }
 
     return comp;
@@ -1940,12 +1940,12 @@ struct convolution_forward: public computation,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     compute_impl<alloc, web_opt>(src, weights, result_dims, dst, strides,
         dilates, padding_l, padding_r,
-        attr, aalogorithm, aprop_kind, appading_kind);
+        attr, aalgorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -1954,12 +1954,12 @@ struct convolution_forward: public computation,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     compute_impl<alloc, web_opt>(src, weights, bias, result_dims, dst, strides,
         dilates, padding_l, padding_r,
-        attr, aalogorithm, aprop_kind, appading_kind);
+        attr, aalgorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -1971,15 +1971,23 @@ struct convolution_forward: public computation,
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
+
+    // FIXME: workaroud winograd format issue in inference
+    auto apkind = aprop_kind;
+    if (aalgorithm == algorithm::convolution_winograd
+        && aprop_kind == prop_kind::forward_inference) {
+      apkind = prop_kind::forward;
+    }
+
     compute_impl<alloc, web_opt>(key, src, weights_in, result_dims, dst,
         strides, dilates, padding_l, padding_r,
         src_scales, weights_scales, dst_scales, attr,
-        aalogorithm, aprop_kind, appading_kind);
+        aalgorithm, apkind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -1991,15 +1999,23 @@ struct convolution_forward: public computation,
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
+
+    // FIXME: workaroud winograd format issue in inference
+    auto apkind = aprop_kind;
+    if (aalgorithm == algorithm::convolution_winograd
+        && aprop_kind == prop_kind::forward_inference) {
+      apkind = prop_kind::forward;
+    }
+
     compute_impl<alloc, web_opt>(key, src, weights_in, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r,
         src_scales, weights_scales, dst_scales, attr,
-        aalogorithm, aprop_kind, appading_kind);
+        aalgorithm, apkind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -2009,14 +2025,14 @@ struct convolution_forward: public computation,
       const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
       const scale_t& src_scales, const scale_t& weights_scales, const scale_t& dst_scales,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     key_t dummy_key_;
     compute<alloc, web_opt>(dummy_key_, src, weights, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         src_scales, weights_scales, dst_scales, attr,
-        aalogorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -2026,14 +2042,14 @@ struct convolution_forward: public computation,
       const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
       const scale_t& src_scales, const scale_t& weights_scales, const scale_t& dst_scales,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     key_t dummy_key_;
     compute<alloc, web_opt>(dummy_key_, src, weights, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         src_scales, weights_scales, dst_scales, attr,
-        aalogorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -2042,14 +2058,14 @@ struct convolution_forward: public computation,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     scale_t dummy_scale_;
     compute<alloc, web_opt>(src, weights, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         dummy_scale_, dummy_scale_, dummy_scale_, attr,
-        aalogorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -2058,14 +2074,14 @@ struct convolution_forward: public computation,
       const tensor::dims& strides, const tensor::dims& dilates,
       const tensor::dims& padding_l, const tensor::dims& padding_r, int group,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::convolution_direct,
+      algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     scale_t dummy_scale_;
     compute<alloc, web_opt>(src, weights, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         dummy_scale_, dummy_scale_, dummy_scale_, attr,
-        aalogorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind);
   }
 
   virtual void fire_computation_node(
@@ -2106,7 +2122,8 @@ struct convolution_forward: public computation,
       const tensor::dims& padding_r = {0, 0},
       const tensor::dims& dilates = {0, 0},
       int group = 1,
-      algorithm aalgorithm = algorithm::convolution_direct) {
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -2146,9 +2163,16 @@ struct convolution_forward: public computation,
     tensor::descriptor weights_desc(dims_in, dtype,
         grouped ? format::goihw : format::oihw);
 
+    // FIXME: workaroud winograd format issue in inference
+    auto apkind = aprop_kind;
+    if (aalgorithm == algorithm::convolution_winograd
+        && aprop_kind == prop_kind::forward_inference) {
+      apkind = prop_kind::forward;
+    }
+
     convolution_forward comp(x_desc, weights_desc, y_desc,
         strides, dilates, padding_l, padding_r,
-        descriptor::attr_t(), aalgorithm);
+        descriptor::attr_t(), aalgorithm, apkind);
     return comp.dup_weights_descriptor();
   }
 
@@ -2907,7 +2931,7 @@ struct convolution_transpose_forward
       const tensor::dims& padding_l,
       const tensor::dims& padding_r,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::deconvolution_direct,
+      algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
@@ -2921,7 +2945,7 @@ struct convolution_transpose_forward
         padding_l,
         padding_r,
         attr,
-        aalogorithm,
+        aalgorithm,
         aprop_kind,
         appading_kind);
   }
@@ -2937,7 +2961,7 @@ struct convolution_transpose_forward
       const tensor::dims& padding_l,
       const tensor::dims& padding_r,
       const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalogorithm = algorithm::deconvolution_direct,
+      algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero) {
     auto weights_in = weights;
@@ -2952,7 +2976,7 @@ struct convolution_transpose_forward
         padding_l,
         padding_r,
         attr,
-        aalogorithm,
+        aalgorithm,
         aprop_kind,
         appading_kind);
   }
@@ -3974,15 +3998,15 @@ public:
 
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(key_t &key, const tensor& src, tensor& dst,
-      algorithm aalogorithm = algorithm::eltwise_relu,
+      algorithm aalgorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
     if (key.empty())
       key = utils::create_key(src.get_data_type(), src.get_dims(),
-          src.get_internal_format(), alpha, beta, aalogorithm, aprop_kind);
+          src.get_internal_format(), alpha, beta, aalgorithm, aprop_kind);
 
     fetch_or_create_m(comp, key, src.get_descriptor(),
-        alpha, beta, aalogorithm, aprop_kind);
+        alpha, beta, aalgorithm, aprop_kind);
 
     if (dst != src) {
       dst.reinit<alloc, eltwise_forward>(src.get_descriptor());
@@ -3990,7 +4014,7 @@ public:
     }
 
     if (web_opt) {
-      auto fattr = aalogorithm == algorithm::eltwise_relu ?
+      auto fattr = aalgorithm == algorithm::eltwise_relu ?
           fusion_attr_t{ fusion_type_t::CN_FUSION_RELU, {alpha, beta}, {} } :
           fusion_attr_t{ fusion_type_t::CN_FUSION_NA, {}, {} };
 
@@ -4011,12 +4035,12 @@ public:
 
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, tensor& dst,
-      algorithm aalogorithm = algorithm::eltwise_relu,
+      algorithm aalgorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
     key_t key;
     compute<alloc, web_opt>(
-        key, src, dst, aalogorithm, aprop_kind, alpha, beta);
+        key, src, dst, aalgorithm, aprop_kind, alpha, beta);
   }
 
   virtual void fire_computation_node(
@@ -4089,7 +4113,7 @@ public:
   // TODO: Seeking a single shot solution.
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& src, const tensor& grady,
-      tensor& gradx, algorithm aalogorithm = algorithm::eltwise_relu,
+      tensor& gradx, algorithm aalgorithm = algorithm::eltwise_relu,
       float alpha = 0.0, float beta = 0.0) {
     // if grady is from outside, make it ours
     tensor grady_in = grady;
@@ -4097,10 +4121,10 @@ public:
       grady_in.init<alloc, eltwise_backward>(src.get_descriptor());
 
     auto key = utils::create_key(src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), alpha, beta, aalogorithm);
+        src.get_internal_format(), alpha, beta, aalgorithm);
 
     fetch_or_create_m(comp, key, grady_in.get_descriptor(),
-        src.get_descriptor(), alpha, beta, aalogorithm);
+        src.get_descriptor(), alpha, beta, aalgorithm);
 
     if (grady != gradx)
       gradx.reinit<alloc, eltwise_backward>(comp.expected_gradx_descriptor());

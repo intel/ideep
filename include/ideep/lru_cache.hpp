@@ -420,6 +420,29 @@ inline std::string to_string(T&& arg, Ts&&... args) {
     '*' + to_string(std::forward<Ts>(args)...);
 }
 
+inline bytestring to_bytes(const tensor arg) {
+  bytestring bytes;
+  auto arg_desc = arg.get_mkldnn_memory_desc_t();
+  bytes.reserve((sizeof(uint64_t) * 2 * arg_desc->ndims) +
+      (sizeof(int) * 4 * arg_desc->ndims) +
+      sizeof(arg_desc->data_type) +
+      sizeof(arg_desc->format) + 
+      sizeof(arg_desc->layout_desc.blocking.offset_padding));
+  for (int i = 0; i < arg_desc->ndims; i++) {
+    bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[0][i])));
+    bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[1][i])));
+    bytes.append(to_bytes(arg_desc->layout_desc.blocking.block_dims[i]));
+    bytes.append(to_bytes(arg_desc->layout_desc.blocking.padding_dims[i]));
+    bytes.append(to_bytes(arg_desc->layout_desc.blocking.offset_padding_to_data[i]));
+    bytes.append(to_bytes(arg_desc->dims[i]));
+  }
+  bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.offset_padding)));
+  bytes.append(to_bytes(arg_desc->data_type));
+  bytes.append(to_bytes(arg_desc->format));
+
+  return bytes;
+}
+
 template <typename T, typename ...Ts>
 inline bytestring to_bytes(T&& arg, Ts&&... args) {
   bytestring bytes;

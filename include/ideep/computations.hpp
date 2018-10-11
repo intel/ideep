@@ -4103,8 +4103,12 @@ public:
 
   void do_compute(const tensor& src, const tensor& grady,
       tensor& grady_in, tensor& gradx) {
-    if (grady.get_data_handle() != grady_in.get_data_handle())
+    if (grady.get_data_handle() != grady_in.get_data_handle()) {
       reorder::compute(grady, grady_in);
+      if (grady == gradx) {
+        gradx.set_descriptor(grady_in.get_descriptor());
+      }
+    }
 
     execute(src, grady_in, gradx);
   }

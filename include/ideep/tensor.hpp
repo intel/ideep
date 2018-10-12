@@ -5,6 +5,7 @@
 #include <numeric>
 #include <functional>
 #include <cstring>
+#include <cmath>
 #include "abstract_types.hpp"
 #include "allocators.hpp"
 #include "web.hpp"
@@ -1376,6 +1377,66 @@ public:
     if (get_tensor_buffer().get() == nullptr)
       return false;
     return true;
+  }
+
+  scale_t calculate_scale(data_type adata_type, int axis = -1) const {
+    if (has_scale()) return get_scale();
+    auto atensor = (is_public_format()) ? *this : to_public();
+    auto *data_buffer = static_cast<float*>(atensor.get_data_handle());
+    auto scale_filler = [=](scale_t &scales) {
+      if (adata_type != data_type::f32 && !scales.empty()) {
+        for (auto it = scales.begin(); it != scales.end(); it++) {
+          *it = dt_max_map.at(adata_type) / (*it);
+        }
+      }
+      return scales;
+    };
+    std::function<float(const float*, int)> abs_max =
+      [&abs_max](const float* data, int size) {
+      if (size >= 4) {
+        auto nsize = size / 2;
+        auto tmax = abs_max(data, nsize);
+        auto bmax = abs_max(data + nsize, size - nsize);
+        return (tmax > bmax) ? tmax : bmax;
+      }
+
+      float abs, amax = std::fabs(data[0]);
+      for (int i = 1; i < size; i++) {
+        abs = std::fabs(data[i]);
+        if (abs > amax) amax = abs;
+      }
+      return amax;
+    };
+
+    if (axis == -1) {
+      auto scale(IDEEP_DEF_SCALE);
+      scale[0] = abs_max(data_buffer, get_nelems());
+      return scale_filler(scale);
+    }
+
+    IDEEP_ENFORCE(axis < ndims(), "Incorrect axis");
+    auto scale_offset = 1;
+    auto scale_num = get_dim(axis);
+    auto scale_buf_size = scale_num;
+    for (int i = 0; i < axis; i++)
+      scale_buf_size *= get_dim(i);
+    for (int j = axis + 1; j < ndims(); j++)
+      scale_offset *= get_dim(j);
+
+    scale_t scale_buf(scale_buf_size);
+    for (int s = 0; s < scale_buf_size; s++) {
+      scale_buf[s] = abs_max(data_buffer, scale_offset);
+      data_buffer += scale_offset;
+    }
+    if (axis == 0) return scale_filler(scale_buf);
+
+    scale_t scale(scale_buf.begin(), scale_buf.begin() + scale_num);
+    for (int t = 0; t < scale_num; t++) {
+      for (int u = t + scale_num; u < scale_buf_size; u += scale_num) {
+        if (scale[t] < scale_buf[u]) scale[t] = scale_buf[u];
+      }
+    }
+    return scale_filler(scale);
   }
 
 protected:

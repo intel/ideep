@@ -1271,7 +1271,15 @@ public:
       this->set_descriptor(src.get_descriptor().reshape(Y_dims));
     }
 
-    const auto* Xdata = static_cast<float*>(src.get_data_handle());
+    tensor tmp;
+    const float* Xdata;
+    if (!src.is_public_format()){
+      tmp = src.to_public();
+      Xdata = static_cast<float*>(tmp.get_data_handle());
+    } else {
+      Xdata = static_cast<float*>(src.get_data_handle());
+    }
+
     auto* Ydata = static_cast<float*>(this->get_data_handle());
     if ((axes[0] == axes_sorted[1])
         && (axes[1] == axes_sorted[0])

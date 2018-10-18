@@ -799,9 +799,23 @@ public:
     if (input.is_empty() || output.is_empty())
       return;
 
-    auto key = utils::create_key(input.get_dims(), input.get_data_type(),
-        input.get_internal_format(), output.get_dims(), output.get_data_type(),
-        output.get_internal_format(), attr);
+    key_t key;
+    if (output.get_internal_format() == static_cast<format>(mkldnn_blocked) &&
+        input.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
+      key = utils::create_key(input, output, attr);
+    } else if (output.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
+      key = utils::create_key(input.get_dims(), input.get_data_type(),
+          input.get_internal_format(), output,
+          attr);
+    } else if (input.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
+      key = utils::create_key(input, output.get_dims(), input.get_data_type(),
+          input.get_internal_format(),
+          attr);
+    } else {
+      key = utils::create_key(input.get_dims(), input.get_data_type(),
+          input.get_internal_format(), output.get_dims(), output.get_data_type(),
+          output.get_internal_format(), attr);
+    }
 
     fetch_or_create_m(op, key, input.get_descriptor(),
         output.get_descriptor(), attr);
@@ -3347,13 +3361,6 @@ struct convolution_transpose_backward_weights
     gbias.reinit<alloc, convolution_transpose_backward_weights>(
         comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gbias);
-
-    // TODO:It will remove when support iohw format in mkl-dnn.
-    ideep::tensor::dims filter_dims;
-    filter_dims.insert(
-        filter_dims.begin(),
-        {gradw_dims[1], gradw_dims[0], gradw_dims[2], gradw_dims[3]});
-    gradw.set_descriptor(gradw.get_descriptor().reshape(filter_dims));
   }
 
   template <class alloc, typename... Ts>
@@ -3398,13 +3405,6 @@ struct convolution_transpose_backward_weights
     gradw.reinit<alloc, convolution_transpose_backward_weights>(
         comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
-
-    // TODO:It will remove when support iohw format in mkl-dnn.
-    ideep::tensor::dims filter_dims;
-    filter_dims.insert(
-        filter_dims.begin(),
-        {gradw_dims[1], gradw_dims[0], gradw_dims[2], gradw_dims[3]});
-    gradw.set_descriptor(gradw.get_descriptor().reshape(filter_dims));
   }
 
   template <class alloc = utils::allocator>

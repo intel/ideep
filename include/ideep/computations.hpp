@@ -4001,16 +4001,27 @@ public:
       algorithm aalgorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward,
       float alpha = 0.0, float beta = 0.0) {
-    if (key.empty())
-      key = utils::create_key(src.get_data_type(), src.get_dims(),
-          src.get_internal_format(), alpha, beta, aalgorithm, aprop_kind);
+    auto src_in = src;
+    if (aalgorithm != algorithm::eltwise_relu
+        && src.get_data_type() != tensor::data_type::f32) {
+      src_in.init<alloc, eltwise_forward>({src.get_dims(), tensor::data_type::f32});
+      IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
+      IDEEP_ENFORCE(src.get_scale().size() == 1, "Incorrect scale size");
+      auto scale = IDEEP_DEF_SCALE;
+      scale[0] /= src.get_scale()[0];
+      reorder::compute(src, src_in, {0, scale});
+    }
 
-    fetch_or_create_m(comp, key, src.get_descriptor(),
+    if (key.empty())
+      key = utils::create_key(src_in.get_data_type(), src_in.get_dims(),
+          src_in.get_internal_format(), alpha, beta, aalgorithm, aprop_kind);
+
+    fetch_or_create_m(comp, key, src_in.get_descriptor(),
         alpha, beta, aalgorithm, aprop_kind);
 
     if (dst != src) {
-      dst.reinit<alloc, eltwise_forward>(src.get_descriptor());
-      if (src.has_scale()) dst.set_scale(src.get_scale());
+      dst.reinit<alloc, eltwise_forward>(src_in.get_descriptor());
+      if (src_in.has_scale()) dst.set_scale(src_in.get_scale());
     }
 
     if (web_opt) {
@@ -4028,8 +4039,10 @@ public:
       }
     }
 
-    comp.do_compute(src, dst);
-    if (dst.has_scale() && dst.get_data_type() == tensor::data_type::s8)
+    comp.do_compute(src_in, dst);
+    if (dst.has_scale()
+        && aalgorithm == algorithm::eltwise_relu
+        && dst.get_data_type() == tensor::data_type::s8)
       dst.set_descriptor({dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()});
   }
 

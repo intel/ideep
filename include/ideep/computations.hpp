@@ -49,8 +49,8 @@
 #include "instruments.hpp"
 #include "web.hpp"
 #include "utils.hpp"
-#include <mkl.h>
 #include <mkl_vsl.h>
+#include <mkl_cblas.h>
 #include <mkl_vml_functions.h>
 #include <bitset>
 #include "fast_math.hpp"

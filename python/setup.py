@@ -145,12 +145,11 @@ includes = ['ideep4py/include',
             ]
 
 if os_name == 'Linux':
-    libraries = ['mkldnn', 'mklml_intel', 'ideep']  # , 'dlcomp']
+    libraries = ['mkldnn', 'mklml_intel', 'ideep', 'm']  # , 'dlcomp']
     ccxx_opts += ['-fopenmp']
-    libraries += ['m']
     link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']
 else:
-    libraries = ['mkldnn', 'mklml']
+    libraries = ['mkldnn', 'mklml', 'ideep']
 
 src = ['ideep4py/py/ideep4py.i',
        'ideep4py/py/mm/mdarray.cc',

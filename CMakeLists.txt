@@ -10,6 +10,11 @@ set(IDEEP_VERSION
 
 option(multinode "Provide non-blocking communciation support for machine learning" OFF)
 
+IF(APPLE)
+  SET(CMAKE_INSTALL_NAME_DIR @rpath)
+  SET(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
+ENDIF(APPLE)
+
 set(USE_MKLDNN_INTERNAL 1)
 include(cmake/profiling.cmake)
 include(cmake/mkldnn.cmake)

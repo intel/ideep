@@ -51,4 +51,4 @@ if (multinode)
 
 endif ()
 
-install(FILES ${CMAKE_BINARY_DIR}/libideep.so DESTINATION lib)
+install(TARGETS ideep DESTINATION lib${LIB_SUFFIX})

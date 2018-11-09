@@ -1191,7 +1191,9 @@ struct convolution_forward: public computation,
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
       mkldnn_memory_desc_t bias_data = bias_desc.format_any();
-      mkldnn_memory_desc_t dst_data = dst_desc.format_any();
+      mkldnn_memory_desc_t dst_data =
+        attr.get_post_ops().has_op_kind(kind::sum) ?
+        *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
       tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
@@ -1244,7 +1246,9 @@ struct convolution_forward: public computation,
       mkldnn_convolution_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
-      mkldnn_memory_desc_t dst_data = dst_desc.format_any();
+      mkldnn_memory_desc_t dst_data =
+        attr.get_post_ops().has_op_kind(kind::sum) ?
+        *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
       tensor::dims dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
@@ -1693,7 +1697,8 @@ struct convolution_forward: public computation,
     descriptor::attr_t op_attr;
     auto& post_ops = attr.get_post_ops();
     auto dst_data_type = src.get_data_type();
-    auto src_format = src.get_internal_format();
+    auto dst_format = post_ops.has_op_kind(kind::sum) ?
+      dst.get_internal_format() : engine::default_format(dst_dims.size());
     tensor::descriptor src_desc, weights_desc, bias_desc;
     auto src_scales_in = src.has_scale() ? src.get_scale()
       : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
@@ -1712,7 +1717,6 @@ struct convolution_forward: public computation,
       dst_data_type = dst_scales.empty()
         ? tensor::data_type::f32 : tensor::data_type::s8;
       if (post_ops.has_op_kind(kind::sum)) {
-        src_format = dst.get_internal_format();
         dst_data_type = dst.get_data_type();
       } else if (post_ops.non_negitive_output()){
         dst_data_type = tensor::data_type::u8;
@@ -1741,15 +1745,13 @@ struct convolution_forward: public computation,
           op_attr.set_post_ops(descriptor::post_ops::relu());
         }
 
-        src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
+        src_desc = {src.get_dims(), tensor::data_type::u8};
         weights_desc = {weights.get_dims(), tensor::data_type::s8};
       }
       bias_desc = {bias.get_dims(), tensor::data_type::s32};
 
     } else {
       dst_data_type = tensor::data_type::f32;
-      if (post_ops.has_op_kind(kind::sum))
-        src_format = dst.get_internal_format();
 
       if (key_invalid) {
         op_attr = attr;
@@ -1758,7 +1760,7 @@ struct convolution_forward: public computation,
             && bias.get_data_type() == tensor::data_type::f32,
             "Incorrect data type in weights or bias");
 
-        src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
+        src_desc = {src.get_dims(), tensor::data_type::f32};
         weights_desc = weights.get_descriptor();
       }
       bias_desc = bias.get_descriptor();
@@ -1771,14 +1773,13 @@ struct convolution_forward: public computation,
         src_scales_in = IDEEP_DEF_SCALE;
     }
 
-    tensor::descriptor dst_desc_in(dst_dims, dst_data_type);
-
     if (key.empty()) {
       key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
         weights_desc.get_dims(), bias_desc.get_dims(), dst_dims,
         strides, dilates, padding_l, padding_r, op_attr, args...);
     }
 
+    tensor::descriptor dst_desc_in(dst_dims, dst_data_type, dst_format);
     auto comp = !key_invalid ? fetch(comp_it)
       : fetch(create(key, src_desc, weights_desc, bias_desc, dst_desc_in,
             strides, dilates, padding_l, padding_r, op_attr, std::forward<Ts>(args)...));
@@ -1806,12 +1807,11 @@ struct convolution_forward: public computation,
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
-    if (post_ops.has_op_kind(kind::sum))
-      IDEEP_ENFORCE(dst_desc.get_internal_format() == src_format
-          && dst_desc.get_data_type() == dst_data_type,
-          "Unmatch format in Conv Sum fusion");
-    if (dst.get_descriptor() != dst_desc)
+    if (dst.get_descriptor() != dst_desc) {
+      IDEEP_ENFORCE(!post_ops.has_op_kind(kind::sum),
+          "Unmatch format or data type in Conv Sum fusion");
       dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
+    }
     if (!dst_scales_in.empty()) dst.set_scale(dst_scales_in);
 
     comp.execute(src_in, weights_in, bias_in, dst);
@@ -1833,7 +1833,8 @@ struct convolution_forward: public computation,
     descriptor::attr_t op_attr;
     auto& post_ops = attr.get_post_ops();
     auto dst_data_type = src.get_data_type();
-    auto src_format = src.get_internal_format();
+    auto dst_format = post_ops.has_op_kind(kind::sum) ?
+      dst.get_internal_format() : engine::default_format(dst_dims.size());
     tensor::descriptor src_desc, weights_desc;
     auto src_scales_in = src.has_scale() ? src.get_scale()
       : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
@@ -1851,7 +1852,6 @@ struct convolution_forward: public computation,
       dst_data_type = dst_scales.empty()
         ? tensor::data_type::f32 : tensor::data_type::s8;
       if (post_ops.has_op_kind(kind::sum)) {
-        src_format = dst.get_internal_format();
         dst_data_type = dst.get_data_type();
       } else if (post_ops.non_negitive_output()){
         dst_data_type = tensor::data_type::u8;
@@ -1879,14 +1879,12 @@ struct convolution_forward: public computation,
           op_attr.set_post_ops(descriptor::post_ops::relu());
         }
 
-        src_desc = {src.get_dims(), tensor::data_type::u8, src_format};
+        src_desc = {src.get_dims(), tensor::data_type::u8};
         weights_desc = {weights.get_dims(), tensor::data_type::s8};
       }
 
     } else {
       dst_data_type = tensor::data_type::f32;
-      if (post_ops.has_op_kind(kind::sum))
-        src_format = dst.get_internal_format();
 
       if (key_invalid) {
         op_attr = attr;
@@ -1894,7 +1892,7 @@ struct convolution_forward: public computation,
         IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32,
             "Incorrect data type in weights");
 
-        src_desc = {src.get_dims(), tensor::data_type::f32, src_format};
+        src_desc = {src.get_dims(), tensor::data_type::f32};
         weights_desc = weights.get_descriptor();
       }
 
@@ -1905,14 +1903,13 @@ struct convolution_forward: public computation,
         src_scales_in = IDEEP_DEF_SCALE;
     }
 
-    tensor::descriptor dst_desc_in(dst_dims, dst_data_type);
-
     if (key.empty()) {
       key = utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
         weights_desc.get_dims(), dst_dims, strides, dilates,
         padding_l, padding_r, op_attr, args...);
     }
 
+    tensor::descriptor dst_desc_in(dst_dims, dst_data_type, dst_format);
     auto comp = !key_invalid ? fetch(comp_it)
       : fetch(create(key, src_desc, weights_desc, dst_desc_in, strides,
         dilates, padding_l, padding_r, op_attr, std::forward<Ts>(args)...));
@@ -1934,12 +1931,11 @@ struct convolution_forward: public computation,
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
-    if (post_ops.has_op_kind(kind::sum))
-      IDEEP_ENFORCE(dst_desc.get_internal_format() == src_format
-          && dst_desc.get_data_type() == dst_data_type,
+    if (dst.get_descriptor() != dst_desc) {
+      IDEEP_ENFORCE(!post_ops.has_op_kind(kind::sum),
           "Unmatch format or data type in Conv Sum fusion");
-    if (dst.get_descriptor() != dst_desc)
       dst.reinit<alloc, convolution_forward>(std::move(dst_desc));
+    }
     if (!dst_scales_in.empty()) dst.set_scale(dst_scales_in);
 
     comp.execute(src_in, weights_in, dst);

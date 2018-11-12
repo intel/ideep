@@ -423,11 +423,7 @@ inline std::string to_string(T&& arg, Ts&&... args) {
 inline bytestring to_bytes(const tensor arg) {
   bytestring bytes;
   auto arg_desc = arg.get_mkldnn_memory_desc_t();
-  bytes.reserve((sizeof(uint64_t) * 2 * arg_desc->ndims) +
-      (sizeof(int) * 4 * arg_desc->ndims) +
-      sizeof(arg_desc->data_type) +
-      sizeof(arg_desc->format) + 
-      sizeof(arg_desc->layout_desc.blocking.offset_padding));
+  bytes.reserve(sizeof(*arg_desc));
   for (int i = 0; i < arg_desc->ndims; i++) {
     bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[0][i])));
     bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[1][i])));

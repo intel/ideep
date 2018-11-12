@@ -106,14 +106,17 @@ inline bytestring to_bytes(const uint64_t arg) {
 template <typename T>
 inline bytestring to_bytes(const std::vector<T> arg) {
   bytestring bytes;
-  bytes.reserve(arg.size() * sizeof(T));
 
-  for (T elems : arg) {
-    bytes.append(to_bytes(elems));
+  if (arg.size() > 0) {
+    bytes.reserve(arg.size() * sizeof(T));
+    for (T elems : arg) {
+      bytes.append(to_bytes(elems));
+      bytes.append(1, 'x');
+    }
+    bytes.pop_back();
+  } else {
     bytes.append(1, 'x');
   }
-
-  bytes.pop_back();
 
   return bytes;
 }

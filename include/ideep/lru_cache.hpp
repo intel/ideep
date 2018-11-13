@@ -307,8 +307,12 @@ protected:
     return it.first;
   }
 
-  static inline value_t fetch(iterator it) {
+  static inline value_t& fetch(iterator it) {
     return it->second;
+  }
+
+  static inline void update(value_t &val, iterator it) {
+    it->second = val;
   }
 
   static inline iterator find(const key_t& key) {
@@ -321,7 +325,7 @@ protected:
 
 public:
   template <typename ...Ts>
-  static inline value_t fetch_or_create(const key_t& key, Ts&&... args) {
+  static inline value_t& fetch_or_create(const key_t& key, Ts&&... args) {
     return fetch(create(key, std::forward<Ts>(args)...));
   }
 
@@ -353,7 +357,7 @@ protected:
     return value_t(std::forward<Ts>(args)...);
   }
 
-  static inline value_t fetch(iterator it) {
+  static inline value_t& fetch(iterator it) {
     auto comp = std::move(it->second);
     g_store().erase(it);
     return comp;
@@ -369,7 +373,7 @@ protected:
 
 public:
   template <typename ...Ts>
-  static inline value_t fetch_or_create(const key_t& key, Ts&&... args) {
+  static inline value_t& fetch_or_create(const key_t& key, Ts&&... args) {
     const auto it = g_store().find(key);
 
     if (it != g_store().end()) {

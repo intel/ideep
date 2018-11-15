@@ -1851,14 +1851,18 @@ struct convolution_forward: public computation,
 
     if (key.empty()) {
       key = with_bias
-        ? utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
-            weights_desc.get_dims(), bias_desc.get_dims(), dst_dims,
-            strides, dilates, padding_l, padding_r,
-            op_attr, src_scales, dst_scales, args...)
-        : utils::create_key(src_desc.get_data_type(), src_desc.get_dims(),
-            weights_desc.get_dims(), dst_dims,
-            strides, dilates, padding_l, padding_r,
-            op_attr, src_scales, dst_scales, args...);
+        ? utils::create_key(
+            src.get_data_type(), src.get_dims(), src.get_internal_format(),
+            weights.get_data_type(), weights.get_dims(),
+            weights.get_internal_format(), bias.get_dims(),
+            strides, dilates, padding_l, padding_r, op_attr,
+            src_scales, dst_scales, args...)
+        : utils::create_key(
+            src.get_data_type(), src.get_dims(), src.get_internal_format(),
+            weights.get_data_type(), weights.get_dims(),
+            weights.get_internal_format(),
+            strides, dilates, padding_l, padding_r, op_attr,
+            src_scales, dst_scales, args...);
     }
 
     tensor::descriptor dst_desc_in(dst_dims, dst_data_type, dst_format);

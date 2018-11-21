@@ -838,6 +838,22 @@ public:
     return dims (mdesc->dims, &mdesc->dims[mdesc->ndims]);
   }
 
+  /// Return public format dimensions' size vector
+  inline dims get_public_format_dims() const {
+    if (public_format_ == format::iohw) {
+      dims public_format_dims;
+      public_format_dims.insert(
+          public_format_dims.begin(),
+          {get_dim(1),
+           get_dim(0),
+           get_dim(2),
+           get_dim(3)});
+      return public_format_dims;
+    } else {
+      return get_dims();
+    }
+  }
+
   /// Return number of dimensions
   inline int ndims() const {
     return get_mkldnn_memory_desc_t()->ndims;
@@ -930,6 +946,14 @@ public:
   /// Return internal format of the param
   inline format get_internal_format() const {
     return static_cast<format>(get_mkldnn_memory_desc_t()->format);
+  }
+
+  inline format get_public_format() const {
+    return public_format_;
+  }
+
+  inline format set_public_format(format aformat) {
+    return public_format_ = aformat;
   }
 
   /// Need reorder if current param used by non MKL-DNN routines.
@@ -1051,6 +1075,32 @@ protected:
   format public_format_;
   std::shared_ptr<char> buffer_;
   std::shared_ptr<scale_t> scale_;
+
+  // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+  void iohw_definedby_blocked() {
+    IDEEP_ENFORCE(ndims() == 4, "Only support 4 dims tensor");
+
+    dims oihw_dims;
+    oihw_dims.insert(
+        oihw_dims.begin(),
+        {get_dim(1),
+         get_dim(0),
+         get_dim(2),
+         get_dim(3)});
+
+    descriptor desc(oihw_dims, get_data_type(), format::oihw);
+    auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
+    auto oi_blk = oi_primitive_desc->layout_desc.blocking;
+    oi_blk.strides[0][0] = oi_blk.strides[0][1];
+    oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
+    dims stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
+    dims stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
+    dims block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
+    descriptor io_desc(oihw_dims, get_data_type(), stride, block_dims, stride_inner);
+
+    set_descriptor(io_desc);
+
+  }
 };
 
 /// Tensor that describes data buffer and its explanation.
@@ -1349,12 +1399,30 @@ public:
   /// @param array The data buffer to convert to
   inline tensor to_public(void *array = nullptr) const {
     tensor ret;
-    auto dst_format = (public_format_ == format::format_undef)
+    auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
       ? engine::default_format(ndims()) : public_format_;
-    if (array == nullptr)
-      ret.init({get_dims(), data_type::f32, dst_format});
-    else
-      ret.init({get_dims(), data_type::f32, dst_format}, array);
+
+    dims iohw_dims;
+    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+    bool is_iohw = (public_format_ == format::iohw);
+    if (is_iohw) {
+      iohw_dims.insert(
+        iohw_dims.begin(),
+        {get_dim(1),
+         get_dim(0),
+         get_dim(2),
+         get_dim(3)});
+      if (array == nullptr)
+        ret.init({iohw_dims, data_type::f32, format::oihw});
+      else
+        ret.init({iohw_dims, data_type::f32, format::oihw}, array);
+      ret.iohw_definedby_blocked();
+    } else {
+      if (array == nullptr)
+        ret.init({get_dims(), data_type::f32, dst_format});
+      else
+        ret.init({get_dims(), data_type::f32, dst_format}, array);
+    }
 
     if (!has_scale()) {
       reorder().execute(*this, ret);
@@ -1368,7 +1436,17 @@ public:
       reorder().execute(*this, ret, {mask, scales});
     }
 
+    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+    if (is_iohw) {
+      ret.set_descriptor({iohw_dims, data_type::f32, dst_format});
+    }
+
     return ret;
+  }
+
+  bool is_iohw_public_layout() const {
+    return (get_public_format() == format::iohw &&
+        get_internal_format() != format::blocked);
   }
 
   bool is_limited_blockable() {

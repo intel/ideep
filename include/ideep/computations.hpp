@@ -50,11 +50,20 @@
 #include "web.hpp"
 #include "utils.hpp"
 #include <mkl_vsl.h>
-#include <mkl_cblas.h>
 #include <mkl_vml_functions.h>
 #include <bitset>
 #include "fast_math.hpp"
 #endif
+
+// NOTE: Without MKL CBLAS supports, framework intends to
+// provide its own clbas APIs sometime.
+extern "C" {
+void cblas_sscal(
+    const int N, const float alpha, float *X, const int incX);
+void cblas_saxpy(
+    const int N, const float alpha, const float *X, const int incX,
+    float *Y, const int incY);
+}
 
 namespace ideep {
 

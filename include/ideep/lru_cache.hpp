@@ -294,7 +294,7 @@ private:
   size_type capacity_;
 };
 
-template <class value_t, size_t capacity = 1024, class key_t = std::string>
+template <class value_t, size_t capacity = 128, class key_t = std::string>
 class computation_cache {
 public:
   using iterator = typename lru_cache<key_t, value_t>::iterator;
@@ -346,7 +346,7 @@ public:
 };
 
 // TODO: mutex it
-template <class value_t, size_t capacity = 1024, class key_t = std::string>
+template <class value_t, size_t capacity = 128, class key_t = std::string>
 class computation_gcache {
 public:
   using iterator = typename lru_cache<key_t, value_t>::iterator;

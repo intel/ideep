@@ -960,7 +960,7 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
         unsigned flags, prop_kind pk)
 {
   const bool use_weights = flags & mkldnn::use_scale_shift;
-  const bool calculate_diff_stats = !(flags & mkldnn::omit_stats);
+  const bool calculate_diff_stats = !(flags & mkldnn::use_global_stats);
 
   const data_t *src_data = (const data_t *)src.get_data_handle();
   const data_t *scale_data = use_weights ?

@@ -138,7 +138,8 @@ enum format {
   hwigo = mkldnn_hwigo,
   ntc = mkldnn_ntc,
   tnc = mkldnn_tnc,
-  format_last = mkldnn_format_last
+  iohw = mkldnn_format_last + 1,
+  format_last = iohw + 1
 };
 
 /// cpu execution engine only.

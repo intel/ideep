@@ -807,38 +807,44 @@ public:
     if (input.is_empty() || output.is_empty())
       return;
 
+    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+    auto input_in = input;
+    if (input_in.is_iohw_public_layout()) {
+      iohw_definedby_blocked(input_in);
+    }
+
     key_t key;
     if (output.get_internal_format() == static_cast<format>(mkldnn_blocked) &&
-        input.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
-      key = utils::create_key(input, output, attr);
+        input_in.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
+      key = utils::create_key(input_in, output, attr);
     } else if (output.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
-      key = utils::create_key(input.get_dims(), input.get_data_type(),
-          input.get_internal_format(), output,
+      key = utils::create_key(input_in.get_dims(), input_in.get_data_type(),
+          input_in.get_internal_format(), output,
           attr);
-    } else if (input.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
-      key = utils::create_key(input, output.get_dims(), input.get_data_type(),
-          input.get_internal_format(),
+    } else if (input_in.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
+      key = utils::create_key(input_in, output.get_dims(), output.get_data_type(),
+          output.get_internal_format(),
           attr);
     } else {
-      key = utils::create_key(input.get_dims(), input.get_data_type(),
-          input.get_internal_format(), output.get_dims(), output.get_data_type(),
+      key = utils::create_key(input_in.get_dims(), input_in.get_data_type(),
+          input_in.get_internal_format(), output.get_dims(), output.get_data_type(),
           output.get_internal_format(), attr);
     }
 
-    fetch_or_create_m(op, key, input.get_descriptor(),
+    fetch_or_create_m(op, key, input_in.get_descriptor(),
         output.get_descriptor(), attr);
 
     if (web_opt && !sync_reorder) {
       auto cn = utils::computation_web::template computation_node<
           reorder, tensor>::create(op, prop_kind_t::CN_PROP_NA, output);
-      if (cn->build_deps(input)) {
+      if (cn->build_deps(input_in)) {
         utils::computation_web::template computation_node<
             reorder, tensor>::enqueue(cn);
         return;
       }
     }
 
-    op.do_compute(input, output);
+    op.do_compute(input_in, output);
   }
 
   virtual void fire_computation_node(
@@ -866,6 +872,30 @@ public:
 
 protected:
   tensor in_, out_;
+
+  // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+  static void iohw_definedby_blocked(tensor &atensor) {
+    IDEEP_ENFORCE(atensor.ndims() == 4, "Only support 4 dims tensor");
+
+    tensor::dims oihw_dims;
+    oihw_dims.insert(
+        oihw_dims.begin(),
+        {atensor.get_dim(1),
+         atensor.get_dim(0),
+         atensor.get_dim(2),
+         atensor.get_dim(3)});
+
+    tensor::descriptor desc(oihw_dims, atensor.get_data_type(), format::oihw);
+    auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
+    auto oi_blk = oi_primitive_desc->layout_desc.blocking;
+    oi_blk.strides[0][0] = oi_blk.strides[0][1];
+    oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
+    tensor::dims stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
+    tensor::dims stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
+    tensor::dims block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
+    tensor::descriptor io_desc(oihw_dims, atensor.get_data_type(), stride, block_dims, stride_inner);
+    atensor.set_descriptor(io_desc);
+  }
 };
 
 struct direct_copy : public reorder {
@@ -3107,10 +3137,24 @@ struct convolution_transpose_backward_data
       tensor& gradx,
       Ts&&... args) {
     tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
+    tensor::descriptor weight_desc;
+    tensor::dims oihw_dims;
+    bool is_iohw = weights.is_iohw_public_layout();
+    if (is_iohw) {
+      oihw_dims.insert(
+      oihw_dims.begin(),
+        {weights.get_dim(1),
+         weights.get_dim(0),
+         weights.get_dim(2),
+         weights.get_dim(3)});
+      tensor::descriptor desc(oihw_dims, weights.get_data_type(), format::oihw);
+      weight_desc = desc;
+    }
+
     auto key = utils::create_key(
         grady.get_data_type(),
         grady.get_dims(),
-        weights.get_dims(),
+        is_iohw ? oihw_dims : weights.get_dims(),
         gradx_dims,
         args...);
 
@@ -3118,7 +3162,7 @@ struct convolution_transpose_backward_data
         comp,
         key,
         grady.get_descriptor(),
-        weights.get_descriptor(),
+        is_iohw ? weight_desc : weights.get_descriptor(),
         result_desc,
         std::forward<Ts>(args)...);
 
@@ -3127,7 +3171,7 @@ struct convolution_transpose_backward_data
     auto grady_in = grady;
 
     // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
+    auto _weights = weights;
     auto weights_in = _weights;
 
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
@@ -3139,7 +3183,7 @@ struct convolution_transpose_backward_data
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, convolution_transpose_backward_data>(
           comp.expected_weights_descriptor());
-      reorder::compute(_weights.as_weights(), weights_in);
+      reorder::compute(_weights, weights_in);
     }
 
     gradx.reinit<alloc, convolution_transpose_backward_data>(

@@ -4202,117 +4202,181 @@ public:
   }
 };
 
-struct channel_shuffle_forward {
-public:
-  channel_shuffle_forward() = delete;
-
-public:
-  static void compute_impl(const tensor& src, tensor& dst, int group) {
-    auto C = src.get_dim(1);
-    auto K = C / group;
-    auto S = src.get_dim(2) * src.get_dim(3); // h * w
-    float* X = static_cast<float*>(src.get_data_handle());
-    float* Y = static_cast<float*>(dst.get_data_handle());
-
-    IDEEP_ENFORCE(C % group == 0, "Invalid channel and group");
-    IDEEP_ENFORCE(src.get_data_type() == tensor::data_type::f32, "invalid data type");
-
-    if (group <= 1) {
-      direct_copy::compute(src, dst);
-      return;
+struct channel_shuffle_forward: public computation,
+  public utils::computation_cache<channel_shuffle_forward>,
+  public utils::computation_web::node<tensor> {
+  /// Descriptor class for describing shuffle forward process
+  ///
+  struct descriptor : public descriptor_group {
+    /// Constructor
+    ///
+    /// @param src_desc Input tensor descriptor
+    /// @param dst_desc Result tensor descriptor
+    /// @param group_size size per group
+    descriptor(const tensor::descriptor &src_desc,
+        const int group_size,
+        const int axis = 1,
+        prop_kind aprop_kind = prop_kind::forward) {
+      mkldnn_shuffle_desc_t data;
+      error::wrap_c_api(
+          mkldnn_shuffle_forward_desc_init(&data,
+              mkldnn::convert_to_c(aprop_kind),
+              src_desc.get_mkldnn_memory_desc_t(), axis, group_size),
+              "could not create a shuffle forward descriptor");
+      mkldnn_primitive_desc_t result;
+      error::wrap_c_api(mkldnn_primitive_desc_create(
+        &result, &data, engine::cpu_engine().get(), nullptr),
+          "could not create a shuffle forward primitive descriptor");
+      reset(result);
     }
-#if defined(WIN32)
-    # pragma omp parallel for schedule(static)
-#else
-    # pragma omp parallel for collapse(3) schedule(static)
-#endif
-    for (auto n = 0; n < src.get_dim(0); n++) {
-      for (auto g = 0; g < group; g++) {
-        for (auto i = 0; i < K; i++) {
-          auto* X_offset = (X + g * K * S + n * C * S + S * i);
-          auto* Y_offset = (Y + g * S + n * C * S + group * S * i);
-#ifdef __AVX2__
-          FM_AVX2_PREF::memcpy<float>(X_offset, Y_offset, S);
-#else
-          std::memcpy(Y_offset, X_offset, sizeof(float) * S);
-#endif
-        }
-      }
-    }
+  };
+public:
+  template<typename ...Ts>
+  void init(const tensor::descriptor &x_desc, Ts &&...args) {
+    descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
+    computation::init(forward_descriptor, x_desc);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor& src, tensor& dst, const int group = 1) {
-    IDEEP_ENFORCE(src != dst, "Unsupport in-place op");
-    IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims");
+  channel_shuffle_forward() = default;
+
+  template<typename T, typename ...Ts>
+  channel_shuffle_forward(T arg, Ts &&...args) {
+    init(std::forward<T>(arg), std::forward<Ts>(args)...);
+  }
+
+  void execute(const tensor &x, const tensor &y) {
+    computation::execute(x, y);
+  }
+
+  void do_compute(const tensor& src, tensor& src_in, tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
+
+    execute(src_in, dst);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& src, tensor& dst, const int group,
+      const int axis = 1, prop_kind aprop_kind = prop_kind::forward) {
+    IDEEP_ENFORCE(src.get_dim(axis) % group == 0, "Invalid channel and group");
+    IDEEP_ENFORCE(src.get_data_type() == tensor::data_type::f32, "invalid data type");
+
+    auto group_size = src.get_dim(axis) / group;
+    auto key = utils::create_key(src.get_data_type(), src.get_dims(),
+        src.get_internal_format(), group_size, axis, aprop_kind);
+    fetch_or_create_m(comp, key, src.get_descriptor(),
+        group_size, axis, aprop_kind);
 
     auto src_in = src;
-    if (!src_in.is_public_format()) {
+    if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, channel_shuffle_forward>(
-          {src.get_dims(), src.get_data_type(), format::nchw});
-      reorder::compute(src, src_in);
+          comp.expected_src_descriptor());
     }
 
-    dst.reinit_like(src_in);
-    if (src_in.has_scale()) dst.set_scale(src_in.get_scale());
+    if (dst != src) {
+      dst.reinit<alloc, channel_shuffle_forward>(comp.expected_dst_descriptor());
+    }
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          channel_shuffle_forward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_FORWARD, dst);
+      if (cn->build_deps(src, src_in)) {
+        utils::computation_web::template computation_node<
+            channel_shuffle_forward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+    comp.do_compute(src, src_in, dst);
+  }
 
-    compute_impl(src_in, dst, group);
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], tars[0]);
   }
 };
 
-struct channel_shuffle_backward {
-public:
-  channel_shuffle_backward() = delete;
-
-public:
-  static void compute_impl(const tensor& grady, tensor& gradx, int group) {
-    auto C = grady.get_dim(1);
-    auto K = C / group;
-    auto S = grady.get_dim(2) * grady.get_dim(3); // h * w
-    float* dY = static_cast<float*>(grady.get_data_handle());
-    float* dX = static_cast<float*>(gradx.get_data_handle());
-
-    IDEEP_ENFORCE(C % group == 0, "Invalid channel and group");
-    IDEEP_ENFORCE(grady.get_data_type() == tensor::data_type::f32, "invalid data type");
-
-    if (group <= 1) {
-      direct_copy::compute(grady, gradx);
-      return;
+struct channel_shuffle_backward : public computation,
+  public utils::computation_cache<channel_shuffle_backward>,
+  public utils::computation_web::node<tensor> {
+  struct descriptor : public descriptor_group {
+    descriptor(const tensor::descriptor &grady_desc,
+        const int group_size, const int axis = 1) {
+      mkldnn_shuffle_desc_t data;
+      error::wrap_c_api(mkldnn_shuffle_backward_desc_init(&data,
+            grady_desc.get_mkldnn_memory_desc_t(),
+            static_cast<int>(axis),
+            static_cast<int>(group_size)),
+          "could not create a shuffle backward descriptor");
+      mkldnn_primitive_desc_t result;
+      error::wrap_c_api(mkldnn_primitive_desc_create(
+            &result, &data, engine::cpu_engine().get(), nullptr),
+          "could not create a shuffle backward primitive descriptor");
+      reset(result);
     }
-#if defined(WIN32)
-#pragma omp parallel for schedule(static)
-#else
-    # pragma omp parallel for collapse(3) schedule(static)
-#endif
-    for (auto n = 0; n < grady.get_dim(0); n++) {
-      for (auto g = 0; g < group; g++) {
-        for (auto i = 0; i < K; i++) {
-          auto* dY_offset = (dY + g * S + n * C * S + group * S * i);
-          auto* dX_offset = (dX + g * K * S + n * C * S + S * i);
-#ifdef __AVX2__
-          FM_AVX2_PREF::memcpy<float>(dY_offset, dX_offset, S);
-#else
-          std::memcpy(dX_offset, dY_offset, sizeof(float) * S);
-#endif
-        }
-      }
-    }
+  };
+public:
+  template<typename ...Ts>
+  void init(const tensor::descriptor &grady_desc, Ts &&...args) {
+    descriptor backward_descriptor(
+        grady_desc, std::forward<Ts>(args)...);
+    computation::init(backward_descriptor, grady_desc);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(const tensor& grady, tensor& gradx, const int group = 1) {
-    IDEEP_ENFORCE(grady != gradx, "Unsupport in-place op");
-    IDEEP_ENFORCE(grady.ndims() == 4, "Only support 4 dims");
+  channel_shuffle_backward() = default;
 
-    auto grady_in = grady;
-    if (!grady_in.is_public_format()) {
-      grady_in.init<alloc, channel_shuffle_backward>(
-          {grady.get_dims(), grady.get_data_type(), format::nchw});
+  template<typename T, typename ...Ts>
+  channel_shuffle_backward(T grady_desc, Ts &&...args) {
+    init(std::forward<T>(grady_desc), std::forward<Ts>(args)...);
+  }
+
+  void execute(const tensor &grady, const tensor &gradx) {
+    computation::execute(grady, gradx);
+  }
+
+  void do_compute(const tensor& grady, tensor& grady_in, tensor& gradx) {
+    if (grady.get_data_handle() != grady_in.get_data_handle()) {
       reorder::compute(grady, grady_in);
     }
 
-    gradx.reinit_like(grady_in);
-    compute_impl(grady_in, gradx, group);
+    execute(grady_in, gradx);
+  }
+
+  template<class alloc = utils::allocator, bool web_opt = false>
+  static void compute(const tensor& grady,
+      tensor& gradx, const int group, const int axis = 1) {
+    auto group_size = grady.get_dim(axis) / group;
+    auto key = utils::create_key(grady.get_data_type(), grady.get_dims(),
+        grady.get_internal_format(), group_size, axis);
+
+    fetch_or_create_m(comp, key, grady.get_descriptor(),
+       group_size, axis);
+
+    auto grady_in = grady;
+    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
+      grady_in.init<alloc, channel_shuffle_backward>(
+          comp.expected_grady_descriptor());
+    }
+
+    if (gradx != grady)
+      gradx.reinit<alloc, channel_shuffle_backward>(comp.expected_gradx_descriptor());
+
+    if (web_opt) {
+      auto cn = utils::computation_web::template computation_node<
+          channel_shuffle_backward, tensor>::create(
+          comp, prop_kind_t::CN_PROP_BACKWARD, gradx);
+      if (cn->build_deps(grady, grady_in)) {
+        utils::computation_web::template computation_node<
+            channel_shuffle_backward, tensor>::enqueue(cn);
+        return;
+      }
+    }
+
+    comp.do_compute(grady, grady_in, gradx);
+  }
+
+  virtual void fire_computation_node(
+      std::vector<tensor>& deps, std::vector<tensor>& tars) {
+    do_compute(deps[0], deps[1], tars[0]);
   }
 };
 

@@ -6517,11 +6517,22 @@ public:
       err = (err_num_t)-UNSUPPORT_DATA_TYPE;
       return tensor();
     }
-
-    if (optimized_format(src))
-      return sum_fast_along_axis<web_opt>(src, axis, err);
+    tensor src_in = src;
+    if (src.get_dims()[1] % 16 != 0 && src.get_dims()[1] % 8 != 0 && src.ndims() == 4) {
+      if (int(src.get_internal_format()) != mkldnn_nchw) {
+        src_in.init({src.get_dims(), src.get_data_type(), engine::default_format(4)});
+        reorder::compute(src, src_in);
+      }
+    } else if (src.get_dims()[1] % 8 == 0 && src.get_dims()[1] % 16 != 0 && src.ndims() == 4) {
+      if (int(src.get_internal_format()) != mkldnn_nChw8c) {
+        src_in.init({src.get_dims(), src.get_data_type(), format(mkldnn_nChw8c)});
+        reorder::compute(src, src_in);
+      }
+    }
+    if (optimized_format(src_in))
+      return sum_fast_along_axis<web_opt>(src_in, axis, err);
     else
-      return sum_common_along_axis<web_opt>(src, axis, err);
+      return sum_common_along_axis<web_opt>(src_in, axis, err);
   }
 
   virtual void fire_computation_node(

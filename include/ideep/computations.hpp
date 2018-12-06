@@ -154,7 +154,7 @@ public:
     std::tuple<kind, float, float, float, algorithm>
       get_params(int index) const {
       mkldnn_alg_kind_t c_alg = mkldnn_eltwise_relu;
-      float scale, alpha = 1.0, beta = 0.0;
+      float scale = 1.0, alpha = 1.0, beta = 0.0;
 
       auto akind = op_kind(index);
       switch(akind) {
@@ -180,7 +180,7 @@ public:
 
       for (int i = 0; i < num_ops(); i ++) {
         kind akind;
-        float scale, alpha, beta;
+        float scale = 1.0, alpha = 1.0, beta = 0.0;
         algorithm alg;
         std::tie(akind, scale, alpha, beta, alg) = get_params(i);
 

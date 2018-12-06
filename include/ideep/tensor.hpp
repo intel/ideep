@@ -758,9 +758,10 @@ public:
   /// is undefined
   /// @param adims New dimension
   /// @param adata_type New data type
+  template<class alloc = utils::allocator, class computation_t = computation>
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
-    init(adesc);
+    init<alloc, computation_t>(adesc);
   }
 
   /// Returns pointer to structure of primitive descriptor.
@@ -1156,7 +1157,7 @@ public:
   /// @param major Descriptor for the tensor
   /// @param workspace Extra descriptor of the tensor which will be packed in
   tensor(const descriptor &major, const descriptor &workspace)
-    : tensor(major) {
+    : param(major) {
     init_extra(workspace);
   }
 
@@ -1276,6 +1277,7 @@ public:
   /// Reshape a param, reorder might happen if its format is internal
   /// @param new_dims New dimension
   /// @result Return new param reference
+  template<class alloc = utils::allocator, class computation_t = computation>
   tensor& reshape(dims new_dims) {
     if (!get_descriptor().is_shape_compatible(new_dims)) {
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
@@ -1284,7 +1286,7 @@ public:
         utils::computation_web::template parameter<tensor>::
             computation_param_materialize(*this);
         tensor p;
-        p.init<utils::scratch_allocator>({get_dims(), get_data_type()});
+        p.init<alloc, computation_t>({get_dims(), get_data_type()});
         reorder_to(p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
@@ -1397,6 +1399,7 @@ public:
 
   /// Convert the tensor to public format and data type
   /// @param array The data buffer to convert to
+  template<class alloc = utils::allocator, class computation_t = computation>
   inline tensor to_public(void *array = nullptr) const {
     tensor ret;
     auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
@@ -1413,13 +1416,13 @@ public:
          get_dim(2),
          get_dim(3)});
       if (array == nullptr)
-        ret.init({iohw_dims, data_type::f32, format::oihw});
+        ret.init<alloc, computation_t>({iohw_dims, data_type::f32, format::oihw});
       else
         ret.init({iohw_dims, data_type::f32, format::oihw}, array);
       ret.iohw_definedby_blocked();
     } else {
       if (array == nullptr)
-        ret.init({get_dims(), data_type::f32, dst_format});
+        ret.init<alloc, computation_t>({get_dims(), data_type::f32, dst_format});
       else
         ret.init({get_dims(), data_type::f32, dst_format}, array);
     }

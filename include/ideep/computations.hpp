@@ -3022,24 +3022,33 @@ struct convolution_transpose_forward
       tensor::data_type dtype = tensor::data_type::f32,
       const tensor::dims& strides = {1, 1},
       const tensor::dims& padding_l = {0, 0},
-      const tensor::dims& padding_r = {0, 0}) {
+      const tensor::dims& padding_r = {0, 0},
+      int group = 1) {
     auto dims_in = weights_dims;
+    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
+      tensor::group_dims(dims_in, group);
+    }
     auto ndims = dims_in.size();
-
-    // Construct a dummy case
-    auto ic = dims_in[1];
-    auto oc = dims_in[0];
+    auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
+    auto g = grouped ? dims_in[0] : 1;
+    auto ic = g * dims_in[1 + grouped];
+    auto oc = g * dims_in[0 + grouped];
     auto kh = dims_in[ndims - 2];
     auto kw = dims_in[ndims - 1];
-    auto h = 4 * kh;
-    auto w = 4 * kw;
+    auto h = 8 * kh;
+    auto w = 8 * kw;
     auto oh = (h - 1) * strides[0] + kh - padding_l[0] - padding_r[0];
     auto ow = (w - 1) * strides[1] + kw - padding_l[1] - padding_r[1];
     tensor::dims x_dims = {1, ic, h, w};
     tensor::dims y_dims = {1, oc, oh, ow};
-    tensor::descriptor x_desc(x_dims, dtype, format::nchw);
-    tensor::descriptor y_desc(y_dims, dtype, format::nchw);
-    tensor::descriptor weights_desc(dims_in, dtype, format::oihw);
+    auto x_dtype = (dtype != tensor::data_type::s8)
+      ? dtype : tensor::data_type::u8;
+    auto y_dtype = (dtype != tensor::data_type::s8)
+      ? dtype : tensor::data_type::s32;
+    tensor::descriptor x_desc(x_dims, x_dtype, format::nchw);
+    tensor::descriptor y_desc(y_dims, y_dtype, format::nchw);
+    tensor::descriptor weights_desc(dims_in, dtype,
+        grouped ? format::goihw : format::oihw);
 
     convolution_transpose_forward comp(
         x_desc, weights_desc, y_desc, strides, padding_l, padding_r);

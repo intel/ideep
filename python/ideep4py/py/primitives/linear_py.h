@@ -46,10 +46,10 @@ public:
                          mdarray *bias) {
     tensor dst;
     if (bias)
-      inner_product_forward::compute<scratch_allocator>(
+      inner_product_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
           *src->get(), *weights->get(), *bias->get(), dst);
     else
-      inner_product_forward::compute<scratch_allocator>(
+      inner_product_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
           *src->get(), *weights->get(), dst);
 
     auto out = mdarray(dst);
@@ -59,7 +59,7 @@ public:
   static mdarray BackwardWeights(mdarray *src,
                                  mdarray *grady) {
     tensor gW;
-    inner_product_backward_weights::compute<scratch_allocator>(
+    inner_product_backward_weights::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *src->get(), *grady->get(), gW);
 
     auto out = mdarray(gW);
@@ -69,7 +69,7 @@ public:
   static std::vector<mdarray> BackwardWeightsBias(mdarray *src,
                                                   mdarray *grady) {
     tensor gW, gb;
-    inner_product_backward_weights::compute<scratch_allocator>(
+    inner_product_backward_weights::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *src->get(), *grady->get(), gW, gb);
 
     std::vector<mdarray> outs;
@@ -85,7 +85,7 @@ public:
                          weights->get()->get_dims()[1]};
 
     tensor gradx_tensor;
-    inner_product_backward_data::compute<scratch_allocator>(
+    inner_product_backward_data::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *grady->get(), *weights->get(), gradx_dims, gradx_tensor);
 
     auto out = mdarray(gradx_tensor);

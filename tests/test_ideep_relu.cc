@@ -43,7 +43,7 @@ protected:
           algorithm::eltwise_relu, prop_kind::forward, p.negative_slope, 0.0);
     // };
 
-    // if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    // if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     //   return;
 
     check_relu_fwd(p.negative_slope, src_, dst);
@@ -57,7 +57,7 @@ protected:
           algorithm::eltwise_relu, p.negative_slope, 0.0);
     // };
 
-    // if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    // if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     //   return;
 
     check_relu_bwd(p.negative_slope, src_, grady_, gradx);
@@ -75,7 +75,7 @@ TEST_P(relu_test_float, TestsRelu) {
     Forward();
     Backward();
   };
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 }
 

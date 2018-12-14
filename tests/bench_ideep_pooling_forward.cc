@@ -54,7 +54,7 @@ protected:
           p.aprop_kind, padding_kind::zero);
     };
 
-    if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+    if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
       return;
 
   }

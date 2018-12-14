@@ -78,7 +78,7 @@ TEST_P(convolution_test, TestCompute) {
         tensor::dims {cd.padh, cd.padw}, padR_);
   };
 
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
   tensor ref_gradw(gradw.get_descriptor());

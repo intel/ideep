@@ -45,7 +45,7 @@ public:
     }
 
     tensor dst;
-    concat::compute<scratch_allocator>(inputs_, axis, dst);
+    concat::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(inputs_, axis, dst);
     auto out = mdarray(dst);
 
     return out;

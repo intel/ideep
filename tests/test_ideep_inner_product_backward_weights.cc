@@ -71,7 +71,7 @@ TEST_P(inner_product_test_float, TestBackwardWeights) {
       inner_product_backward_weights::compute(src_, grady_, gradw);
   };
 
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
   compute_ref_inner_product_bwd_weights<float>(ipd, src_, grady_, gradw_ref_);

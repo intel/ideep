@@ -14,6 +14,7 @@ Minimum requirements:
 - Numpy 1.13
 - Swig 3.0.12
 - Doxygen 1.8.5
+- (optional) MPICH devel 3.2
 
 
 Other requirements:
@@ -32,6 +33,14 @@ pip install -U setuptools
 
 ### Install python package from the source code:
 
+CentOS:
+```
+git submodule update --init && mkdir build && cd build && cmake3 ..
+cd ../python
+python setup.py install
+
+```
+Other:
 ```
 git submodule update --init && mkdir build && cd build && cmake ..
 cd ../python
@@ -52,6 +61,32 @@ We are providing the official Docker images based on different platforms on [Doc
 ```
 docker pull chainer/chainer:latest-intel-python2
 docker run -it chainer/chainer:latest-intel-python2 /bin/bash
+```
+
+**Multinode support:**
+
+IDeep provide non-blocking multinode data parallelism support.  The system is requried to meet MPICH dependency and user needs to replace the cmake command in build process:
+
+Make sure your MPI executable is in PATH:
+
+```
+PATH=$PATH:<path-to-mpiexec>
+# use the following line when you execute cmake or cmake3
+# CentOS:
+cmake3 -Dmultinode=ON ..
+# Other:
+cmake -Dmultinode=ON ..
+```
+
+Execute the test:
+```
+cd total_reduce/test
+mpirun -N 4 python3 test_1payload_inplace.py
+```
+The commands above will start 4 MPI processes on your machine and conduct a blocking allreduce operation among all 4 processes.  To test it in a real multinode environment, compile your <hostlist> file and use the following commands:
+```
+cd total_reduce/test
+mpirun -f <hostlist> -N 4 python3 test_1payload_inplace.py
 ```
 
 ## More information

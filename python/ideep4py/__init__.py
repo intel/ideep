@@ -22,6 +22,8 @@ from ideep4py._ideep4py import relu  # NOQA
 from ideep4py._ideep4py import basic_acc_sum  # NOQA
 from ideep4py._ideep4py import basic_copyto  # NOQA
 
+from ideep4py._ideep4py import distribute    # NOQA
+
 # from ideep4py._ideep4py import dlCompression  # NOQA
 # from ideep4py import cosim  # NOQA
 
@@ -291,7 +293,7 @@ def convolution2DParam(out_dims, dy, dx, sy, sx, ph, pw, pd, pr):
     cp.out_dims = intVector()
     for d in out_dims:
         cp.out_dims.push_back(d)
-    cp.dilate_y, cp.dilate_x = (dy - 1), (dx - 1)
+    cp.dilate_y, cp.dilate_x = dy, dx
     cp.sy, cp.sx = sy, sx
     cp.pad_lh, cp.pad_lw = ph, pw
     cp.pad_rh, cp.pad_rw = pd, pr

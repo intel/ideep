@@ -57,7 +57,7 @@ TEST_P(inner_product_test_float, TestsBackwardData) {
     inner_product_backward_data::compute(grady_, weights_, gradx_dims, gradx);
   };
 
-  if (catch_expected_failures(test, p.expect_to_fail, p.expected_status))
+  if (catch_ideep_expected_failures(test, p.expect_to_fail, p.expected_status))
     return;
 
   compute_ref_inner_product_bwd_data<float>(

@@ -39,4 +39,5 @@
 %include "lrn.i"
 %include "dropout.i"
 %include "basic.i"
+%include "total_reduce.i"
 /* %include "dlcp.i" */

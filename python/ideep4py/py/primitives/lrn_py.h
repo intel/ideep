@@ -44,7 +44,8 @@ public:
     std::vector<mdarray> outs;
 
     tensor dst;
-    lrn_forward::compute<scratch_allocator>(*src->get(), dst, pp->n,
+    lrn_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
+        *src->get(), dst, pp->n,
         pp->alpha, pp->beta, pp->k, lrn_algo_convert(pp->algo_kind));
 
     outs.push_back(mdarray(dst));
@@ -59,7 +60,8 @@ public:
       dst.init_extra(*ws->get());
 
     tensor gradx;
-    lrn_backward::compute<scratch_allocator>(*src->get(), *grady->get(),
+    lrn_backward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
+        *src->get(), *grady->get(),
         dst, gradx, pp->n, pp->alpha, pp->beta, pp->k,
         lrn_algo_convert(pp->algo_kind));
 

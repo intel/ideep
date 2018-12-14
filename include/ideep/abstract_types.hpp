@@ -2,12 +2,28 @@
 #define _ABSTRACT_TYPES_HPP_
 
 #include <string>
+#include <map>
+#include <vector>
 #include <mkldnn.h>
 #include <mkldnn.hpp>
 
 namespace ideep {
 
-using error = mkldnn::error;
+#if defined (__GNUC__)
+#define IDEEP_DEPRECATED __attribute__((deprecated))
+#elif defined(_MSC_VER)
+#define IDEEP_DEPRECATED __declspec(deprecated)
+#else
+#define IDEEP_DEPRECATED
+#endif
+
+#ifdef _WIN32
+#define IDEEP_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__)
+#define IDEEP_EXPORT __attribute__((__visibility__("default")))
+#else
+#define IDEEP_EXPORT
+#endif
 
 #ifdef _WIN32
 #define IDEEP_EXPORT __declspec(dllexport)
@@ -23,14 +39,39 @@ using error = mkldnn::error;
         ? mkldnn_success : mkldnn_invalid_arguments, (message));  \
   } while(false) \
 
-#define IDEEP_STD_EQUAL(v, i) \
-  std::all_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k == i;})
+#define IDEEP_STD_ALL_EQ(v, i) \
+  std::all_of(v.begin(), v.end(), []( \
+        std::remove_reference<decltype(v)>::type::value_type k){return k == i;})
+
+#define IDEEP_STD_ANY_LE(v, i) \
+  std::any_of(v.begin(), v.end(), []( \
+        std::remove_reference<decltype(v)>::type::value_type k){return k <= i;})
+
+#define IDEEP_STD_EACH_SUB(v, i) \
+  for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
+
+#define IDEEP_CROSS_EQUAL(v1, v2, i1, i2) \
+  (((v1 == i1) && (v2 == i2)) || ((v1 == i2) && (v2 == i1)))
 
 // For 2D convolution with grouped weights, the ndims must be 5 (goihw)
 #define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)
 
 #define IDEEP_MOD_PTR(ptr, bytes) (((uintptr_t)(ptr)) & ((bytes) - 1))
 #define IDEEP_IS_ALIGNED_PTR(ptr, bytes) ((IDEEP_MOD_PTR(ptr, bytes)) == 0)
+
+struct error: public std::exception {
+    mkldnn_status_t status;
+    const char *message;
+
+    error(mkldnn_status_t astatus, const char* amessage)
+        : status(astatus), message(amessage) {}
+
+    static void wrap_c_api(mkldnn_status_t status, const char * message) {
+      if (status != mkldnn_success) {
+        throw error(status, message);
+      }
+    }
+};
 
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance
@@ -62,28 +103,26 @@ public:
   }
 };
 
-/// C wrappers which form a functioning complex, in case multiple
-/// Primitives needed to finish certain task.
-template <typename T>
-class c_wrapper_complex : public c_wrapper<T> {
-public:
-  using size_type = typename std::vector<c_wrapper<T>>::size_type;
-  constexpr static int max_reorder_needed = 3;
-
-  c_wrapper_complex() {}
-
-  inline bool need_reorder_input(int pos) const {
-    if (pos < max_reorder_needed/* auxiliaries_.size()*/)
-      return auxiliaries_[pos] != nullptr;
-    return false;
-  }
-protected:
-  c_wrapper<T> auxiliaries_[max_reorder_needed];
-};
-
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
+using scale_t = std::vector<float>;
 using round_mode = mkldnn::round_mode;
+
+#define IDEEP_OP_SCALE_MASK(scale_size) (((scale_size) > 1) ? 2 : 0)
+#define IDEEP_TENSOR_SCALE_MASK(scale_size, grouped) \
+  (((scale_size) > 1) ? ((grouped) ? 3 : 1) : 0)
+
+const scale_t IDEEP_DEF_SCALE {1.0f};
+
+constexpr int IDEEP_U8_MAX = 0xFF;
+constexpr int IDEEP_S8_MAX = 0x7F;
+constexpr int IDEEP_S32_MAX = 0x7FFFFFFF;
+const std::map<mkldnn::memory::data_type, int> dt_max_map
+{
+  {mkldnn::memory::data_type::s32, IDEEP_S32_MAX},
+  {mkldnn::memory::data_type::s8, IDEEP_S8_MAX},
+  {mkldnn::memory::data_type::u8, IDEEP_U8_MAX}
+};
 
 /// hide other formats
 enum format {
@@ -107,7 +146,8 @@ enum format {
   hwigo = mkldnn_hwigo,
   ntc = mkldnn_ntc,
   tnc = mkldnn_tnc,
-  format_last = mkldnn_format_last
+  iohw = mkldnn_format_last + 1,
+  format_last = iohw + 1
 };
 
 /// cpu execution engine only.
@@ -161,6 +201,8 @@ struct stream: public mkldnn::stream {
     return stream(mkldnn::stream::kind::eager);
   }
 };
+
+using key_t = std::string;
 
 using kind = mkldnn::primitive::kind;
 using prop_kind = mkldnn::prop_kind;

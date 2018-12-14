@@ -8,6 +8,7 @@
 #include <intrin.h>
 #endif
 #include "tensor.hpp"
+#include "utils.hpp"
 
 namespace ideep {
 namespace utils {
@@ -306,8 +307,12 @@ protected:
     return it.first;
   }
 
-  static inline value_t fetch(iterator it) {
+  static inline value_t& fetch(iterator it) {
     return it->second;
+  }
+
+  static inline void update(value_t &val, iterator it) {
+    it->second = val;
   }
 
   static inline iterator find(const key_t& key) {
@@ -320,7 +325,7 @@ protected:
 
 public:
   template <typename ...Ts>
-  static inline value_t fetch_or_create(const key_t& key, Ts&&... args) {
+  static inline value_t& fetch_or_create(const key_t& key, Ts&&... args) {
     return fetch(create(key, std::forward<Ts>(args)...));
   }
 
@@ -352,7 +357,7 @@ protected:
     return value_t(std::forward<Ts>(args)...);
   }
 
-  static inline value_t fetch(iterator it) {
+  static inline value_t& fetch(iterator it) {
     auto comp = std::move(it->second);
     g_store().erase(it);
     return comp;
@@ -368,7 +373,7 @@ protected:
 
 public:
   template <typename ...Ts>
-  static inline value_t fetch_or_create(const key_t& key, Ts&&... args) {
+  static inline value_t& fetch_or_create(const key_t& key, Ts&&... args) {
     const auto it = g_store().find(key);
 
     if (it != g_store().end()) {
@@ -419,60 +424,23 @@ inline std::string to_string(T&& arg, Ts&&... args) {
     '*' + to_string(std::forward<Ts>(args)...);
 }
 
-// Fast alternative to heavy string method
-using bytestring = std::string;
-
-
-inline bytestring to_bytes(const int arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
-#if defined(WIN32)
-  auto len = sizeof(arg) - __lzcnt(arg) / 8;
-#else
-# if !defined(__AVX__)
-  if (arg == 0)
-    return bytestring();
-
-  auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
-# else
-  unsigned int lz;
-  asm volatile ("lzcntl %1, %0": "=r" (lz): "r" (arg));
-  auto len = sizeof(int) - lz / 8;
-# endif
-#endif
-
-  return bytestring(as_cstring, len);
-}
-
-inline bytestring to_bytes(const float arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
-  return bytestring(as_cstring, sizeof(float));
-}
-
-template <typename T>
-inline bytestring to_bytes(const std::vector<T> arg) {
+inline bytestring to_bytes(const tensor arg) {
   bytestring bytes;
-  bytes.reserve(arg.size() * sizeof(T));
-
-  for (T elems : arg) {
-    bytes.append(to_bytes(elems));
-    bytes.append(1, 'x');
+  auto arg_desc = arg.get_mkldnn_memory_desc_t();
+  bytes.reserve(sizeof(*arg_desc));
+  for (int i = 0; i < arg_desc->ndims; i++) {
+    bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[0][i])));
+    bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[1][i])));
+    bytes.append(to_bytes(arg_desc->layout_desc.blocking.block_dims[i]));
+    bytes.append(to_bytes(arg_desc->layout_desc.blocking.padding_dims[i]));
+    bytes.append(to_bytes(arg_desc->layout_desc.blocking.offset_padding_to_data[i]));
+    bytes.append(to_bytes(arg_desc->dims[i]));
   }
-
-  bytes.pop_back();
+  bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.offset_padding)));
+  bytes.append(to_bytes(arg_desc->data_type));
+  bytes.append(to_bytes(arg_desc->format));
 
   return bytes;
-}
-
-template <typename T, typename =
-  typename std::enable_if<std::is_enum<T>::value>::type>
-inline bytestring to_bytes(T arg) {
-  return std::to_string(static_cast<int>(arg));
-}
-
-template <typename T, typename =
-  typename std::enable_if< std::is_class<T>::value>::type, typename = void>
-inline bytestring to_bytes(const T arg) {
-  return arg.to_bytes();
 }
 
 template <typename T, typename ...Ts>
@@ -487,8 +455,6 @@ inline bytestring to_bytes(T&& arg, Ts&&... args) {
 
   return bytes;
 }
-
-using key_t = std::string;
 
 template <typename ...Ts>
 inline key_t create_key(Ts&&... args) {

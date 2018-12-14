@@ -31,9 +31,12 @@ def install_mkldnn():
     else:
         cmake = 'cmake'
 
-    os.system('%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
-              && %s --build %s --target install'
-              % (cmake, ideep4py_dir, ideep_build_dir, cmake, ideep_build_dir))
+    ret = os.system('%s -DCMAKE_INSTALL_PREFIX=%s --build %s \
+                    && %s --build %s --target install'
+                    % (cmake, ideep4py_dir, ideep_build_dir,
+                       cmake, ideep_build_dir))
+    if ret != 0:
+        exit(1)
 
 
 ###############################################################################
@@ -105,6 +108,7 @@ swig_opts = ['-c++', '-builtin', '-modern', '-modernargs',
              '-Iideep4py/py/mm',
              '-Iideep4py/py/primitives',
              '-Iideep4py/py/swig_utils',
+             '-Iideep4py/py/total_reduce',
              # '-Iideep4py/py/dlcp'
              ]
 
@@ -114,6 +118,17 @@ if sys.version_info.major < 3:
 ccxx_opts = ['-std=c++11', '-Wno-unknown-pragmas',
              '-march=native', '-mtune=native',
              '-D_TENSOR_MEM_ALIGNMENT_=4096']
+
+env = os.environ
+if env.get('WEB_OPT') is not None and env['WEB_OPT'].isdigit():
+    ideep4py_web_opt = int(env['WEB_OPT'])
+else:
+    ideep4py_web_opt = 0
+
+if ideep4py_web_opt != 0:
+    ccxx_opts += ['-D_IDEEP4PY_WEB_OPT_=true']
+else:
+    ccxx_opts += ['-D_IDEEP4PY_WEB_OPT_=false']
 
 if os_name == 'Darwin':
     link_opts = ['-Wl,-rpath,@loader_path/lib', '-Lideep4py/lib']
@@ -125,16 +140,16 @@ includes = ['ideep4py/include',
             'ideep4py/include/ideep',
             'ideep4py/py/mm',
             'ideep4py/py/primitives',
+            'ideep4py/py/total_reduce',
             # 'ideep4py/py/dlcp'
             ]
 
 if os_name == 'Linux':
-    libraries = ['mkldnn', 'mklml_intel']  # , 'dlcomp']
+    libraries = ['mkldnn', 'mklml_intel', 'ideep', 'm']  # , 'dlcomp']
     ccxx_opts += ['-fopenmp']
-    libraries += ['m']
     link_opts += ['-Wl,-z,now', '-Wl,-z,noexecstack']
 else:
-    libraries = ['mkldnn', 'mklml']
+    libraries = ['mkldnn', 'mklml', 'ideep']
 
 src = ['ideep4py/py/ideep4py.i',
        'ideep4py/py/mm/mdarray.cc',

@@ -42,7 +42,7 @@ public:
 
   static mdarray Forward(mdarray &src, float slope = 0.0) {
     tensor dst;
-    eltwise_forward::compute<scratch_allocator>(
+    eltwise_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
                   *src.get(), dst, algorithm::eltwise_relu,
                   prop_kind::forward, slope);
 
@@ -52,7 +52,7 @@ public:
 
   static mdarray Backward(mdarray &src, mdarray &grady, float slope = 0.0) {
     tensor gradx;
-    eltwise_backward::compute<scratch_allocator>(
+    eltwise_backward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *src.get(), *grady.get(), gradx, algorithm::eltwise_relu, slope);
 
     auto out = mdarray(gradx);
@@ -71,7 +71,7 @@ public:
 
   static mdarray Forward(mdarray &src) {
     tensor dst;
-    eltwise_forward::compute<scratch_allocator>(
+    eltwise_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *(src.get()), dst, algorithm::eltwise_tanh);
 
     auto out = mdarray(dst);
@@ -80,7 +80,7 @@ public:
 
   static mdarray Backward(mdarray &src, mdarray &grady) {
     tensor gradx;
-    eltwise_backward::compute<scratch_allocator>(
+    eltwise_backward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *(src.get()), *(grady.get()), gradx, algorithm::eltwise_tanh);
 
     auto out = mdarray(gradx);

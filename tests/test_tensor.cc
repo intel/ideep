@@ -78,7 +78,9 @@ RC_GTEST_FIXTURE_PROP(tensor_tests, TestBasic,
   EXPECT_TRUE(odims == odims_);
   EXPECT_TRUE(rdims == rdims_);
 
-  reorder::compute(tensor(), tensor());
+  tensor src;
+  tensor dst;
+  reorder::compute(src, dst);
 }
 
 // int main() {

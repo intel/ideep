@@ -110,6 +110,16 @@ public:
     mpool() : alloc_size_(0), free_size_(0),
         alignment_(SYS_MEMORY_ALIGNMENT), seq_(0) {}
 
+    ~mpool() {
+      std::lock_guard<std::mutex> lock(mutex_);
+      for (int i = 0; i < MAX_ENTRY; ++i) {
+        std::list<header_t *>& l = free_hashline_[i];
+        for (auto& h: l) {
+          ::free(h);
+        }
+      }
+    }
+
     void *malloc(size_t size) {
       std::lock_guard<std::mutex> lock(mutex_);
       void *ptr;
@@ -136,7 +146,7 @@ public:
       // No cached memory
       size_t len = size + alignment_;
 #if defined(WIN32)
-	  ptr = _aligned_malloc(size, alignment_);
+      ptr = _aligned_malloc(size, alignment_);
 #else
       int rc = ::posix_memalign(&ptr, alignment_, len);
       if (rc != 0)

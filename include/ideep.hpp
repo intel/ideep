@@ -26,10 +26,10 @@
 #define _IDEEP_HPP
 
 #ifndef DOXYGEN_SHOULD_SKIP_THIS
-#include <assert.h>
 #include <stdlib.h>
 #include <algorithm>
 #include <memory>
+#include <map>
 #include <vector>
 #include <iterator>
 #include <string>
@@ -44,6 +44,7 @@
 #include "ideep/computations.hpp"
 #include "ideep/allocators.hpp"
 #include "ideep/fast_math.hpp"
+#include "ideep/distribute.hpp"
 
 #endif
 

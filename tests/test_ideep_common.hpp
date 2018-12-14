@@ -6,8 +6,36 @@
 
 #include <ideep.hpp>
 #include <ideep_pin_singletons.hpp>
+#include <string>
 
 namespace ideep {
+
+template<typename F> bool catch_ideep_expected_failures(const F &f,
+        bool expect_to_fail, mkldnn_status_t expected_status)
+{
+    try {
+        f();
+    } catch (const ideep::error &e) {
+        // Rethrow the exception if it is not expected or the error status did
+        // not match.
+        if (!(expect_to_fail) || e.status != (expected_status)) {
+            // Ignore unimplemented
+            if (e.status == mkldnn_unimplemented)
+                return true;
+            else
+                throw e;
+        }
+        // Return normally if the failure is expected
+        if (expect_to_fail)
+            return true;
+    }
+
+    // Throw an exception if the failure is expected but did not happen
+    if (expect_to_fail)
+        throw std::exception();
+
+    return false;
+}
 
 // Helpers for migrating MKL-DNN test
 inline size_t map_index(const mkldnn_memory_desc_t *md, size_t index) {
@@ -932,7 +960,7 @@ void check_bnrm_bwd(const test_bnrm_params_t &p,
         unsigned flags, prop_kind pk)
 {
   const bool use_weights = flags & mkldnn::use_scale_shift;
-  const bool calculate_diff_stats = !(flags & mkldnn::omit_stats);
+  const bool calculate_diff_stats = !(flags & mkldnn::use_global_stats);
 
   const data_t *src_data = (const data_t *)src.get_data_handle();
   const data_t *scale_data = use_weights ?
@@ -1288,6 +1316,11 @@ static void compare_tensor(const tensor& ref, const tensor& dst) {
     }
   }
 }
+
+template <typename data_t>
+struct async_test_params {
+  std::string name;
+};
 
 template <typename data_t>
 struct relu_test_params {

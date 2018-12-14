@@ -45,7 +45,7 @@ public:
   static std::vector<mdarray> Forward(mdarray *src,
                                       pooling_param_t *pp) {
     tensor dst;
-    pooling_forward::compute<scratch_allocator>(
+    pooling_forward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *(src->get()), pp->out_dims, dst,
         tensor::dims {pp->sy, pp->sx},
         tensor::dims {pp->kh, pp->kw},
@@ -72,7 +72,7 @@ public:
       dst.init_extra(*ws->get());
 
     tensor gx;
-    pooling_backward::compute<scratch_allocator>(
+    pooling_backward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *grady->get(), dst, *src->get(), gx,
         tensor::dims {pp->sy, pp->sx},
         tensor::dims {pp->kh, pp->kw},
@@ -99,7 +99,7 @@ public:
       dst.init_extra(*ws->get());
 
     tensor gx;
-    pooling_backward::compute<scratch_allocator>(
+    pooling_backward::compute<scratch_allocator, _IDEEP4PY_WEB_OPT_>(
         *grady->get(), dst, src, gx,
         tensor::dims {pp->sy, pp->sx},
         tensor::dims {pp->kh, pp->kw},

@@ -1237,6 +1237,44 @@ public:
     return *this;
   }
 
+  template<class alloc = utils::allocator, class computation_t = computation>
+  void init(const descriptor &adesc) {
+    param::init<alloc, computation_t>(adesc);
+    twin_.reset();
+  }
+
+  void init(const descriptor &adesc, void *ahandle) {
+    param::init(adesc, ahandle);
+    twin_.reset();
+  }
+
+  void init(const descriptor &adesc) {
+    param::init(adesc);
+    twin_.reset();
+  }
+
+  template<class alloc = utils::allocator, class computation_t = computation>
+  void reinit(const descriptor &adesc) {
+    param::reinit<alloc, computation_t>(adesc);
+    twin_.reset();
+  }
+
+  void reinit(const descriptor &adesc) {
+    param::reinit<utils::allocator, computation>(adesc);
+    twin_.reset();
+  }
+
+  template<class alloc = utils::allocator, class computation_t = computation>
+  void reinit_like(const param &aparam) {
+    param::reinit<alloc, computation_t>(aparam.get_descriptor());
+    twin_.reset();
+  }
+
+  void reinit_like(const param &aparam) {
+    param::reinit<utils::allocator, computation>(aparam.get_descriptor());
+    twin_.reset();
+  }
+
   /// Return extra packed tensor
   tensor *get_extra() {
     return twin_.get();

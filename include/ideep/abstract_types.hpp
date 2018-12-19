@@ -116,6 +116,12 @@ const std::map<mkldnn::memory::data_type, int> dt_max_map
   {mkldnn::memory::data_type::u8, IDEEP_U8_MAX}
 };
 
+// Supported computation kind of  int8 low precision 
+enum lowp_kind {
+  LOWP_U8S8 = 0,
+  LOWP_S8S8 = 1
+};
+
 /// hide other formats
 enum format {
   format_undef = mkldnn_format_undef,

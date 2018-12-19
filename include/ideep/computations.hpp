@@ -1323,6 +1323,11 @@ struct convolution_forward: public computation,
   using prop_kind_t =
       typename utils::computation_web::node<tensor>::prop_kind_t;
 
+  enum LowpType {
+    LOW_U8S8 = 0,
+    LOW_S8S8 = 1
+  };
+
   convolution_forward() = default;
 
   template<typename T, typename ...Ts>
@@ -1801,6 +1806,7 @@ struct convolution_forward: public computation,
       const tensor::dims& padding_l, const tensor::dims& padding_r,
       const scale_t& src_scales, const scale_t& weights_scales,
       const scale_t& dst_scales, const descriptor::attr_t& attr,
+      int lowp_kind,
       Ts&&... args) {
     descriptor::attr_t op_attr;
     int weights_mask = 0, bias_mask = 0;
@@ -1818,8 +1824,12 @@ struct convolution_forward: public computation,
       ? weights.get_scale() : weights_scales;
 
     if (!weights_scales_in.empty()) {
-      src_desc = {src.get_dims(), tensor::data_type::u8};
-
+      if (lowp_kind == LOW_U8S8) {
+        src_desc = {src.get_dims(), tensor::data_type::u8};
+      } else {
+        src_desc = {src.get_dims(), tensor::data_type::s8};
+      }
+ 
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
       weights_desc = {weights.get_dims(), tensor::data_type::s8};
       weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
@@ -1991,7 +2001,8 @@ struct convolution_forward: public computation,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+      padding_kind appading_kind = padding_kind::zero,
+      const int lowp_kind = LOW_U8S8) {
     tensor dummy_bias;
     auto weights_in = weights;
     weights_in.make_group(group);
@@ -2010,7 +2021,7 @@ struct convolution_forward: public computation,
       compute_impl<alloc, false>(
           key, src, weights_in, dummy_bias, result_dims, dst,
           strides, dilates, padding_l, padding_r,
-          src_scales, weights_scales, dst_scales, attr,
+          src_scales, weights_scales, dst_scales, attr, lowp_kind,
           aalgorithm, apkind, appading_kind);
     }
   }
@@ -2026,7 +2037,8 @@ struct convolution_forward: public computation,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+      padding_kind appading_kind = padding_kind::zero,
+      const int lowp_kind = LOW_U8S8) {
     auto weights_in = weights;
     weights_in.make_group(group);
 
@@ -2044,7 +2056,7 @@ struct convolution_forward: public computation,
       compute_impl<alloc, true>(
           key, src, weights_in, bias, result_dims, dst,
           strides, dilates, padding_l, padding_r,
-          src_scales, weights_scales, dst_scales, attr,
+          src_scales, weights_scales, dst_scales, attr, lowp_kind,
           aalgorithm, apkind, appading_kind);
     }
   }
@@ -2058,12 +2070,13 @@ struct convolution_forward: public computation,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+      padding_kind appading_kind = padding_kind::zero,
+      const int lowp_kind = LOW_U8S8) {
     key_t dummy_key_;
     compute<alloc>(dummy_key_, src, weights, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         src_scales, weights_scales, dst_scales, attr,
-        aalgorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind, lowp_kind);
   }
 
   template<class alloc = utils::allocator>
@@ -2075,12 +2088,13 @@ struct convolution_forward: public computation,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+      padding_kind appading_kind = padding_kind::zero,
+      const int lowp_kind = LOW_U8S8) {
     key_t dummy_key_;
     compute<alloc>(dummy_key_, src, weights, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         src_scales, weights_scales, dst_scales, attr,
-        aalgorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind, lowp_kind);
   }
 
   template<class alloc = utils::allocator>
@@ -2091,12 +2105,13 @@ struct convolution_forward: public computation,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+      padding_kind appading_kind = padding_kind::zero,
+      const int lowp_kind = LOW_U8S8) {
     scale_t dummy_scale_;
     compute<alloc>(src, weights, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         dummy_scale_, dummy_scale_, dummy_scale_, attr,
-        aalgorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind, lowp_kind);
   }
 
   template<class alloc = utils::allocator>
@@ -2107,12 +2122,13 @@ struct convolution_forward: public computation,
       const descriptor::attr_t& attr = descriptor::attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+      padding_kind appading_kind = padding_kind::zero,
+      const int lowp_kind = LOW_U8S8) {
     scale_t dummy_scale_;
     compute<alloc>(src, weights, bias, result_dims, dst,
         strides, dilates, padding_l, padding_r, group,
         dummy_scale_, dummy_scale_, dummy_scale_, attr,
-        aalgorithm, aprop_kind, appading_kind);
+        aalgorithm, aprop_kind, appading_kind, lowp_kind);
   }
 
   virtual void fire_computation_node(
@@ -2154,7 +2170,8 @@ struct convolution_forward: public computation,
       const tensor::dims& dilates = {0, 0},
       int group = 1,
       algorithm aalgorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward) {
+      prop_kind aprop_kind = prop_kind::forward,
+      tensor::data_type x_dtype = tensor::data_type::f32) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -2185,8 +2202,6 @@ struct convolution_forward: public computation,
 
     tensor::dims x_dims = { 1, ic, h, w};
     tensor::dims y_dims = { 1, oc, oh, ow};
-    auto x_dtype = (dtype != tensor::data_type::s8)
-      ? dtype : tensor::data_type::u8;
     auto y_dtype = (dtype != tensor::data_type::s8)
       ? dtype : tensor::data_type::s32;
     tensor::descriptor x_desc(x_dims, x_dtype, format::nchw);

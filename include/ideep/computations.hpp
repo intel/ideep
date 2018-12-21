@@ -1909,13 +1909,16 @@ struct convolution_forward: public computation,
     }
 
     tensor::descriptor dst_desc_in(dst_dims, dst_data_type, dst_format);
-    auto it = with_bias
-      ? create(key, src_desc, weights_desc, bias_desc, dst_desc_in,
-          strides, dilates, padding_l, padding_r, op_attr,
-          std::forward<Ts>(args)...)
-      : create(key, src_desc, weights_desc, dst_desc_in,
-          strides, dilates, padding_l, padding_r, op_attr,
-          std::forward<Ts>(args)...);
+    auto it = find(key);
+    if (it == end()) {
+      it = with_bias
+        ? create(key, src_desc, weights_desc, bias_desc, dst_desc_in,
+            strides, dilates, padding_l, padding_r, op_attr,
+            std::forward<Ts>(args)...)
+        : create(key, src_desc, weights_desc, dst_desc_in,
+            strides, dilates, padding_l, padding_r, op_attr,
+            std::forward<Ts>(args)...);
+    }
     auto comp = fetch(it);
 
     // TODO: Custom allocator support

@@ -424,41 +424,31 @@ inline std::string to_string(T&& arg, Ts&&... args) {
     '*' + to_string(std::forward<Ts>(args)...);
 }
 
-inline bytestring to_bytes(const tensor arg) {
-  bytestring bytes;
+inline void to_bytes(bytestring& bytes, const tensor arg) {
   auto arg_desc = arg.get_mkldnn_memory_desc_t();
-  bytes.reserve(sizeof(*arg_desc));
   for (int i = 0; i < arg_desc->ndims; i++) {
-    bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[0][i])));
-    bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[1][i])));
-    bytes.append(to_bytes(arg_desc->layout_desc.blocking.block_dims[i]));
-    bytes.append(to_bytes(arg_desc->layout_desc.blocking.padding_dims[i]));
-    bytes.append(to_bytes(arg_desc->layout_desc.blocking.offset_padding_to_data[i]));
-    bytes.append(to_bytes(arg_desc->dims[i]));
+    to_bytes(bytes, static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[0][i]));
+    to_bytes(bytes, static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[1][i]));
+    to_bytes(bytes, arg_desc->layout_desc.blocking.block_dims[i]);
+    to_bytes(bytes, arg_desc->layout_desc.blocking.padding_dims[i]);
+    to_bytes(bytes, arg_desc->layout_desc.blocking.offset_padding_to_data[i]);
+    to_bytes(bytes, arg_desc->dims[i]);
   }
-  bytes.append(to_bytes(static_cast<uint64_t>(arg_desc->layout_desc.blocking.offset_padding)));
-  bytes.append(to_bytes(arg_desc->data_type));
-  bytes.append(to_bytes(arg_desc->format));
-
-  return bytes;
+  to_bytes(bytes, static_cast<uint64_t>(arg_desc->layout_desc.blocking.offset_padding));
+  to_bytes(bytes, arg_desc->data_type);
+  to_bytes(bytes, arg_desc->format);
 }
 
 template <typename T, typename ...Ts>
-inline bytestring to_bytes(T&& arg, Ts&&... args) {
-  bytestring bytes;
-
-  // over booking
-  bytes.reserve((sizeof...(args) + 1) * 8);
-  bytes.append(to_bytes(std::forward<T>(arg)));
+inline void to_bytes(bytestring& bytes, T&& arg, Ts&&... args) {
+  to_bytes(bytes, std::forward<T>(arg));
   bytes.append(1, '*');
-  bytes.append(to_bytes(std::forward<Ts>(args)...));
-
-  return bytes;
+  to_bytes(bytes, std::forward<Ts>(args)...);
 }
 
 template <typename ...Ts>
-inline key_t create_key(Ts&&... args) {
-  return to_bytes(std::forward<Ts>(args)...);
+inline void create_key(key_t& key_to_create, Ts&&... args) {
+  to_bytes(key_to_create, std::forward<Ts>(args)...);
 }
 
 }

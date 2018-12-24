@@ -96,7 +96,7 @@ public:
       fill_blocking(data, adims, block_dims, stride, stride_inner);
 
       mkldnn_primitive_desc_t result;
-      mkldnn::error::wrap_c_api(
+      error::wrap_c_api(
           mkldnn_memory_primitive_desc_create(&result, &data,
            engine::cpu_engine().get()),
           "could not initialize a memory descriptor");
@@ -128,7 +128,7 @@ public:
         }
 
         mkldnn_primitive_desc_t result;
-        mkldnn::error::wrap_c_api(
+        error::wrap_c_api(
             mkldnn_memory_primitive_desc_create(&result, &data,
              engine::cpu_engine().get()),
             "could not initialize a memory descriptor");
@@ -289,7 +289,7 @@ public:
           "could not initialize a memory descriptor");
 
       mkldnn_primitive_desc_t result;
-      mkldnn::error::wrap_c_api(
+      error::wrap_c_api(
           mkldnn_memory_primitive_desc_create(&result, &adesc,
            engine::cpu_engine().get()),
           "could not initialize a memory descriptor");

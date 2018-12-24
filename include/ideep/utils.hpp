@@ -77,11 +77,10 @@ protected:
 // Fast alternative to heavy string method
 using bytestring = std::string;
 
-inline bytestring to_bytes(const int arg) {
+inline void to_bytes(bytestring& bytes, const int arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
 #ifndef __AVX__
-  if (arg == 0)
-    return bytestring();
+  if (arg == 0) return;
 
   auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
 #else
@@ -90,27 +89,25 @@ inline bytestring to_bytes(const int arg) {
   auto len = sizeof(int) - lz / 8;
 #endif
 
-  return bytestring(as_cstring, len);
+  bytes.append(as_cstring, len);
 }
 
-inline bytestring to_bytes(const float arg) {
+inline void to_bytes(bytestring& bytes, const float arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
-  return bytestring(as_cstring, sizeof(float));
+  bytes.append(as_cstring, sizeof(float));
 }
 
-inline bytestring to_bytes(const uint64_t arg) {
+inline void to_bytes(bytestring& str, const uint64_t arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
-  return bytestring(as_cstring, sizeof(uint64_t));
+  str.append(as_cstring, sizeof(uint64_t));
 }
 
 template <typename T>
-inline bytestring to_bytes(const std::vector<T> arg) {
-  bytestring bytes;
+inline void to_bytes(bytestring& bytes, const std::vector<T> arg) {
 
   if (arg.size() > 0) {
-    bytes.reserve(arg.size() * sizeof(T));
     for (T elems : arg) {
-      bytes.append(to_bytes(elems));
+      to_bytes(bytes, elems);
       bytes.append(1, 'x');
     }
     bytes.pop_back();
@@ -118,19 +115,18 @@ inline bytestring to_bytes(const std::vector<T> arg) {
     bytes.append(1, 'x');
   }
 
-  return bytes;
 }
 
 template <typename T, typename =
   typename std::enable_if<std::is_enum<T>::value>::type>
-inline bytestring to_bytes(T arg) {
-  return std::to_string(static_cast<int>(arg));
+inline void to_bytes(bytestring& bytes, T arg) {
+  to_bytes(bytes, static_cast<int>(arg));
 }
 
 template <typename T, typename =
   typename std::enable_if< std::is_class<T>::value>::type, typename = void>
-inline bytestring to_bytes(const T arg) {
-  return arg.to_bytes();
+inline void to_bytes(bytestring& bytes, const T arg) {
+  arg.to_bytes(bytes);
 }
 
 enum algorithm {

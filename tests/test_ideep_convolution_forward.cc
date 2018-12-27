@@ -95,7 +95,7 @@ TEST_P(convolution_test, TestManipulation) {
 
   auto test = [&]() {
     TestCommon();
-    key = utils::create_key(src_.get_data_type(), src_.get_dims(),
+    utils::create_key(key, src_.get_data_type(), src_.get_dims(),
         weights_.get_dims(), bias_.get_dims(), dst_dims_);
 
     tensor::descriptor dst_desc(dst_dims_, src_.get_data_type());

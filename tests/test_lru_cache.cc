@@ -47,7 +47,8 @@ void test_to_string() {
   std::cout<<to_string(A, B, C)<<std::endl;
   std::cout<<to_string(A, a, B, b, C, c, d)<<std::endl;
 
-  bytestring key = to_bytes(A, a, B, b, C, c, d);
+  bytestring key;
+  to_bytes(key, A, a, B, b, C, c, d);
   std::cout<<to_string(A, a, B, b, C, c, d).size()<<std::endl;
   std::cout<<key.size()<<std::endl;
 }
@@ -59,17 +60,19 @@ void test_to_bytestring() {
   tensor::dims D {64, 224, 224, 5};
   tensor::dims E {0, 0, 0, 0};
 
-  auto key = to_bytes(A, B, C, D, E);
+  bytestring key;
+  to_bytes(key, A, B, C, D, E);
 
-  std::string partial = to_bytes(A);
+  std::string partial;
+  to_bytes(partial, A);
   partial += '*';
-  partial += to_bytes(B);
+  to_bytes(partial, B);
   partial += '*';
-  partial += to_bytes(C);
+  to_bytes(partial, C);
   partial += '*';
-  partial += to_bytes(D);
+  to_bytes(partial, D);
   partial += '*';
-  partial += to_bytes(E);
+  to_bytes(partial, E);
 
   for (int i = 0; i < key.size(); i ++) {
     std::cout<<static_cast<int>(key[i]);

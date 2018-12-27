@@ -138,10 +138,10 @@ namespace mkldnn {
 INSTANTIATE_TEST_CASE_P(TestSum, test, ::testing::Values( \
     sum_test_params{engine::kind::cpu, \
     {memory::format::nchw, memory::format::nchw}, memory::format::nchw, \
-    {0, 8, 2, 2}, {1.0f, 1.0f}, true, mkldnn_invalid_arguments}, \
+    {0, 8, 2, 2}, {1.0f, 1.0f}}, \
     sum_test_params{engine::kind::cpu, \
     {memory::format::nchw, memory::format::nchw}, memory::format::nchw, \
-    {1, 0, 2, 2}, {1.0f, 1.0f}, true, mkldnn_invalid_arguments}, \
+    {1, 0, 2, 2}, {1.0f, 1.0f}}, \
     sum_test_params{engine::kind::cpu, \
     {memory::format::nchw, memory::format::nchw}, memory::format::nchw, \
     {2, 8, 2, 2}, {1.0f, 1.0f}}, \

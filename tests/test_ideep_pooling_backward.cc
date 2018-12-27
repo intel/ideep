@@ -92,19 +92,21 @@ TEST_P(pooling_bwd_test_float, TestsPoolingBackward) {
 namespace mkldnn {
 
 INSTANTIATE_TEST_CASE_P(
-  TestPoolingForwardEF, pooling_bwd_test_float, ::testing::Values(
+  TestPoolingBackwardZeroDim, pooling_bwd_test_float, ::testing::Values(
     pool_bwd_test_params_float{ engine::kind::cpu,
     pooling_max, memory::format::nchw,
-    memory::format::nchw, { 2, 0, 4, 4, 4, 4, 3, 3, 1, 1, 1, 1 },
-    true, mkldnn_invalid_arguments},
+    memory::format::nchw, { 2, 0, 4, 4, 4, 4, 3, 3, 1, 1, 1, 1 }},
     pool_bwd_test_params_float{ engine::kind::cpu,
     pooling_max, memory::format::nchw,
-    memory::format::nchw, { 0, 4, 4, 4, 4, 4, 3, 3, 1, 1, 1, 1 },
-    true, mkldnn_invalid_arguments},
+    memory::format::nchw, { 0, 4, 4, 4, 4, 4, 3, 3, 1, 1, 1, 1 }},
     pool_bwd_test_params_float{ engine::kind::cpu,
     pooling_max, memory::format::nchw,
     memory::format::nchw, { 2, 4, 0, 4, 4, 4, 3, 3, 1, 1, 1, 1 },
-    true, mkldnn_invalid_arguments},
+    true, mkldnn_invalid_arguments}
+));
+
+INSTANTIATE_TEST_CASE_P(
+  TestPoolingBackwardEF, pooling_bwd_test_float, ::testing::Values(
     pool_bwd_test_params_float{ engine::kind::cpu,
     pooling_max, memory::format::nchw,
     memory::format::nchw, { 2, 4, 4, 4, 7, 7, 3, 3, 1, 1, 1, 1 },

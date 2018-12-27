@@ -95,11 +95,11 @@ TEST_P(relu_test_float, TestsRelu) {
 #define INST_TEST_CASE(str, ...) INSTANTIATE_TEST_CASE_P( \
         str, relu_test_float, ::testing::Values(__VA_ARGS__))
 
-INST_TEST_CASE(SimpleExpectedFails,
-  PARAMS_EF(nchw, nchw, 0.f, 0, 8, 4, 4, true, mkldnn_invalid_arguments),
-  PARAMS_EF(nchw, nchw, 0.f, 2, 0, 4, 4, true, mkldnn_invalid_arguments),
-  PARAMS_EF(nchw, nchw, 0.f, 2, 8, 0, 4, true, mkldnn_invalid_arguments),
-  PARAMS_EF(nchw, nchw, 0.f, 2, 8, 4, 0, true, mkldnn_invalid_arguments)
+INST_TEST_CASE(SimpleZeroDim,
+  PARAMS(nchw, nchw, 0.f, 0, 8, 4, 4),
+  PARAMS(nchw, nchw, 0.f, 2, 0, 4, 4),
+  PARAMS(nchw, nchw, 0.f, 2, 8, 0, 4),
+  PARAMS(nchw, nchw, 0.f, 2, 8, 4, 0)
 );
 
 INST_TEST_CASE(SimpleZeroNegativeSlope_NCHW,

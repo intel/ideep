@@ -2180,7 +2180,8 @@ struct convolution_forward: public computation,
       int group = 1,
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
-      tensor::data_type x_dtype = tensor::data_type::f32) {
+      tensor::data_type x_dtype = tensor::data_type::f32,
+      const tensor::dims& src_dims = tensor::dims()) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -2195,13 +2196,24 @@ struct convolution_forward: public computation,
       IDEEP_STD_EACH_SUB(dilates_in, 1);
     }
 
-    // Construct a dummy case
+    IDEEP_ENFORCE(!(aalgorithm == algorithm::convolution_winograd
+          && src_dims.empty()), "Incorrect src_dims");
     auto ic = g * dims_in[1 + grouped];
     auto oc = g * dims_in[0 + grouped];
     auto kh = dims_in[ndims - 2];
     auto kw = dims_in[ndims - 1];
-    auto h = 2 * kh;
-    auto w = 4 * kw;
+    int mb, h, w;
+    if (src_dims.empty()) {
+      // Construct a dummy case
+      mb = 1;
+      h = 2 * kh;
+      w = 4 * kw;
+    } else {
+      // Use the real data
+      mb = src_dims[0];
+      h = src_dims[2];
+      w = src_dims[3];
+    }
     auto oh =
       (h - ((kh - 1) * (dilates_in[0] + 1) + 1)
        + (padding_l[0] + padding_r[0])) / strides[0] + 1;
@@ -2209,8 +2221,8 @@ struct convolution_forward: public computation,
       (w - ((kw - 1) * (dilates_in[1] + 1) + 1)
        + (padding_l[1] + padding_r[1])) / strides[1] + 1;
 
-    tensor::dims x_dims = { 1, ic, h, w};
-    tensor::dims y_dims = { 1, oc, oh, ow};
+    tensor::dims x_dims = { mb, ic, h, w};
+    tensor::dims y_dims = { mb, oc, oh, ow};
     auto y_dtype = (dtype != tensor::data_type::s8)
       ? dtype : tensor::data_type::s32;
     tensor::descriptor x_desc(x_dims, x_dtype, format::nchw);

@@ -28,12 +28,16 @@
 #include "mdarray.h"
 #include "ideep.hpp"
 
+
 using tensor = ideep::tensor;
 
 class basic {
 public:
   using tensor = ideep::tensor;
   using sum = ideep::sum;
+  using data_type_t = mkldnn::memory::data_type;
+  using dims_t = mkldnn::memory::dims;
+  using format_t = ideep::format;
 
   static PyObject *copyto(mdarray *dst, mdarray *src) {
     tensor dst_ = *dst->get();
@@ -56,15 +60,46 @@ public:
 
   static PyObject *copyto(mdarray *dst, Py_buffer *view) {
     tensor dst_ = *dst->get();
+    if ((int(dst_.get_internal_format()) == mkldnn_OIhw16i16o ||
+        int(dst_.get_internal_format()) == mkldnn_nChw16c ||
+        int(dst_.get_internal_format()) == mkldnn_Ohwi16o ||
+        int(dst_.get_internal_format()) == mkldnn_nChw8c ||
+        int(dst_.get_internal_format()) == mkldnn_Ohwi8o ||
+        int(dst_.get_internal_format()) == mkldnn_OIhw8i8o)) {
 
-    if (dst_.get_size() != (unsigned)view->len) {
+      auto dims_ = dims_t(view->shape, view->shape + view->ndim);
+      data_type_t dt;
+      std::string format(view->format);
+      if (std::string::npos != format.find_last_of('f')) {
+        dt = data_type_t::f32;
+      } else if (std::string::npos != format.find_last_of('i')) {
+        dt = data_type_t::s32;
+      } else if (std::string::npos != format.find_last_of('h')) {
+        dt = data_type_t::s16;
+      } else if (std::string::npos != format.find_last_of('b')) {
+        dt = data_type_t::s8;
+      } else if (std::string::npos != format.find_last_of('b')) {
+        dt = data_type_t::u8;
+      } else {
+        throw error(mkldnn_invalid_arguments,
+                    std::string("mdarray does not support data type: ") +
+                        format);
+      }
+      auto fmt_ = int(dst_.get_internal_format()) == mkldnn_nChw16c
+                      ? format_t::nchw
+                      : format_t::oihw;
+      auto src_ = tensor({dims_, dt, fmt_}, view->buf);
+      ideep::reorder::compute(src_, dst_);
+
+      Py_RETURN_NONE;
+    } else if (dst_.get_size() != (unsigned)view->len) {
       throw error(mkldnn_invalid_arguments,
-            std::string("mismatch src and dst mdarray"));
+                  std::string("mismatch src and dst mdarray"));
       return nullptr;
     }
 
-    ideep::utils::fast_memcpy((char *)dst_.get_data_handle(),
-                (char *)view->buf, view->len);
+    ideep::utils::fast_memcpy((char *)dst_.get_data_handle(), (char *)view->buf,
+                              view->len);
 
     Py_RETURN_NONE;
   }
@@ -82,3 +117,4 @@ public:
     return mdarray(output);
   }
 };
+

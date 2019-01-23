@@ -1872,18 +1872,20 @@ struct convolution_forward: public computation,
       }
 
       // determine dst data type
-      dst_data_type = dst_scales.empty()
-        ? tensor::data_type::f32 : tensor::data_type::s8;
       if (post_ops.has_op_kind(kind::sum)) {
         dst_data_type = dst.get_data_type();
+      } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
+        dst_data_type = tensor::data_type::f32;
       } else if (post_ops.non_negitive_output()){
         dst_data_type = tensor::data_type::u8;
+      } else {
+        dst_data_type = tensor::data_type::s8;
       }
     } else {
       src_desc = {src.get_dims(), tensor::data_type::f32};
       src_scales_in = IDEEP_DEF_SCALE;
       if (src.has_scale())
-        src_scales_in[0] = 1.0f / src_scales_in[0];
+        src_scales_in[0] = 1.0f / src.get_scale()[0];
 
       weights_scales_in = IDEEP_DEF_SCALE;
       weights_desc = weights.get_descriptor();
@@ -1938,8 +1940,11 @@ struct convolution_forward: public computation,
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, convolution_forward>(comp.expected_src_descriptor());
       comp.src_reorder_.reset(new reorder);
-      comp.src_reorder_->init(
-          src.get_descriptor(), src_in.get_descriptor(), {0, src_scales_in});
+      if (src.get_data_type() == src_in.get_data_type())
+        comp.src_reorder_->init(src.get_descriptor(), src_in.get_descriptor());
+      else
+        comp.src_reorder_->init(
+            src.get_descriptor(), src_in.get_descriptor(), {0, src_scales_in});
       comp.src_reorder_->do_compute(src, src_in);
     }
 
@@ -1950,9 +1955,13 @@ struct convolution_forward: public computation,
       weights_in.init<alloc, convolution_forward>(
           comp.expected_weights_descriptor());
       comp.weights_reorder_.reset(new reorder);
-      comp.weights_reorder_->init(
-          _weights.get_descriptor(), weights_in.get_descriptor(),
-          {weights_mask, weights_scales_in});
+      if (_weights.get_data_type() == weights_in.get_data_type())
+        comp.weights_reorder_->init(
+            _weights.get_descriptor(), weights_in.get_descriptor());
+      else
+        comp.weights_reorder_->init(
+            _weights.get_descriptor(), weights_in.get_descriptor(),
+            {weights_mask, weights_scales_in});
       comp.weights_reorder_->do_compute(_weights, weights_in);
     }
 
@@ -1974,9 +1983,13 @@ struct convolution_forward: public computation,
       if (bias.get_descriptor() != bias_desc) {
         bias_in.init<alloc, convolution_forward>(bias_desc);
         comp.bias_reorder_.reset(new reorder);
-        comp.bias_reorder_->init(
-            bias.get_descriptor(), bias_in.get_descriptor(),
-            {bias_mask, bias_scales});
+        if (bias.get_data_type() == bias_in.get_data_type())
+          comp.bias_reorder_->init(
+              bias.get_descriptor(), bias_in.get_descriptor());
+        else
+          comp.bias_reorder_->init(
+              bias.get_descriptor(), bias_in.get_descriptor(),
+              {bias_mask, bias_scales});
         comp.bias_reorder_->do_compute(bias, bias_in);
       }
 
@@ -5414,12 +5427,9 @@ struct inner_product_forward: public computation,
   }
 
   void do_compute(const tensor& src, const tensor& weights, const tensor& bias,
-      tensor& src_in, tensor& weights_in, tensor& dst,
-      scale_t src_scales=scale_t()) {
-    if (src.get_data_handle() != src_in.get_data_handle()) {
-      if (src_scales.empty()) src_scales = IDEEP_DEF_SCALE;
-      reorder::compute(src, src_in, {0, src_scales});
-    }
+      tensor& src_in, tensor& weights_in, tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
 
     if (weights.get_data_handle() != weights_in.get_data_handle())
       reorder::compute(weights, weights_in);
@@ -5430,8 +5440,11 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(key_t &key, const tensor& src, const tensor& weights,
       const tensor& bias, tensor& dst) {
-    auto src_in = src;
     auto weights_in = weights;
+    auto _src = src.has_scale() ? src.to_public() : src;
+    auto src_in = _src;
+    auto bias_in = bias.has_scale() ? bias.to_public() : bias;
+
     if (src_in.ndims() != weights_in.ndims()) {
       auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
       if (ndims != src_in.ndims()) {
@@ -5450,27 +5463,19 @@ struct inner_product_forward: public computation,
         && weights_in.get_data_type() == tensor::data_type::f32,
           "INT8 mode is not supported");
 
-    tensor::descriptor src_desc;
-    scale_t src_scales(IDEEP_DEF_SCALE);
-    if (src_in.get_data_type() != tensor::data_type::f32) {
-      IDEEP_ENFORCE(src_in.has_scale(), "Can not find scale");
-      src_desc = {src_in.get_dims(), tensor::data_type::f32};
-      src_scales[0] /= src_in.get_scale()[0];
-    } else {
-      src_desc = src_in.get_descriptor();
-      IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
-          "Incorrect src data type");
-    }
+    auto src_desc = src_in.get_descriptor();
+    IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
+        "Incorrect src data type");
 
     tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
 
     if (key.empty())
       utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
-          weights_in.get_dims(), bias.get_dims(), dst_dims);
+          weights_in.get_dims(), bias_in.get_dims(), dst_dims);
 
     fetch_or_create_m(comp, key, src_desc,
-        weights_in.get_descriptor(), bias.get_descriptor(), dst_desc);
+        weights_in.get_descriptor(), bias_in.get_descriptor(), dst_desc);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor())
       src_in.init<alloc, inner_product_forward>(comp.expected_src_descriptor());
@@ -5486,14 +5491,14 @@ struct inner_product_forward: public computation,
       auto cn = utils::computation_web::template computation_node<
           inner_product_forward, tensor>::create(
           comp, prop_kind_t::CN_PROP_FORWARD, dst);
-      if (cn->build_deps(src, weights, bias, src_in, weights_in)) {
+      if (cn->build_deps(_src, weights, bias, src_in, weights_in)) {
         utils::computation_web::template computation_node<
             inner_product_forward, tensor>::enqueue(cn);
         return;
       }
     }
 
-    comp.do_compute(src, weights, bias, src_in, weights_in, dst, src_scales);
+    comp.do_compute(_src, weights, bias_in, src_in, weights_in, dst);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>
@@ -5504,12 +5509,9 @@ struct inner_product_forward: public computation,
   }
 
   void do_compute(const tensor& src, const tensor& weights,
-      tensor& src_in, tensor& weights_in, tensor& dst,
-      scale_t src_scales=scale_t()) {
-    if (src.get_data_handle() != src_in.get_data_handle()) {
-      if (src_scales.empty()) src_scales = IDEEP_DEF_SCALE;
-      reorder::compute(src, src_in, {0, src_scales});
-    }
+      tensor& src_in, tensor& weights_in, tensor& dst) {
+    if (src.get_data_handle() != src_in.get_data_handle())
+      reorder::compute(src, src_in);
 
     if (weights.get_data_handle() != weights_in.get_data_handle())
       reorder::compute(weights, weights_in);
@@ -5520,8 +5522,10 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(key_t & key, const tensor& src,
       const tensor& weights, tensor& dst) {
-    auto src_in = src;
     auto weights_in = weights;
+    auto _src = src.has_scale() ? src.to_public() : src;
+    auto src_in = _src;
+
     if (src_in.ndims() != weights_in.ndims()) {
       auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
       if (ndims != src_in.ndims()) {
@@ -5540,17 +5544,9 @@ struct inner_product_forward: public computation,
         && weights_in.get_data_type() == tensor::data_type::f32,
           "INT8 mode is not supported");
 
-    tensor::descriptor src_desc;
-    scale_t src_scales(IDEEP_DEF_SCALE);
-    if (src_in.get_data_type() != tensor::data_type::f32) {
-      IDEEP_ENFORCE(src_in.has_scale(), "Can not find scale");
-      src_desc = {src_in.get_dims(), tensor::data_type::f32};
-      src_scales[0] /= src_in.get_scale()[0];
-    } else {
-      src_desc = src_in.get_descriptor();
-      IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
-          "Incorrect src data type");
-    }
+    auto src_desc = src_in.get_descriptor();
+    IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32,
+        "Incorrect src data type");
 
     tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
     tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
@@ -5576,14 +5572,14 @@ struct inner_product_forward: public computation,
       auto cn = utils::computation_web::template computation_node<
           inner_product_forward, tensor>::create(
           comp, prop_kind_t::CN_PROP_FORWARD, dst);
-      if (cn->build_deps(src, weights, src_in, weights_in)) {
+      if (cn->build_deps(_src, weights, src_in, weights_in)) {
         utils::computation_web::template computation_node<
             inner_product_forward, tensor>::enqueue(cn);
         return;
       }
     }
 
-    comp.do_compute(src, weights, src_in, weights_in, dst, src_scales);
+    comp.do_compute(_src, weights, src_in, weights_in, dst);
   }
 
   template<class alloc = utils::allocator, bool web_opt = false>

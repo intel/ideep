@@ -377,8 +377,10 @@ public:
       case mkldnn_nc:
         ret = format::nc;
         break;
-      case mkldnn_nchw:
       case mkldnn_nhwc:
+        ret = format::nhwc;
+        break;
+      case mkldnn_nchw:
       case mkldnn_chwn:
       case mkldnn_nChw8c:
       case mkldnn_nChw16c:
@@ -855,14 +857,9 @@ public:
   /// Return public format dimensions' size vector
   inline dims get_public_format_dims() const {
     if (public_format_ == format::iohw) {
-      dims public_format_dims;
-      public_format_dims.insert(
-          public_format_dims.begin(),
-          {get_dim(1),
-           get_dim(0),
-           get_dim(2),
-           get_dim(3)});
-      return public_format_dims;
+      return {get_dim(1), get_dim(0), get_dim(2), get_dim(3)};
+    } else if (public_format_ == format::nhwc) {
+      return {get_dim(0), get_dim(2), get_dim(3), get_dim(1)};
     } else {
       return get_dims();
     }
@@ -1095,26 +1092,19 @@ protected:
   void iohw_definedby_blocked() {
     IDEEP_ENFORCE(ndims() == 4, "Only support 4 dims tensor");
 
-    dims oihw_dims;
-    oihw_dims.insert(
-        oihw_dims.begin(),
-        {get_dim(1),
-         get_dim(0),
-         get_dim(2),
-         get_dim(3)});
-
+    dims oihw_dims {get_dim(1), get_dim(0), get_dim(2), get_dim(3)};
     descriptor desc(oihw_dims, get_data_type(), format::oihw);
     auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
     auto oi_blk = oi_primitive_desc->layout_desc.blocking;
     oi_blk.strides[0][0] = oi_blk.strides[0][1];
     oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
+
     dims stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
     dims stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
     dims block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
     descriptor io_desc(oihw_dims, get_data_type(), stride, block_dims, stride_inner);
 
     set_descriptor(io_desc);
-
   }
 };
 
@@ -1459,14 +1449,8 @@ public:
 
     dims iohw_dims;
     // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-    bool is_iohw = (public_format_ == format::iohw);
-    if (is_iohw) {
-      iohw_dims.insert(
-        iohw_dims.begin(),
-        {get_dim(1),
-         get_dim(0),
-         get_dim(2),
-         get_dim(3)});
+    if (public_format_ == format::iohw) {
+      iohw_dims = get_public_format_dims();
       if (array == nullptr)
         ret.init<alloc, computation_t>({iohw_dims, data_type::f32, format::oihw});
       else
@@ -1492,7 +1476,7 @@ public:
     }
 
     // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-    if (is_iohw) {
+    if (!iohw_dims.empty()) {
       ret.set_descriptor({iohw_dims, data_type::f32, dst_format});
     }
 

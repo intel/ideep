@@ -210,11 +210,6 @@ public:
       return mkldnn_memory_primitive_desc_get_size(get());
     }
 
-    /// Returns the largest number of bytes being allocated for the memory
-    inline size_t get_capacity() const {
-      return capacity_;
-    }
-
     /// Returns number of dimensions
     ///
     inline int ndims() const {
@@ -873,6 +868,11 @@ public:
   /// Return whether the tensor is empty
   inline bool is_empty() const {
     return ndims() == 0 && get_data_handle() == 0;
+  }
+
+  /// Returns the largest number of bytes being allocated for the memory
+  inline size_t get_capacity() const {
+    return capacity_;
   }
 
   /// Return buffer size required by the param

@@ -50,6 +50,7 @@ python setup.py install
 ```
 pip install ideep4py
 ```
+Since Python3.7 doesn't work with numpy==1.13, we built iDeep4py Python3.7 wheel based on numpy==1.16.0, remember to upgrade numpy version to 1.16.0 before install iDeep4py Python3.7 wheel.
 Suggest installing Python package using [virtualenv](https://packaging.python.org/key_projects/#virtualenv) to avoid installing Python packages globally which could break system tools or other projects.
 ### Install python package via Conda:
 

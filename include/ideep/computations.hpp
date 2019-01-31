@@ -1843,9 +1843,22 @@ struct convolution_forward: public computation,
         bias_scales.resize(scale_size);
       }
 
+      // determine dst data type
+      if (post_ops.has_op_kind(kind::sum)) {
+        dst_data_type = dst.get_data_type();
+      } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
+        dst_data_type = tensor::data_type::f32;
+      } else if (post_ops.non_negitive_output()){
+        dst_data_type = tensor::data_type::u8;
+      } else {
+        dst_data_type = tensor::data_type::s8;
+      }
+
       // fill primitive attr
       scale_t op_scales(scale_size);
-      dst_scales_in = dst_scales.empty() ? IDEEP_DEF_SCALE : dst_scales;
+      dst_scales_in = (dst_scales.empty()
+          || dst_data_type == tensor::data_type::f32)
+        ? IDEEP_DEF_SCALE : dst_scales;
       for (int i = 0; i < scale_size; i++) {
         if (with_bias) {
           bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
@@ -1869,17 +1882,6 @@ struct convolution_forward: public computation,
         }
       } else if (post_ops.has_op_kind(kind::eltwise)) {
         op_attr.set_post_ops(descriptor::post_ops::relu());
-      }
-
-      // determine dst data type
-      if (post_ops.has_op_kind(kind::sum)) {
-        dst_data_type = dst.get_data_type();
-      } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
-        dst_data_type = tensor::data_type::f32;
-      } else if (post_ops.non_negitive_output()){
-        dst_data_type = tensor::data_type::u8;
-      } else {
-        dst_data_type = tensor::data_type::s8;
       }
     } else {
       src_desc = {src.get_dims(), tensor::data_type::f32};
@@ -1973,7 +1975,7 @@ struct convolution_forward: public computation,
       dst.reinit<alloc, convolution_forward>(dst_desc);
     }
 
-    if (!dst_scales_in.empty()) {
+    if (!dst_scales.empty() && dst_data_type != tensor::data_type::f32) {
       dst.set_scale(dst_scales_in);
       comp.dst_scales_.reset(new scale_t(dst_scales_in));
     }

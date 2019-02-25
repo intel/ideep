@@ -1415,8 +1415,21 @@ public:
   /// Fill the tensor with a src tensor
   /// @param src Source tensor
   inline void feed_from(const tensor &src) {
-    auto dst_scale = has_scale() ? get_scale() : IDEEP_DEF_SCALE;
-    auto src_scale = src.has_scale() ? src.get_scale() : IDEEP_DEF_SCALE;
+    scale_t dst_scale, src_scale;
+    if (has_scale() && src.has_scale()) {
+      dst_scale = get_scale();
+      src_scale = src.get_scale();
+    } else if (has_scale()) {
+      dst_scale = get_scale();
+      src_scale.assign(dst_scale.size(), 1.0f);
+    } else if (src.has_scale()) {
+      src_scale = src.get_scale();
+      dst_scale.assign(src_scale.size(), 1.0f);
+    } else {
+      dst_scale = IDEEP_DEF_SCALE;
+      src_scale = IDEEP_DEF_SCALE;
+    }
+
     IDEEP_ENFORCE(dst_scale.size() == src_scale.size(),
         "Invalid tensor scales");
     IDEEP_ENFORCE(src.get_dims() == get_dims(), "Incorrect tesnor dims");

@@ -3,18 +3,14 @@
 
 #include <algorithm>
 #include <numeric>
-#include <functional>
 #include <cstring>
 #include <cmath>
 #include "abstract_types.hpp"
 #include "allocators.hpp"
-#include "web.hpp"
 
 namespace ideep {
 struct computation;
 
-/// @addtogroup api_tensor Tensor
-///
 /// Param class handles operands to computations' internal, it wrappers MKL-DNN
 /// memory primitive and provides utilities to manipulate underlying object.
 /// It's also the base class of tensor, handles major tensor services.
@@ -48,23 +44,18 @@ public:
       md.format = convert_to_c(aformat);
     }
 
-    static inline void set_default_strides(dims &strides, const dims &adims,
-        const int *perm = NULL) {
-      static const int id_perm[]
-        = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-      if (perm == NULL)
-          perm = id_perm;
+    static inline void set_default_strides(
+        dims &strides, const dims &adims, const int *perm = NULL) {
+      static const int id_perm[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+      if (perm == NULL) perm = id_perm;
 
       auto ndims = adims.size();
       strides[(unsigned)perm[ndims - 1]] = 1;
       for (unsigned d = 1; d < ndims; ++d) {
           const int prev_idx = perm[ndims - d];
           const int curr_idx = perm[ndims - 1 - d];
-
-          strides[(unsigned)curr_idx] = adims[(unsigned)curr_idx] == 0
-              ? 1
-              : strides[(unsigned)prev_idx]
-              * std::max(1, adims[(unsigned)prev_idx]);
+          strides[(unsigned)curr_idx] = adims[(unsigned)curr_idx] ==
+            0 ? 1 : strides[(unsigned)prev_idx] * std::max(1, adims[(unsigned)prev_idx]);
       }
     }
 
@@ -82,11 +73,6 @@ public:
 
   public:
     /// Initiate a param descriptor, specifying blocking details.
-    ///
-    /// @param adims Data dimensions
-    /// @param adata_type Data precision/type.
-    /// @param extra block information for data.
-    /// @param perm permutation for layout sequence
     descriptor(const dims adims, data_type adata_type, const dims stride,
         const dims block_dims, const dims stride_inner = dims(12, 1))
       : c_wrapper([&adims, adata_type, &block_dims,
@@ -96,18 +82,12 @@ public:
       fill_blocking(data, adims, block_dims, stride, stride_inner);
 
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(
-          mkldnn_memory_primitive_desc_create(&result, &data,
-           engine::cpu_engine().get()),
-          "could not initialize a memory descriptor");
+      error::wrap_c_api(mkldnn_memory_primitive_desc_create(
+            &result, &data, engine::cpu_engine().get()), "could not initialize a memory descriptor");
       return result;
     }()), public_format_(format::blocked) {}
 
     /// Initiate a param descriptor, using format for blocking initialization.
-    ///
-    /// @param adims Data dimensions
-    /// @param adata_type Data precision/type.
-    /// @param aformat Data layout format.
     descriptor(dims adims, data_type adata_type, format aformat)
       :c_wrapper([&adims, adata_type, aformat]() {
         mkldnn::memory::validate_dims(adims);
@@ -120,29 +100,22 @@ public:
           set_default_strides(strides, adims);
           fill_blocking(data, adims, dims(3, 1), strides, dims(3, 1));
         } else {
-          error::wrap_c_api(
-              mkldnn_memory_desc_init(&data, (int)adims.size(),
-                adims.size() == 0 ? nullptr : &adims[0],
+          error::wrap_c_api(mkldnn_memory_desc_init(
+                &data, (int)adims.size(), adims.size() == 0 ? nullptr : &adims[0],
                 convert_to_c(adata_type), convert_to_c(aformat)),
               "could not initialize a memory descriptor");
         }
 
         mkldnn_primitive_desc_t result;
-        error::wrap_c_api(
-            mkldnn_memory_primitive_desc_create(&result, &data,
-             engine::cpu_engine().get()),
+        error::wrap_c_api(mkldnn_memory_primitive_desc_create(
+              &result, &data, engine::cpu_engine().get()),
             "could not initialize a memory descriptor");
-
         return result;
       }()), public_format_(public_format(aformat)) {}
 
     /// Initiate a param descriptor, assume nature format.
-    ///
-    /// @param adims Data dimensions
-    /// @param adata_type Data precision/type.
     descriptor(dims adims, data_type adata_type)
-      : descriptor(adims, adata_type,
-          engine::default_format((int)adims.size())) {
+      : descriptor(adims, adata_type, engine::default_format((int)adims.size())) {
 
       // TODO: Do we need this checking?
       if (adims.size() == 4 || adims.size() == 2)
@@ -150,51 +123,29 @@ public:
     }
 
     /// Initiate a descriptor from primitive_desc_t struct
-    ///
-    /// @param adesc Pointer to a primitive_desct_t C struct
-    /// @param aformat Specify public format for current descriptor
     descriptor(mkldnn_primitive_desc_t adesc, format aformat)
-      :c_wrapper(adesc), public_format_(aformat) {
-    }
+      : c_wrapper(adesc), public_format_(aformat) {}
 
     /// Initiate a descriptor from primitive_desc_t struct
-    ///
-    /// @param adesc Pointer to a primitive_desct_t C struct
     descriptor(mkldnn_primitive_desc_t adesc) : descriptor(adesc,
-      public_format(
-          convert_to_public_format(
-            mkldnn_primitive_desc_query_memory_d(adesc)->format))) {
-    }
+      public_format(convert_to_public_format(
+            mkldnn_primitive_desc_query_memory_d(adesc)->format))) {}
 
     /// Initiate a descriptor from primitive_desc_t struct
-    ///
-    /// @param adesc Pointer to a primitive_desct_t C struct
-    /// @param aformat Specify public format for current descriptor
     descriptor(const_mkldnn_primitive_desc_t adesc, format aformat)
-      :c_wrapper(const_cast<mkldnn_primitive_desc_t>(adesc), true),
-      public_format_(aformat) {
-    }
+      : c_wrapper(const_cast<mkldnn_primitive_desc_t>(adesc), true), public_format_(aformat) {}
 
     /// Initiate a descriptor from primitive_desc_t struct
-    ///
-    /// @param adesc Pointer to a primitive_desct_t C struct
-    descriptor(const_mkldnn_primitive_desc_t adesc) : descriptor(adesc,
-      public_format(
-          convert_to_public_format(
-            mkldnn_primitive_desc_query_memory_d(adesc)->format))) {
-    }
+    descriptor(const_mkldnn_primitive_desc_t adesc)
+      : descriptor(adesc, public_format(convert_to_public_format(
+          mkldnn_primitive_desc_query_memory_d(adesc)->format))) {}
 
     /// Initiate a descriptor from another, share resource
-    ///
-    /// @param adesc is a reference to another descriptor
-    descriptor(const descriptor &adesc): c_wrapper(adesc),
-      public_format_ (adesc.public_format_) {
-    }
+    descriptor(const descriptor &adesc)
+      : c_wrapper(adesc), public_format_ (adesc.public_format_) {}
 
     /// Empty decriptor constructor
-    ///
-    descriptor():descriptor(dims(0), data_type::f32, format::format_undef) {
-    }
+    descriptor():descriptor(dims(0), data_type::f32, format::format_undef) {}
 
     /// Share a descriptor from another, share resource
     descriptor &operator=(const descriptor& adesc) {
@@ -205,35 +156,29 @@ public:
 
     /// Returns the number of bytes required to allocate the memory
     /// described including the padding area.
-    ///
     inline size_t get_size() const {
       return mkldnn_memory_primitive_desc_get_size(get());
     }
 
     /// Returns number of dimensions
-    ///
     inline int ndims() const {
       return get_mkldnn_memory_desc_t()->ndims;
     }
 
   /// Return size of specified dimension
-  /// @param index Dimension index
     inline dim_t get_dim(int index) const {
-      if (index < 0 || index >= ndims())
-        return static_cast<dim_t>(0);
+      if (index < 0 || index >= ndims()) return static_cast<dim_t>(0);
       auto *internal = get_mkldnn_memory_desc_t();
       return internal->dims[index];
     }
 
     /// Returns dimension vector
-    ///
     inline dims get_dims() const {
       auto *internal = get_mkldnn_memory_desc_t();
       return dims(internal->dims, &internal->dims[internal->ndims]);
     }
 
     /// Returns descriptor data type
-    ///
     inline data_type get_data_type() const {
       auto *internal = get_mkldnn_memory_desc_t();
       return static_cast<data_type>(internal->data_type);
@@ -250,12 +195,9 @@ public:
       mkldnn_memory_desc_t any;
       const mkldnn_memory_desc_t *origin = get_mkldnn_memory_desc_t();
 
-      error::wrap_c_api(
-          mkldnn_memory_desc_init(&any, origin->ndims,
-            origin->dims, origin->data_type,
-            convert_to_c(format::any)),
+      error::wrap_c_api(mkldnn_memory_desc_init(
+            &any, origin->ndims, origin->dims, origin->data_type, convert_to_c(format::any)),
           "could not initialize a memory descriptor");
-
       return any;
     }
 
@@ -265,7 +207,6 @@ public:
     /// pre-condition. 4-dimension only
     /// 1. (format_undef, nchw) for all unknown format creation
     /// 2. (format_undef, <internel>) compatible with all public correspondent
-    /// @param expected Expected format to transform to
     descriptor format_to(format expected) const {
       mkldnn_memory_desc_t adesc;
       const mkldnn_memory_desc_t *origin = get_mkldnn_memory_desc_t();
@@ -282,24 +223,19 @@ public:
           throw error(mkldnn_runtime_error, "format_to errors");
       }
 
-      error::wrap_c_api(
-          mkldnn_memory_desc_init(&adesc, origin->ndims,
-            origin->dims, origin->data_type,
-            convert_to_c(aformat)),
+      error::wrap_c_api(mkldnn_memory_desc_init(
+            &adesc, origin->ndims, origin->dims, origin->data_type, convert_to_c(aformat)),
           "could not initialize a memory descriptor");
 
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(
-          mkldnn_memory_primitive_desc_create(&result, &adesc,
-           engine::cpu_engine().get()),
+      error::wrap_c_api(mkldnn_memory_primitive_desc_create(
+            &result, &adesc, engine::cpu_engine().get()),
           "could not initialize a memory descriptor");
-
       return descriptor(result, expected);
     }
 
     /// Change format from data representation to weights, only nature formats
-    /// were supported.
-    /// Example: from nchw to oihw
+    /// were supported. Example: from nchw to oihw
     descriptor as_weights_format() const {
       switch(get_internal_format()) {
       case format::nc:
@@ -315,18 +251,12 @@ public:
       }
     }
 
-    descriptor as_data_format(format expected) const {
-      return format_to(expected);
-    }
-
     bool is_shape_compatible(dims next) const {
       auto origin = get_mkldnn_memory_desc_t();
-
-      auto volume_old = std::accumulate(origin->dims,
-          &origin->dims[origin->ndims], 1, std::multiplies<int>());
-      auto volume_new = std::accumulate(next.begin(), next.end(), 1,
-         std::multiplies<dims::value_type>());
-
+      auto volume_old = std::accumulate(
+          origin->dims, &origin->dims[origin->ndims], 1, std::multiplies<int>());
+      auto volume_new = std::accumulate(
+          next.begin(), next.end(), 1, std::multiplies<dims::value_type>());
       return volume_old == volume_new;
     }
 
@@ -484,39 +414,31 @@ public:
           break;
         }
       }
-
       return false;
     }
   };
 
   /// View is for describing a subregion from a param
-  ///
   struct view : public c_wrapper<mkldnn_primitive_desc_t> {
     /// Create view by specifying starting coordinate and size of each dimension
-    /// @param host From which the view was created
-    /// @param volume Size of each dimension of the subregion
-    /// @param start Start coordinates
     view (const descriptor& host, dims volume, dims start) {
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_view_primitive_desc_create(&result,
-            host.get(), &volume[0], &start[0]),
+      error::wrap_c_api(mkldnn_view_primitive_desc_create(
+            &result, host.get(), &volume[0], &start[0]),
           "could not create a view primitive descriptor");
 
       auto desc_closer = [] (mkldnn_primitive_desc_t res) {
         mkldnn_primitive_desc_destroy(res);
       };
 
-      std::unique_ptr<
-        std::remove_pointer<mkldnn_primitive_desc_t>::type,
-        decltype(desc_closer)> guard(result, desc_closer);
+      std::unique_ptr<std::remove_pointer<mkldnn_primitive_desc_t>::type, decltype(desc_closer)>
+        guard(result, desc_closer);
 
       mkldnn_primitive_desc_t cdesc;
-      const_mkldnn_primitive_desc_t const_cdesc =
-          mkldnn_primitive_desc_query_pd(result,
-              mkldnn::convert_to_c(query::dst_pd), 0);
+      const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
+          result, mkldnn::convert_to_c(query::dst_pd), 0);
       error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
           "could not clone a src primititve descriptor");
-
       reset(cdesc);
     }
 
@@ -553,14 +475,12 @@ public:
 
       void set_int_output_round_mode(round_mode mode) {
         error::wrap_c_api(mkldnn_primitive_attr_set_int_output_round_mode(
-              get(), mkldnn::convert_to_c(mode)),
-            "could not set int output round mode");
+              get(), mkldnn::convert_to_c(mode)), "could not set int output round mode");
       }
 
       void set_output_scales(int mask, const scale_t &scales) {
         error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(get(),
-              (int)scales.size(), mask, &scales[0]),
-            "could not set int output scales");
+              (int)scales.size(), mask, &scales[0]), "could not set int output scales");
       }
     };
 
@@ -579,64 +499,56 @@ public:
       }
     };
 
-    reorder() {}
+    reorder() = default;
 
     void execute(const param& input,
         const param& output,
         const attr_t attr = attr_t()) {
       auto input_d = input.get_descriptor();
       auto output_d = output.get_descriptor();
-
       auto reorder_d = descriptor(input_d, output_d, attr);
 
       mkldnn_primitive_t result;
       mkldnn_primitive_at_t inputs[] = { {input.get(), 0} };
       const_mkldnn_primitive_t outputs[] = { output.get() };
-      error::wrap_c_api(mkldnn_primitive_create(&result,
-            reorder_d.get(), inputs, outputs),
+      error::wrap_c_api(mkldnn_primitive_create(
+            &result, reorder_d.get(), inputs, outputs),
           "could not create a reorder primitive");
       reset(result);
 
       std::vector<mkldnn_primitive_t> execution_sequence = {result};
       mkldnn_primitive_t c_api_error_primitive;
 
-      error::wrap_c_api(
-          mkldnn_stream_submit(stream::default_stream().get(),
-           execution_sequence.size(), &execution_sequence[0],
-           &c_api_error_primitive),
-         "could not execute reorder");
+      error::wrap_c_api(mkldnn_stream_submit(
+            stream::default_stream().get(), execution_sequence.size(), &execution_sequence[0],
+           &c_api_error_primitive), "could not execute reorder");
     }
   };
 
   /// The template initialize param with a descriptor, allocate and manage
   /// buffer automatically. A customized allocator can be specified to override
   /// default implementation.
-  /// @param adesc Descriptor for the param
   template<class alloc = utils::allocator, class computation_t = computation>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
-    error::wrap_c_api(
-      mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
-     "could not create a memory primitive");
+    error::wrap_c_api(mkldnn_primitive_create(
+          &result, adesc.get(), nullptr, nullptr), "could not create a memory primitive");
 
     reset(result);
     // TODO: lazy buffer allocation
     scale_.reset();
     buffer_.reset(alloc::template malloc<computation_t>(
-        adesc.get_size()), alloc::template free<computation_t>);
+          adesc.get_size()), alloc::template free<computation_t>);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
     capacity_ = adesc.get_size();
   }
 
   /// The template initialize param with a descriptor. Specifiy extra buffer.
-  /// @param adesc Descriptor for the param
-  /// @param ahandle Buffer of the param
   void init(const descriptor &adesc, void *ahandle) {
     mkldnn_primitive_t result;
-    error::wrap_c_api(
-      mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
-      "could not create a memory primitive");
+    error::wrap_c_api(mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
+        "could not create a memory primitive");
 
     reset(result);
     scale_.reset();
@@ -649,7 +561,6 @@ public:
   /// The template initialize param with a descriptor, allocate and manage
   /// buffer automatically. A customized allocator can be specified to override
   /// default implementation.
-  /// @param adesc Descriptor for the param
   void init(const descriptor &adesc) {
     init<utils::allocator, computation>(adesc);
   }
@@ -687,31 +598,21 @@ public:
   }
 
   /// Empty construction
-  ///
   param() {
     init(descriptor(), nullptr);
   }
 
   /// Constructs a param and allocating internal buffer.
-  ///
-  /// @param adesc Descriptor for the param
   param(const descriptor &adesc) {
     init(adesc);
   }
 
   /// Constructs a param and allocating internal buffer.
-  ///
-  /// @param adesc Descriptor for the param.
-  /// @param ahandle Buffer for the param.
   param(const descriptor &adesc, void *ahandle) {
     init(adesc, ahandle);
   }
 
   /// Constructs a param and allocating internal buffer.
-  ///
-  /// @param adesc Descriptor for the param.
-  /// @param ahandle Buffer for the param.
-  /// @param ascale Scale for the param.
   param(const descriptor &adesc, void *ahandle, const scale_t &ascale) {
     init(adesc, ahandle);
     scale_.reset(new scale_t(ascale));
@@ -754,8 +655,6 @@ public:
   }
 
   /// Operator "==" override
-  ///
-  /// @param right operand.
   bool operator ==(const param& p) {
     return get_descriptor() == p.get_descriptor() &&
         get_data_handle() == p.get_data_handle() ? true : false;
@@ -764,8 +663,6 @@ public:
   /// Recreate a param with completely different content from old one
   /// but reuse the param shell. Notice that after resize, its format
   /// is undefined
-  /// @param adims New dimension
-  /// @param adata_type New data type
   template<class alloc = utils::allocator, class computation_t = computation>
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
@@ -784,10 +681,8 @@ public:
   /// Return pointer to memory descriptor structure
   const mkldnn_memory_desc_t *get_mkldnn_memory_desc_t() const {
     const_mkldnn_primitive_desc_t cdesc;
-    error::wrap_c_api(mkldnn_primitive_get_primitive_desc(get(),
-          &cdesc),
+    error::wrap_c_api(mkldnn_primitive_get_primitive_desc(get(), &cdesc),
         "could not get primitive descriptor from a param");
-
     return mkldnn_primitive_desc_query_memory_d(cdesc);
   }
 
@@ -797,10 +692,8 @@ public:
 
   descriptor dup_descriptor() const {
     mkldnn_primitive_desc_t clone;
-    error::wrap_c_api(mkldnn_primitive_desc_clone(&clone,
-          get_mkldnn_primitive_desc_t()),
+    error::wrap_c_api(mkldnn_primitive_desc_clone(&clone, get_mkldnn_primitive_desc_t()),
         "could not clone a primitive descriptor");
-
     return descriptor(clone, public_format_);
   }
 
@@ -808,7 +701,6 @@ public:
   /// Set a descriptor into param to replace the older one, keep buffer
   /// It is caller's responsibility to make sure the original buffer is large
   /// enough for specified descriptor
-  /// @param new_desc New descriptor
   void set_descriptor(const descriptor& new_desc) {
     // Keep the original management
     auto buf = std::move(buffer_);
@@ -822,8 +714,6 @@ public:
   }
 
   /// Create a view from current param
-  /// @param view_dims Size of each dimension of the view
-  /// @param offsets Start cooridinate of the view
   view create_view(dims view_dims, dims offsets) const {
     return view(get_descriptor(), view_dims, offsets);
   }
@@ -835,7 +725,6 @@ public:
   }
 
   /// Return size of specified dimension
-  /// @param index Dimension index
   inline dim_t get_dim(int index) const {
     if (index < 0 || index >= ndims())
       return static_cast<dim_t>(0);
@@ -883,25 +772,21 @@ public:
   /// Return element number of the param
   inline dim_t get_nelems() const {
     const mkldnn_memory_desc_t *mdesc = get_mkldnn_memory_desc_t();
-    return std::accumulate(
-        mdesc->dims, &mdesc->dims[mdesc->ndims], 1, std::multiplies<dim_t>());
+    return std::accumulate(mdesc->dims, &mdesc->dims[mdesc->ndims], 1, std::multiplies<dim_t>());
   }
 
   /// Returns a handle of the data contained in the param. On
   /// the CPU engine, this is a pointer to the allocated memory.
   inline void *get_data_handle() const {
     void *handle;
-    error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle),
-            "could not get native handle");
+    error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle), "could not get native handle");
     return handle;
   }
 
   /// Set new buffer handle into param
-  /// @param handle Buffer handle
   inline void set_data_handle(void *handle) {
     if (buffer_.get() != handle && buffer_ != nullptr) buffer_.reset();
-    error::wrap_c_api(mkldnn_memory_set_data_handle(get(), handle),
-            "could not set native handle");
+    error::wrap_c_api(mkldnn_memory_set_data_handle(get(), handle), "could not set native handle");
   }
 
   /// Return the scale of this param.
@@ -910,7 +795,6 @@ public:
   }
 
   /// Set new scale into param
-  /// @param scale New scale
   void set_scale(const scale_t& ascale) {
     scale_.reset(new scale_t(ascale));
   }
@@ -927,8 +811,8 @@ public:
     if (!materialized()) {
       auto adesc = get_descriptor();
 
-      buffer_.reset(utils::allocator::template malloc<computation>(
-          adesc.get_size()), utils::allocator::template free<computation>);
+      buffer_.reset(utils::allocator::template malloc<computation>(adesc.get_size()),
+          utils::allocator::template free<computation>);
       // set_data_handle will generate exception if malloc fail
       set_data_handle(buffer_.get());
     }
@@ -969,8 +853,7 @@ public:
 
   /// Need reorder if current param used by non MKL-DNN routines.
   inline bool need_reorder() const {
-    return get_internal_format() != public_format_
-      || get_data_type() != data_type::f32;
+    return get_internal_format() != public_format_ || get_data_type() != data_type::f32;
   }
 
   inline int canonical_axis_index(int axis_index) const {
@@ -983,15 +866,11 @@ public:
   }
 
   bool is_shape_compatible(dims next) const {
-    const mkldnn_memory_desc_t *adesc
-      = mkldnn_primitive_desc_query_memory_d(get_descriptor().get());
-
+    const mkldnn_memory_desc_t *adesc = mkldnn_primitive_desc_query_memory_d(get_descriptor().get());
     auto origin = adesc->dims;
-
-    auto volume_old = std::accumulate(origin, &origin[adesc->ndims], 1,
-       std::multiplies<int>());
-    auto volume_new = std::accumulate(next.begin(), next.end(), 1,
-       std::multiplies<dims::value_type>());
+    auto volume_old = std::accumulate(origin, &origin[adesc->ndims], 1, std::multiplies<int>());
+    auto volume_new = std::accumulate(
+        next.begin(), next.end(), 1, std::multiplies<dims::value_type>());
 
     // More check than just volume
     return volume_old == volume_new;
@@ -1035,8 +914,7 @@ public:
 
   void make_ungroup() {
     if (is_grouped()) {
-      IDEEP_ENFORCE(is_public_format(),
-          "can not make ungrouped with internal format");
+      IDEEP_ENFORCE(is_public_format(), "can not make ungrouped with internal format");
       auto adims = get_dims();
       ungroup_dims(adims);
       set_descriptor({adims, get_data_type(), format::oihw});
@@ -1044,42 +922,8 @@ public:
   }
 
   inline std::shared_ptr<char> get_tensor_buffer() const { return buffer_; }
-  inline void set_tensor_buffer(
-      const std::shared_ptr<char>& buffer) {buffer_ = buffer;}
 
-  // Internal use only
-  // Please use feed_from, instead.
-  void reorder_from(const param &src) {
-    reorder().execute (src, *this);
-  }
-
-  // Internal use only
-  // Please use feed_from, instead.
-  void reorder_from(const dims adims, data_type adata_type, const void *array) {
-    if (public_format_ == format::format_undef)
-      reorder_from({{adims, adata_type,
-          engine::default_format(ndims())},const_cast<void *>(array)});
-    else
-      reorder_from({{adims, adata_type, public_format_},
-          const_cast<void *>(array)});
-  }
-
-  // Internal use only
-  // Please use to_public, instead.
-  void reorder_to(const param &dst) const {
-    reorder().execute (*this, dst);
-  }
-
-  // Internal use only
-  // Please use to_public, instead.
-  void reorder_to(void *array) const {
-    if (public_format_ == format::format_undef)
-      reorder_to({
-          {get_dims(), get_data_type(), engine::default_format(ndims())},
-          array});
-    else
-      reorder_to({{get_dims(), get_data_type(), public_format_}, array});
-  }
+  inline void set_tensor_buffer(const std::shared_ptr<char>& buffer) {buffer_ = buffer;}
 
 protected:
   // mirror descriptor's same information
@@ -1111,14 +955,12 @@ protected:
 /// Tensor that describes data buffer and its explanation.
 /// It also integrates an optional tensor as an intemediate results, used in
 /// Pooling/LRN
-class IDEEP_EXPORT tensor : public param,
-  public utils::computation_web::parameter<tensor> {
+class IDEEP_EXPORT tensor : public param {
 public:
   using param::param;
 
   /// Pack an extra tensor into current one, allocate buffer using specified
   /// allocator.
-  /// @param descriptor Descriptor of the extra tensor
   template<class alloc = utils::allocator, class computation_t = computation>
   void init_extra(const descriptor &workspace) {
     auto twin = new tensor();
@@ -1127,108 +969,63 @@ public:
   }
 
   /// Pack an extra tensor into current one
-  ///
-  /// @param descriptor Descriptor of the extra tensor
-  /// @param handle Buffer handle
   void init_extra(const descriptor &workspace, void *handle) {
     twin_.reset(new tensor(workspace, handle));
   }
 
   /// Pack an extra tensor into current one
-  ///
-  /// @param tensor Extra tensor to pack in
   void init_extra(const tensor &ws) {
     twin_.reset();
     twin_ = std::make_shared<tensor>(ws);
   }
 
-  // for gcc4.8
-  /// Empty construction
-  tensor()
-    : param() {}
+  tensor() : param() {}
 
-  tensor(const descriptor &major)
-    : param(major) {}
+  tensor(const descriptor &major) : param(major) {}
 
-  tensor(const descriptor &major, void *h_major)
-    : param(major, h_major) {}
+  tensor(const descriptor &major, void *h_major) : param(major, h_major) {}
 
   tensor(const descriptor &major, void *h_major, const scale_t &scale)
     : param(major, h_major, scale) {}
 
-  /// Construct tensor
-  ///
-  /// @param major Descriptor for the tensor
-  /// @param workspace Extra descriptor of the tensor which will be packed in
-  tensor(const descriptor &major, const descriptor &workspace)
-    : param(major) {
+  tensor(const descriptor &major, const descriptor &workspace) : param(major) {
     init_extra(workspace);
   }
 
-  /// Construct tensor
-  ///
-  /// @param major Descriptor of the tensor
-  /// @param h_major Buffer handle of the tensor
-  /// @param workspace Descriptor of the extra tensor
-  /// @param h_workspace Buffer handle of the extra tensor
-  tensor(const descriptor &major, void *h_major,
-      const descriptor &workspace, void *h_workspace,
+  tensor(const descriptor &major, void *h_major, const descriptor &workspace, void *h_workspace,
       const scale_t &scale)
     : tensor(major, h_major, scale) {
     init_extra(workspace, h_workspace);
   }
 
-  /// Construct tensor
-  ///
-  /// @param major Descriptor of the tensor
-  /// @param h_major Buffer handle of the tensor
-  /// @param workspace Descriptor of the extra tensor
-  tensor(const descriptor &major, void *h_major,
-      const descriptor &workspace)
+  tensor(const descriptor &major, void *h_major, const descriptor &workspace)
     : tensor(major, h_major) {
     init_extra(workspace);
   }
 
-  /// Construct tensor
-  ///
-  /// @param major Descriptor of the tensor
-  /// @param h_major Buffer handle of the tensor
-  /// @param workspace Descriptor of the extra tensor
-  /// @param scale Scale for the tensor.
-  tensor(const descriptor &major, void *h_major,
-      const descriptor &workspace, const scale_t &scale)
+  tensor(const descriptor &major, void *h_major, const descriptor &workspace, const scale_t &scale)
     : tensor(major, h_major, scale) {
     init_extra(workspace);
   }
 
-  /// Construct tensor
-  ///
-  /// @param major Descriptor of the tensor
-  /// @param h_major Buffer handle of the tensor
-  /// @param workspace Descriptor of the extra tensor
-  /// @param h_workspace Buffer handle of the extra tensor
-  tensor(const descriptor &major, void *h_major,
-      const descriptor &workspace, void *h_workspace)
+  tensor(const descriptor &major, void *h_major, const descriptor &workspace, void *h_workspace)
     : tensor(major, h_major) {
     init_extra(workspace, h_workspace);
   }
 
   /// Copy constructor
-  tensor(const tensor& t) : param(t),
-    utils::computation_web::parameter<tensor>(t) {
+  tensor(const tensor& t) : param(t) {
     twin_ = t.twin_;
   }
 
   /// Move constructor
-  tensor(tensor&& movable) : param(std::move(movable)),
-    utils::computation_web::parameter<tensor>(std::move(movable)) {
+  tensor(tensor&& movable) : param(std::move(movable)) {
     twin_ = std::move(movable.twin_);
   }
 
   /// Assignment operator
   tensor &operator = (const tensor& t) {
     param::operator = (t);
-    parameter<tensor>::operator = (t);
     twin_ = t.twin_;
     return *this;
   }
@@ -1236,7 +1033,6 @@ public:
   /// Move assignment operator
   tensor &operator = (tensor&& movable) {
     param::operator = (std::move(movable));
-    parameter<tensor>::operator = (std::move(movable));
     twin_ = std::move(movable.twin_);
     return *this;
   }
@@ -1294,7 +1090,6 @@ public:
     return twin_ != nullptr;
   }
 
-  // XXX: ???
   tensor as_weights() const {
     tensor ret = *this;
     if (!is_weights())
@@ -1306,30 +1101,21 @@ public:
   /// the CPU engine, this is a pointer to the allocated memory.
   template<bool data_materialized = true>
   inline void *get_data_handle() const {
-    if (data_materialized == true)
-      // computation_param_materialize();
-      utils::computation_web::template parameter<tensor>::
-          computation_param_materialize(*this);
     void *handle;
-    error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle),
-            "could not get native handle");
+    error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle), "could not get native handle");
     return handle;
   }
 
   /// Reshape a param, reorder might happen if its format is internal
-  /// @param new_dims New dimension
-  /// @result Return new param reference
   template<class alloc = utils::allocator, class computation_t = computation>
   tensor& reshape(dims new_dims) {
     if (!get_descriptor().is_shape_compatible(new_dims)) {
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
     } else if (new_dims != get_dims()) {
       if (!is_public_format()) {
-        utils::computation_web::template parameter<tensor>::
-            computation_param_materialize(*this);
         tensor p;
         p.init<alloc, computation_t>({get_dims(), get_data_type()});
-        reorder_to(p);
+        reorder().execute (*this, p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
       }
@@ -1338,11 +1124,6 @@ public:
     }
 
     return *this;
-  }
-
-  // XXX: ???
-  tensor& _reshape(dims new_dims) {
-    return reshape(new_dims);
   }
 
   void transpose_from(const tensor& src, const std::vector<int>& axes) {
@@ -1413,7 +1194,6 @@ public:
   }
 
   /// Fill the tensor with a src tensor
-  /// @param src Source tensor
   inline void feed_from(const tensor &src) {
     scale_t dst_scale, src_scale;
     if (has_scale() && src.has_scale()) {
@@ -1430,8 +1210,7 @@ public:
       src_scale = IDEEP_DEF_SCALE;
     }
 
-    IDEEP_ENFORCE(dst_scale.size() == src_scale.size(),
-        "Invalid tensor scales");
+    IDEEP_ENFORCE(dst_scale.size() == src_scale.size(), "Invalid tensor scales");
     IDEEP_ENFORCE(src.get_dims() == get_dims(), "Incorrect tesnor dims");
 
     scale_t scales(dst_scale.size());
@@ -1443,17 +1222,11 @@ public:
   }
 
   /// Fill the tensor with parameters
-  /// @param adims The dims input
-  /// @param adata_type The data type input
-  /// @param array The data buffer
-  inline void feed_from(const dims adims,
-      data_type adata_type, const void *array) {
-    feed_from({{adims, adata_type,
-        engine::default_format(adims.size())}, const_cast<void *>(array)});
+  inline void feed_from(const dims adims, data_type adata_type, const void *array) {
+    feed_from({{adims, adata_type, engine::default_format(adims.size())}, const_cast<void *>(array)});
   }
 
   /// Convert the tensor to public format and data type
-  /// @param array The data buffer to convert to
   template<class alloc = utils::allocator, class computation_t = computation>
   inline tensor to_public(void *array = nullptr) const {
     tensor ret;
@@ -1497,8 +1270,7 @@ public:
   }
 
   bool is_iohw_public_layout() const {
-    return (get_public_format() == format::iohw &&
-        get_internal_format() != format::blocked);
+    return (get_public_format() == format::iohw && get_internal_format() != format::blocked);
   }
 
   bool is_limited_blockable() {
@@ -1511,87 +1283,9 @@ public:
     return true;
   }
 
-  bool computation_param_own_of_memory() const {
-    if (get_tensor_buffer().get() == nullptr)
-      return false;
-    return true;
-  }
-
-  scale_t calculate_scale(data_type adata_type, int axis = -1) const {
-    if (has_scale()) return get_scale();
-    auto atensor = (is_public_format()) ? *this : to_public();
-    auto *data_buffer = static_cast<float*>(atensor.get_data_handle());
-    auto scale_filler = [=](scale_t &scales) {
-      if (adata_type != data_type::f32 && !scales.empty()) {
-        for (auto it = scales.begin(); it != scales.end(); it++) {
-          *it = dt_max_map.at(adata_type) / (*it);
-        }
-      }
-      return scales;
-    };
-    std::function<float(const float*, int)> abs_max =
-      [&abs_max](const float* data, int size) {
-      if (size >= 4) {
-        auto nsize = size / 2;
-        auto tmax = abs_max(data, nsize);
-        auto bmax = abs_max(data + nsize, size - nsize);
-        return (tmax > bmax) ? tmax : bmax;
-      }
-
-      float abs, amax = std::fabs(data[0]);
-      for (int i = 1; i < size; i++) {
-        abs = std::fabs(data[i]);
-        if (abs > amax) amax = abs;
-      }
-      return amax;
-    };
-
-    if (axis == -1) {
-      auto scale(IDEEP_DEF_SCALE);
-      scale[0] = abs_max(data_buffer, get_nelems());
-      return scale_filler(scale);
-    }
-
-    IDEEP_ENFORCE(axis < ndims(), "Incorrect axis");
-    auto scale_offset = 1;
-    auto scale_num = get_dim(axis);
-    auto scale_buf_size = scale_num;
-    for (int i = 0; i < axis; i++)
-      scale_buf_size *= get_dim(i);
-    for (int j = axis + 1; j < ndims(); j++)
-      scale_offset *= get_dim(j);
-
-    scale_t scale_buf(scale_buf_size);
-    for (int s = 0; s < scale_buf_size; s++) {
-      scale_buf[s] = abs_max(data_buffer, scale_offset);
-      data_buffer += scale_offset;
-    }
-    if (axis == 0) return scale_filler(scale_buf);
-
-    scale_t scale(scale_buf.begin(), scale_buf.begin() + scale_num);
-    for (int t = 0; t < scale_num; t++) {
-      for (int u = t + scale_num; u < scale_buf_size; u += scale_num) {
-        if (scale[t] < scale_buf[u]) scale[t] = scale_buf[u];
-      }
-    }
-    return scale_filler(scale);
-  }
-
 protected:
   std::shared_ptr<tensor> twin_;
 };
-
-static inline tensor make_output(void *buf = nullptr) {
-  tensor ret;
-  ret.set_data_handle(buf);
-  return ret;
-}
-
-/*
-static inline tensor alloc_output(tensor::dims adims) {
-  tensor ret;
-  return ret;
-}*/
 
 }
 #endif

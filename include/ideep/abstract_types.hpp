@@ -2,8 +2,10 @@
 #define _ABSTRACT_TYPES_HPP_
 
 #include <string>
+#include <cstring>
 #include <map>
 #include <vector>
+#include <stdlib.h>
 #include <mkldnn.h>
 #include <mkldnn.hpp>
 
@@ -72,32 +74,29 @@ class c_wrapper :
   public std::shared_ptr<typename std::remove_pointer<T>::type> {
   using super = std::shared_ptr<typename std::remove_pointer<T>::type>;
 public:
-  /// Constructs a C handle wrapper.
-  /// @param t The C handle to wrap.
-  /// @param weak A flag to specify whether to construct a weak wrapper.
-  c_wrapper(T t = nullptr, bool weak = false): super(t, [weak]() {
-    auto dummy = [](T) {
-      return decltype(traits::destructor(0))(0);
-    };
-    return weak? dummy : traits::destructor;
-  }()) {}
+  c_wrapper(T t = nullptr, bool weak = false)
+    : super(t, [weak]() {
+        auto dummy = [](T) { return decltype(traits::destructor(0))(0); };
+        return weak? dummy : traits::destructor; }()) {}
 
   using super::super;
-
   /// Resets the value of a C handle.
-  /// @param t The new value of the C handle.
-  /// @param weak A flag to specify whether the wrapper should be weak.
   void reset(T t, bool weak = false) {
-    auto dummy_destructor = [](T) {
-      return decltype(traits::destructor(0))(0);
-    };
+    auto dummy_destructor = [](T) { return decltype(traits::destructor(0))(0); };
     super::reset(t, weak ? dummy_destructor : traits::destructor);
   }
 };
 
+using key_t = std::string;
+using scale_t = std::vector<float>;
+
+using query = mkldnn::query;
+using kind = mkldnn::primitive::kind;
+using prop_kind = mkldnn::prop_kind;
+using algorithm = mkldnn::algorithm;
+using padding_kind = mkldnn::padding_kind;
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
-using scale_t = std::vector<float>;
 using round_mode = mkldnn::round_mode;
 
 #define IDEEP_OP_SCALE_MASK(scale_size) (((scale_size) > 1) ? 2 : 0)
@@ -116,7 +115,6 @@ const std::map<mkldnn::memory::data_type, int> dt_max_map
   {mkldnn::memory::data_type::u8, IDEEP_U8_MAX}
 };
 
-// Supported computation kind of  int8 low precision 
 enum lowp_kind {
   LOWP_U8S8 = 0,
   LOWP_S8S8 = 1
@@ -157,13 +155,6 @@ struct engine: public mkldnn::engine {
   /// Singleton CPU engine for all primitives
   static IDEEP_EXPORT engine &cpu_engine();
 
-  /// Put this global engine in only one library
-  #define INIT_GLOBAL_ENGINE \
-  ideep::engine &ideep::engine::cpu_engine() { \
-    static engine cpu_engine; \
-    return cpu_engine; \
-  }
-
   inline static format default_format(int ndims) {
     switch(ndims) {
     case 1:
@@ -182,11 +173,6 @@ struct engine: public mkldnn::engine {
   }
 
 private:
-  /// Constructs an engine.
-  ///
-  /// @param akind The kind of engine to construct.
-  /// @param dformat The default data type of the engine.
-
   engine(kind akind = kind::cpu)
     :mkldnn::engine(akind, 0) {
   }
@@ -201,12 +187,6 @@ struct stream: public mkldnn::stream {
   }
 };
 
-using key_t = std::string;
-
-using kind = mkldnn::primitive::kind;
-using prop_kind = mkldnn::prop_kind;
-using algorithm = mkldnn::algorithm;
-using padding_kind = mkldnn::padding_kind;
 }
 
 #endif

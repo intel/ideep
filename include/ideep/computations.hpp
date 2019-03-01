@@ -1066,35 +1066,18 @@ struct convolution_forward: public computation,
       const tdims_t& padding_l, const tdims_t& padding_r, const scale_t& src_scales,
       const scale_t& weights_scales, const scale_t& dst_scales, const attr_t& attr,
       const lowp_kind alowp_kind, Ts&&... args) {
-    attr_t op_attr;
-    int weights_mask = 0, bias_mask = 0;
-    tdesc_t src_desc, weights_desc, bias_desc;
+    scale_t dst_scales_in;
+    auto dst_data_type = tdtype_t::f32;
     auto& post_ops = attr.get_post_ops();
+    tdesc_t src_desc, weights_desc, bias_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
 
-    auto dst_data_type = src.get_data_type();
-    auto dst_format = post_ops.has_op_kind(kind::sum) ?
-      dst.get_internal_format() : engine::default_format(dst_dims.size());
-
-    scale_t dst_scales_in, bias_scales;
-    auto src_scales_in = src.has_scale() ? src.get_scale()
-      : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
-    auto weights_scales_in = weights.has_scale()
-      ? weights.get_scale() : weights_scales;
-
+    auto weights_scales_in = weights.has_scale() ? weights.get_scale() : weights_scales;
     if (!weights_scales_in.empty()) {
       IDEEP_ENFORCE(alowp_kind == LOWP_U8S8 || alowp_kind == LOWP_S8S8, "Unsupported lowp kind");
-      auto src_dt = alowp_kind == LOWP_U8S8 ? tdtype_t::u8 : tdtype_t::s8;
-      src_desc = {src.get_dims(), src_dt};
-
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
-      weights_desc = {weights.get_dims(), tdtype_t::s8};
-      weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
-
-      if (with_bias) {
-        bias_desc = {bias.get_dims(), tdtype_t::s32};
-        bias_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, false);
-        bias_scales.resize(scale_size);
-      }
+      auto src_scales_in = src.has_scale() ? src.get_scale()
+        : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
 
       // determine dst data type
       if (post_ops.has_op_kind(kind::sum)) {
@@ -1108,19 +1091,13 @@ struct convolution_forward: public computation,
       }
 
       // fill primitive attr
-      scale_t op_scales(scale_size);
+      scale_t op_scales(scale_size), bias_scales(scale_size);
       dst_scales_in = (dst_scales.empty() || dst_data_type == tdtype_t::f32)
         ? IDEEP_DEF_SCALE : dst_scales;
       for (int i = 0; i < scale_size; i++) {
-        if (with_bias) {
-          bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
-          op_scales[i] = dst_scales_in[0] / bias_scales[i];
-        } else {
-          op_scales[i] = dst_scales_in[0] /
-            (src_scales_in[0] * weights_scales_in[i]);
-        }
+        bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
+        op_scales[i] = dst_scales_in[0] / bias_scales[i];
       }
-
       op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
       op_attr.set_int_output_round_mode(round_mode::round_nearest);
 
@@ -1134,27 +1111,40 @@ struct convolution_forward: public computation,
       } else if (post_ops.has_op_kind(kind::eltwise)) {
         op_attr.set_post_ops(descriptor::post_ops::relu());
       }
-    } else {
-      src_desc = {src.get_dims(), tdtype_t::f32};
-      src_scales_in = IDEEP_DEF_SCALE;
-      if (src.has_scale()) {
-        src_scales_in[0] = 1.0f / src.get_scale()[0];
+
+      src_desc = {src.get_dims(), alowp_kind == LOWP_U8S8 ? tdtype_t::u8 : tdtype_t::s8};
+      if (src.get_data_type() == tdtype_t::f32) {
+        src_attr = {0 , src_scales_in};
       }
 
-      weights_scales_in = IDEEP_DEF_SCALE;
-      weights_desc = weights.get_descriptor();
-      IDEEP_ENFORCE(weights.get_data_type() == tdtype_t::f32,
-          "Incorrect data type in weights");
+      weights_desc = {weights.get_dims(), tdtype_t::s8};
+      if (weights.get_data_type() == tdtype_t::f32) {
+        weights_attr = {IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped()), weights_scales_in};
+      }
 
       if (with_bias) {
-        IDEEP_ENFORCE(bias.get_data_type() == tdtype_t::f32,
-            "Incorrect data type in bias");
-        bias_desc = bias.get_descriptor();
-        bias_scales = IDEEP_DEF_SCALE;
+        bias_desc = {bias.get_dims(), tdtype_t::s32};
+        if (bias.get_data_type() == tdtype_t::f32) {
+          bias_attr = {IDEEP_TENSOR_SCALE_MASK(scale_size, false), bias_scales};
+        }
+      }
+    } else {
+      op_attr = attr;
+
+      src_desc = {src.get_dims(), tdtype_t::f32};
+      if (src.has_scale()) {
+        auto src_scale = src.get_scale();
+        src_scale[0] = 1.0f / src_scale[0];
+        src_attr = {0, src_scale};
       }
 
-      op_attr = attr;
-      dst_data_type = tdtype_t::f32;
+      weights_desc = weights.get_descriptor();
+      IDEEP_ENFORCE(weights.get_data_type() == tdtype_t::f32, "Incorrect data type in weights");
+
+      if (with_bias) {
+        IDEEP_ENFORCE(bias.get_data_type() == tdtype_t::f32, "Incorrect data type in bias");
+        bias_desc = bias.get_descriptor();
+      }
     }
 
     if (key.empty()) {
@@ -1168,7 +1158,10 @@ struct convolution_forward: public computation,
             strides, dilates, padding_l, padding_r, op_attr, src_scales, dst_scales, args...);
     }
 
+    auto dst_format = post_ops.has_op_kind(kind::sum) ?
+      dst.get_internal_format() : engine::default_format(dst_dims.size());
     tdesc_t dst_desc_in(dst_dims, dst_data_type, dst_format);
+
     auto it = find(key);
     if (it == end()) {
       it = with_bias
@@ -1184,11 +1177,7 @@ struct convolution_forward: public computation,
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<alloc, convolution_forward>(comp.expected_src_descriptor());
       comp.src_reorder_.reset(new reorder);
-      if (src.get_data_type() == src_in.get_data_type()) {
-        comp.src_reorder_->init(src.get_descriptor(), src_in.get_descriptor());
-      } else {
-        comp.src_reorder_->init(src.get_descriptor(), src_in.get_descriptor(), {0, src_scales_in});
-      }
+      comp.src_reorder_->init(src.get_descriptor(), src_in.get_descriptor(), src_attr);
       comp.src_reorder_->operator()(src, src_in);
     }
 
@@ -1198,20 +1187,14 @@ struct convolution_forward: public computation,
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<alloc, convolution_forward>(comp.expected_weights_descriptor());
       comp.weights_reorder_.reset(new reorder);
-      if (_weights.get_data_type() == weights_in.get_data_type()) {
-        comp.weights_reorder_->init(_weights.get_descriptor(), weights_in.get_descriptor());
-      } else {
-        comp.weights_reorder_->init(_weights.get_descriptor(), weights_in.get_descriptor(),
-            {weights_mask, weights_scales_in});
-      }
+      comp.weights_reorder_->init(_weights.get_descriptor(), weights_in.get_descriptor(), weights_attr);
       comp.weights_reorder_->operator()(_weights, weights_in);
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
     if (dst.get_descriptor() != dst_desc) {
       comp.dst_exp_desc_.reset(new tdesc_t(dst_desc));
-      IDEEP_ENFORCE(!post_ops.has_op_kind(kind::sum),
-          "Unmatch format or data type in Conv Sum fusion");
+      IDEEP_ENFORCE(!post_ops.has_op_kind(kind::sum), "Unmatch format or data type in Conv Sum fusion");
       dst.reinit<alloc, convolution_forward>(dst_desc);
     }
 
@@ -1225,12 +1208,7 @@ struct convolution_forward: public computation,
       if (bias.get_descriptor() != bias_desc) {
         bias_in.init<alloc, convolution_forward>(bias_desc);
         comp.bias_reorder_.reset(new reorder);
-        if (bias.get_data_type() == bias_in.get_data_type()) {
-          comp.bias_reorder_->init(bias.get_descriptor(), bias_in.get_descriptor());
-        } else {
-          comp.bias_reorder_->init(bias.get_descriptor(), bias_in.get_descriptor(),
-              {bias_mask, bias_scales});
-        }
+        comp.bias_reorder_->init(bias.get_descriptor(), bias_in.get_descriptor(), bias_attr);
         comp.bias_reorder_->operator()(bias, bias_in);
       }
 
@@ -1251,35 +1229,7 @@ struct convolution_forward: public computation,
     update(comp, it);
   }
 
-  template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor &src, const tensor& weights,
-      const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
-      const tdims_t& padding_l, const tdims_t& padding_r, int group,
-      const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
-      const scale_t& dst_scales = scale_t(), const attr_t& attr = attr_t(),
-      algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero, const lowp_kind alowp_kind = LOWP_U8S8) {
-    tensor dummy_bias;
-    auto weights_in = weights;
-    weights_in.make_group(group);
-
-    // FIXME: workaroud winograd format issue in inference
-    auto apkind = aprop_kind;
-    if (aalgorithm == algorithm::convolution_winograd && aprop_kind == prop_kind::forward_inference) {
-      apkind = prop_kind::forward;
-    }
-
-    auto it = key.empty() ? end() : find(key);
-    if (it != end()) {
-      compute_impl<alloc, false>(fetch(it), src, weights_in, dummy_bias, dst);
-    } else {
-      compute_impl<alloc, false>( key, src, weights_in, dummy_bias, result_dims, dst, strides,
-          dilates, padding_l, padding_r, src_scales, weights_scales, dst_scales, attr, alowp_kind,
-          aalgorithm, apkind, appading_kind);
-    }
-  }
-
-  template<class alloc = utils::allocator>
+  template<class alloc = utils::allocator, bool with_bias = true>
   static void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group,
@@ -1298,12 +1248,26 @@ struct convolution_forward: public computation,
 
     auto it = key.empty() ? end() : find(key);
     if (it != end()) {
-      compute_impl<alloc, true>(fetch(it), src, weights_in, bias, dst);
+      compute_impl<alloc, with_bias>(fetch(it), src, weights_in, bias, dst);
     } else {
-      compute_impl<alloc, true>( key, src, weights_in, bias, result_dims, dst, strides, dilates,
+      compute_impl<alloc, with_bias>(key, src, weights_in, bias, result_dims, dst, strides, dilates,
           padding_l, padding_r, src_scales, weights_scales, dst_scales, attr, alowp_kind,
           aalgorithm, apkind, appading_kind);
     }
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(key_t &key, const tensor &src, const tensor& weights,
+      const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, int group,
+      const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(), const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
+      padding_kind appading_kind = padding_kind::zero, const lowp_kind alowp_kind = LOWP_U8S8) {
+    static tensor dummy_bias;
+    compute<alloc, false>(key, src, weights, dummy_bias, result_dims, dst, strides, dilates,
+        padding_l, padding_r, group, src_scales, weights_scales, dst_scales, attr,
+        aalgorithm, aprop_kind, appading_kind, alowp_kind);
   }
 
   static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims,
@@ -1507,6 +1471,7 @@ struct convolution_backward_weights : public computation,
           "could not create a convolution backward weights primitive descriptor");
       reset(result);
     }
+
     descriptor(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc,
         const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)

@@ -889,6 +889,8 @@ public:
   using computation::execute;
   using computation::expected_dst_descriptor;
 
+  sum() = default;
+
   void init(const scale_t &scales, const std::vector<tensor::descriptor> &inputs) {
     descriptor forward_descriptor(scales, inputs);
     computation::init(forward_descriptor, inputs);
@@ -899,8 +901,6 @@ public:
     descriptor forward_descriptor(scales, inputs, output);
     computation::init(forward_descriptor, inputs);
   }
-
-  sum() = default;
 
   sum(const scale_t &scales, const std::vector<tensor::descriptor> &inputs_desc,
       const tensor::descriptor& output_desc) {
@@ -1015,8 +1015,6 @@ struct convolution_forward: public computation,
   using computation::expected_input_descriptor;
   using computation::expected_dst_descriptor;
   using computation::expected_weights_descriptor;
-
-  convolution_forward() = default;
 
   template<typename T, typename ...Ts>
   convolution_forward(T arg, Ts&&... args) {
@@ -1395,7 +1393,6 @@ struct convolution_forward: public computation,
   }
 
 private:
-  tensor zero_bias_;
   std::shared_ptr<reorder> src_reorder_, weights_reorder_, bias_reorder_;
   std::shared_ptr<tensor> src_in_, weights_in_, bias_in_;
   std::shared_ptr<tensor::descriptor> dst_exp_desc_;
@@ -1446,8 +1443,6 @@ public:
     descriptor backward_data_descriptor(grady_desc, weights_desc, gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
   }
-
-  convolution_backward_data() = default;
 
   template<typename T, typename ...Ts>
   convolution_backward_data (T arg, Ts&&... args) {
@@ -1584,8 +1579,6 @@ public:
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
-
-  convolution_backward_weights() = default;
 
   template<typename T, typename ...Ts>
   convolution_backward_weights (T arg, Ts&&... args) {
@@ -1792,8 +1785,6 @@ struct convolution_transpose_forward : public computation,
     computation::init(forward_descriptor, src_desc, weights_desc);
   }
 
-  convolution_transpose_forward() = default;
-
   template <typename T, typename... Ts>
   convolution_transpose_forward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -1965,8 +1956,6 @@ struct convolution_transpose_backward_data : public computation,
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
   }
 
-  convolution_transpose_backward_data() = default;
-
   template <typename T, typename... Ts>
   convolution_transpose_backward_data(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -2088,8 +2077,6 @@ struct convolution_transpose_backward_weights
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
 
-  convolution_transpose_backward_weights() = default;
-
   template <typename T, typename... Ts>
   convolution_transpose_backward_weights(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -2210,8 +2197,6 @@ public:
     computation::init(forward_descriptor, x_desc);
   }
 
-  lrn_forward() = default;
-
   template<typename T, typename ...Ts>
   lrn_forward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -2309,8 +2294,6 @@ public:
     computation::init(backward_data_descriptor, x_desc, grady_desc);
   }
 
-  lrn_backward() = default;
-
   template<typename T, typename ...Ts>
   lrn_backward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -2371,8 +2354,6 @@ public:
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
-
-  pooling_forward() = default;
 
   template<typename T, typename ...Ts>
   pooling_forward(T arg, Ts &&...args) {
@@ -2483,8 +2464,6 @@ public:
     computation::init(backward_descriptor, grady_desc, gradx_desc);
   }
 
-  pooling_backward() = default;
-
   template<typename T, typename ...Ts>
   pooling_backward(T arg, Ts &&...args) {
     init(arg, std::forward<Ts>(args)...);
@@ -2548,8 +2527,6 @@ public:
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
-
-  eltwise_forward() = default;
 
   template<typename T, typename ...Ts>
   eltwise_forward(T arg, Ts &&...args) {
@@ -2631,8 +2608,6 @@ public:
     computation::init(backward_descriptor, grady_desc, x_desc);
   }
 
-  eltwise_backward() = default;
-
   template<typename T, typename ...Ts>
   eltwise_backward(T grady_desc, T src_desc, Ts &&...args) {
     init(std::forward<T>(grady_desc), std::forward<T>(src_desc), std::forward<Ts>(args)...);
@@ -2695,8 +2670,6 @@ public:
     computation::init(forward_descriptor, x_desc);
   }
 
-  channel_shuffle_forward() = default;
-
   template<typename T, typename ...Ts>
   channel_shuffle_forward(T arg, Ts &&...args) {
     init(std::forward<T>(arg), std::forward<Ts>(args)...);
@@ -2755,8 +2728,6 @@ public:
     descriptor backward_descriptor( grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc);
   }
-
-  channel_shuffle_backward() = default;
 
   template<typename T, typename ...Ts>
   channel_shuffle_backward(T grady_desc, Ts &&...args) {
@@ -2821,8 +2792,6 @@ public:
     descriptor forward_descriptor (concat_dimension, inputs);
     computation::init(forward_descriptor, inputs);
   }
-
-  concat() = default;
 
   concat(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
     init(concat_dimension, inputs);
@@ -3076,8 +3045,6 @@ public:
     computation::init(batch_norm_forward);
   }
 
-  batch_normalization_forward_inference() = default;
-
   template<typename T, typename ...Ts>
   batch_normalization_forward_inference(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -3198,8 +3165,6 @@ public:
     weights_.init(batch_norm_forward.expected_weights_descriptor());
     sum_.init({momentum, 1.f - momentum}, {scale, shift});
   }
-
-  batch_normalization_forward_training () = default;
 
   template<typename T, typename... Ts>
   batch_normalization_forward_training (T arg, Ts&&... args) {
@@ -3360,8 +3325,6 @@ public:
     grad_scale_shift_.init(batch_norm_backward.expected_weights_descriptor());
   }
 
-  batch_normalization_backward() = default;
-
   template<typename T, typename ...Ts>
   batch_normalization_backward(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -3507,8 +3470,6 @@ struct inner_product_forward: public computation,
     descriptor forward_descriptor(src_desc, weights_desc, bias_desc, dst_desc);
     computation::init(forward_descriptor, src_desc, weights_desc, bias_desc);
   }
-
-  inner_product_forward() = default;
 
   template<typename T, typename ...Ts>
   inner_product_forward(T arg, Ts&&... args) {
@@ -3680,8 +3641,6 @@ public:
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
   }
 
-  inner_product_backward_data() = default;
-
   template<typename T, typename ...Ts>
   inner_product_backward_data(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -3777,8 +3736,6 @@ public:
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
 
-  inner_product_backward_weights() = default;
-
   template<typename T, typename ...Ts>
   inner_product_backward_weights(T arg, Ts&&... args) {
     init(arg, std::forward<Ts>(args)...);
@@ -3853,8 +3810,6 @@ public:
 
 struct dropout_forward {
 public:
-  dropout_forward() = default;
-
   template<class alloc, class T>
   static void compute_impl(const tensor& src, float ratio, tensor& dst, tensor& mask) {
     dropout_forward comp;
@@ -3905,8 +3860,6 @@ public:
 
 struct dropout_backward {
 public:
-  dropout_backward() = default;
-
   template<class alloc, class T>
   static void compute_impl(const tensor& mask, const tensor& gy, tensor& gx) {
     dropout_backward comp;

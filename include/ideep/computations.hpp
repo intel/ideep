@@ -8,6 +8,11 @@
 
 namespace ideep {
 
+using tdims_t = tensor::dims;
+using tview_t = tensor::view;
+using tdtype_t = tensor::data_type;
+using tdesc_t = tensor::descriptor;
+
 /// A group of primitive descriptors, pack related reorder descriptors
 /// with computational descriptor.
 class descriptor_group: public c_wrapper<mkldnn_primitive_desc_t> {
@@ -70,8 +75,7 @@ public:
       }
     }
 
-    std::tuple<kind, float, float, float, algorithm>
-      get_params(int index) const {
+    std::tuple<kind, float, float, float, algorithm> get_params(int index) const {
       mkldnn_alg_kind_t c_alg = mkldnn_eltwise_relu;
       float scale = 1.0, alpha = 1.0, beta = 0.0;
 
@@ -98,8 +102,8 @@ public:
 
       for (int i = 0; i < num_ops(); i ++) {
         kind akind;
-        float scale = 1.0, alpha = 1.0, beta = 0.0;
         algorithm alg;
+        float scale = 1.0, alpha = 1.0, beta = 0.0;
         std::tie(akind, scale, alpha, beta, alg) = get_params(i);
 
         switch(akind) {
@@ -245,11 +249,11 @@ public:
 
 protected:
   std::vector<const_mkldnn_primitive_desc_t> cpp_to_c(
-      const std::vector<tensor::descriptor> &inputs) {
+      const std::vector<tdesc_t> &inputs) {
     std::vector<const_mkldnn_primitive_desc_t> c_api_inputs;
     c_api_inputs.reserve(inputs.size());
 
-    auto convert_to_c = [](const tensor::descriptor &d) { return d.get(); };
+    auto convert_to_c = [](const tdesc_t &d) { return d.get(); };
     std::transform(inputs.begin(), inputs.end(), std::back_inserter(c_api_inputs), convert_to_c);
     return c_api_inputs;
   }
@@ -260,69 +264,69 @@ public:
     : c_wrapper() {}
 
   /// Query interface
-  tensor::descriptor expected_descriptor_of(mkldnn::query q, int index = 0) const {
+  tdesc_t expected_descriptor_of(mkldnn::query q, int index = 0) const {
     const_mkldnn_primitive_desc_t const_cdesc =
         mkldnn_primitive_desc_query_pd(get(), mkldnn::convert_to_c(q), index);
     return param::descriptor(const_cdesc);
   }
 
   /// Query expected input descriptor
-  tensor::descriptor expected_input_descriptor(int index) const {
+  tdesc_t expected_input_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::input_pd, index);
   }
 
   /// Query expected output descriptor
-  tensor::descriptor expected_output_descriptor(int index) const {
+  tdesc_t expected_output_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::output_pd, index);
   }
 
   /// Query expected src descriptor
-  tensor::descriptor expected_src_descriptor() const {
+  tdesc_t expected_src_descriptor() const {
     return expected_descriptor_of(mkldnn::src_pd);
   }
 
   /// Query expected weights descriptor
-  tensor::descriptor expected_weights_descriptor() const {
+  tdesc_t expected_weights_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd);
   }
 
   /// Query expected bias descriptor
-  tensor::descriptor expected_bias_descriptor() const {
+  tdesc_t expected_bias_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd, 1);
   }
 
   /// Query expected dst descriptor
-  tensor::descriptor expected_dst_descriptor() const {
+  tdesc_t expected_dst_descriptor() const {
     return expected_descriptor_of(mkldnn::dst_pd, 0);
   }
 
   /// Query expected workspace descriptor
-  tensor::descriptor expected_workspace_descriptor() const {
+  tdesc_t expected_workspace_descriptor() const {
     return expected_descriptor_of(mkldnn::workspace_pd, 0);
   }
 
   /// Query expected gradient X descriptor
-  tensor::descriptor expected_gradx_descriptor() const {
+  tdesc_t expected_gradx_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_src_pd, 0);
   }
 
   /// Query expected gradient Y descriptor
-  tensor::descriptor expected_grady_descriptor() const {
+  tdesc_t expected_grady_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_dst_pd, 0);
   }
 
   /// Qeury expected weights gradient descriptor
-  tensor::descriptor expected_gradw_descriptor() const {
+  tdesc_t expected_gradw_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 0);
   }
 
   /// Qeury expected bias gradient descriptor
-  tensor::descriptor expected_gradb_descriptor() const {
+  tdesc_t expected_gradb_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
   /// Query interface
-  tensor::descriptor dup_descriptor_of(mkldnn::query q,
+  tdesc_t dup_descriptor_of(mkldnn::query q,
      int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
     const_mkldnn_primitive_desc_t const_cdesc =
@@ -333,57 +337,57 @@ public:
   }
 
   /// Query expected input descriptor
-  tensor::descriptor dup_input_descriptor(int index) const {
+  tdesc_t dup_input_descriptor(int index) const {
     return dup_descriptor_of(mkldnn::input_pd, index);
   }
 
   /// Query expected output descriptor
-  tensor::descriptor dup_output_descriptor(int index) const {
+  tdesc_t dup_output_descriptor(int index) const {
     return dup_descriptor_of(mkldnn::output_pd, index);
   }
 
   /// Query expected src descriptor
-  tensor::descriptor dup_src_descriptor() const {
+  tdesc_t dup_src_descriptor() const {
     return dup_descriptor_of(mkldnn::src_pd);
   }
 
   /// Query expected weights descriptor
-  tensor::descriptor dup_weights_descriptor() const {
+  tdesc_t dup_weights_descriptor() const {
     return dup_descriptor_of(mkldnn::weights_pd);
   }
 
   /// Query expected bias descriptor
-  tensor::descriptor dup_bias_descriptor() const {
+  tdesc_t dup_bias_descriptor() const {
     return dup_descriptor_of(mkldnn::weights_pd, 1);
   }
 
   /// Query expected dst descriptor
-  tensor::descriptor dup_dst_descriptor() const {
+  tdesc_t dup_dst_descriptor() const {
     return dup_descriptor_of(mkldnn::dst_pd, 0);
   }
 
   /// Query expected workspace descriptor
-  tensor::descriptor dup_workspace_descriptor() const {
+  tdesc_t dup_workspace_descriptor() const {
     return dup_descriptor_of(mkldnn::workspace_pd, 0);
   }
 
   /// Query expected gradient X descriptor
-  tensor::descriptor dup_gradx_descriptor() const {
+  tdesc_t dup_gradx_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_src_pd, 0);
   }
 
   /// Query expected gradient Y descriptor
-  tensor::descriptor dup_grady_descriptor() const {
+  tdesc_t dup_grady_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_dst_pd, 0);
   }
 
   /// Qeury expected weights gradient descriptor
-  tensor::descriptor dup_gradw_descriptor() const {
+  tdesc_t dup_gradw_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_weights_pd, 0);
   }
 
   /// Qeury expected bias gradient descriptor
-  tensor::descriptor dup_gradb_descriptor() const {
+  tdesc_t dup_gradb_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
@@ -416,112 +420,110 @@ public:
   }
 
   /// Query interface
-  tensor::descriptor expected_descriptor_of(mkldnn::query q,
-      int index = 0) const {
+  tdesc_t expected_descriptor_of(mkldnn::query q, int index = 0) const {
     const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
         get_mkldnn_primitive_desc_t(), mkldnn::convert_to_c(q), index);
-    return tensor::descriptor(const_cdesc);
+    return tdesc_t(const_cdesc);
   }
 
   /// Query interface
-  tensor::descriptor dup_descriptor_of(mkldnn::query q,
-      int index = 0) const {
+  tdesc_t dup_descriptor_of(mkldnn::query q, int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
     const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
         get_mkldnn_primitive_desc_t(), mkldnn::convert_to_c(q), index);
     error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
         "could not clone a src primititve descriptor");
-    return tensor::descriptor(cdesc);
+    return tdesc_t(cdesc);
   }
 
 protected:
   /// Specific query interface, not valid for all computations.
-  tensor::descriptor expected_input_descriptor(int index) const {
+  tdesc_t expected_input_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::input_pd, index);
   }
 
-  tensor::descriptor expected_output_descriptor(int index) const {
+  tdesc_t expected_output_descriptor(int index) const {
     return expected_descriptor_of(mkldnn::output_pd, index);
   }
 
-  tensor::descriptor expected_src_descriptor() const {
+  tdesc_t expected_src_descriptor() const {
     return expected_descriptor_of(mkldnn::src_pd);
   }
 
-  tensor::descriptor expected_weights_descriptor() const {
+  tdesc_t expected_weights_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd);
   }
 
-  tensor::descriptor expected_bias_descriptor() const {
+  tdesc_t expected_bias_descriptor() const {
     return expected_descriptor_of(mkldnn::weights_pd, 1);
   }
 
-  tensor::descriptor expected_dst_descriptor() const {
+  tdesc_t expected_dst_descriptor() const {
     return expected_descriptor_of(mkldnn::dst_pd, 0);
   }
 
-  tensor::descriptor expected_workspace_descriptor() const {
+  tdesc_t expected_workspace_descriptor() const {
     return expected_descriptor_of(mkldnn::workspace_pd, 0);
   }
 
-  tensor::descriptor expected_gradx_descriptor() const {
+  tdesc_t expected_gradx_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_src_pd, 0);
   }
 
-  tensor::descriptor expected_grady_descriptor() const {
+  tdesc_t expected_grady_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_dst_pd, 0);
   }
 
-  tensor::descriptor expected_gradw_descriptor() const {
+  tdesc_t expected_gradw_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 0);
   }
 
-  tensor::descriptor expected_gradb_descriptor() const {
+  tdesc_t expected_gradb_descriptor() const {
     return expected_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
   /// Specific query interface, not valid for all computations.
-  tensor::descriptor dup_input_descriptor(int index) const {
+  tdesc_t dup_input_descriptor(int index) const {
     return dup_descriptor_of(mkldnn::input_pd, index);
   }
 
-  tensor::descriptor dup_output_descriptor(int index) const {
+  tdesc_t dup_output_descriptor(int index) const {
     return dup_descriptor_of(mkldnn::output_pd, index);
   }
 
-  tensor::descriptor dup_src_descriptor() const {
+  tdesc_t dup_src_descriptor() const {
     return dup_descriptor_of(mkldnn::src_pd);
   }
 
-  tensor::descriptor dup_weights_descriptor() const {
+  tdesc_t dup_weights_descriptor() const {
     return dup_descriptor_of(mkldnn::weights_pd);
   }
 
-  tensor::descriptor dup_bias_descriptor() const {
+  tdesc_t dup_bias_descriptor() const {
     return dup_descriptor_of(mkldnn::weights_pd, 1);
   }
 
-  tensor::descriptor dup_dst_descriptor() const {
+  tdesc_t dup_dst_descriptor() const {
     return dup_descriptor_of(mkldnn::dst_pd, 0);
   }
 
-  tensor::descriptor dup_workspace_descriptor() const {
+  tdesc_t dup_workspace_descriptor() const {
     return dup_descriptor_of(mkldnn::workspace_pd, 0);
   }
 
-  tensor::descriptor dup_gradx_descriptor() const {
+  tdesc_t dup_gradx_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_src_pd, 0);
   }
 
-  tensor::descriptor dup_grady_descriptor() const {
+  tdesc_t dup_grady_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_dst_pd, 0);
   }
 
-  tensor::descriptor dup_gradw_descriptor() const {
+  tdesc_t dup_gradw_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_weights_pd, 0);
   }
 
-  tensor::descriptor dup_gradb_descriptor() const {
+  tdesc_t dup_gradb_descriptor() const {
     return dup_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
@@ -544,7 +546,7 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
     using post_ops = descriptor_group::post_ops;
 
     descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input,
-        const tensor::descriptor &output,
+        const tdesc_t &output,
         const attr_t& attr = attr_t()) {
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
@@ -555,11 +557,11 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
   };
 
 public:
+  using attr_t = descriptor::attr_t;
+
   reorder() = default;
 
-  void init(const tensor::descriptor& src_desc,
-      const tensor::descriptor& dst_desc,
-      const descriptor::attr_t& attr = descriptor::attr_t()) {
+  void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
     mkldnn_primitive_desc_t desc;
     error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
           &desc, src_desc.get(), dst_desc.get(), attr.get()),
@@ -577,10 +579,8 @@ public:
     reset(result);
   }
 
-  void init(const tensor::view& view,
-      const tensor::descriptor& src_desc,
-      const tensor::descriptor& dst_desc,
-      const descriptor::attr_t& attr = descriptor::attr_t()) {
+  void init(const tview_t& view, const tdesc_t& src_desc,
+      const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
     mkldnn_primitive_desc_t desc;
     error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
           &desc, view.get(), dst_desc.get(), attr.get()),
@@ -598,10 +598,8 @@ public:
     reset(result);
   }
 
-  void init(const tensor::descriptor& src_desc,
-      const tensor::view& view,
-      const tensor::descriptor& dst_desc,
-      const descriptor::attr_t& attr = descriptor::attr_t()) {
+  void init(const tdesc_t& src_desc, const tview_t& view,
+      const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
     mkldnn_primitive_desc_t desc;
     error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
           &desc, src_desc.get(), view.get(), attr.get()),
@@ -625,8 +623,8 @@ public:
   }
 
   void operator() (const tensor &input, const tensor &output) {
-    IDEEP_ENFORCE(!(input.get_data_type() == tensor::data_type::s8
-          && output.get_data_type() == tensor::data_type::u8),
+    IDEEP_ENFORCE(!(input.get_data_type() == tdtype_t::s8
+          && output.get_data_type() == tdtype_t::u8),
         "Not support the reorder of s8 to u8 to avoid overflow.");
     IDEEP_ENFORCE(input.get_descriptor() == in_.get_descriptor()
         && output.get_descriptor() == out_.get_descriptor(),
@@ -644,8 +642,7 @@ public:
         "could not execute reorder");
   }
 
-  static void compute(
-      const tensor& input, tensor& output, const descriptor::attr_t& attr = descriptor::attr_t()) {
+  static void compute( const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
     if (input.is_empty() || output.is_empty())
       return;
 
@@ -677,8 +674,7 @@ public:
 
   // TODO: make this right
   template<typename alloc = utils::allocator>
-  static tensor compute(
-      const tensor &input, const tensor::dims &volume, const tensor::dims &start) {
+  static tensor compute( const tensor &input, const tdims_t &volume, const tdims_t &start) {
     key_t key;
     utils::create_key(key, input.get_dims(), input.get_data_type(),
         input.get_internal_format(), volume, start);
@@ -698,19 +694,19 @@ protected:
   // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
   static void iohw_definedby_blocked(tensor &atensor) {
     IDEEP_ENFORCE(atensor.ndims() == 4, "Only support 4 dims tensor");
-    tensor::dims oihw_dims {atensor.get_dim(1), atensor.get_dim(0), atensor.get_dim(2), atensor.get_dim(3)};
-    tensor::descriptor desc(oihw_dims, atensor.get_data_type(), format::oihw);
+    tdims_t oihw_dims {atensor.get_dim(1), atensor.get_dim(0), atensor.get_dim(2), atensor.get_dim(3)};
+    tdesc_t desc(oihw_dims, atensor.get_data_type(), format::oihw);
 
     auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
     auto oi_blk = oi_primitive_desc->layout_desc.blocking;
     oi_blk.strides[0][0] = oi_blk.strides[0][1];
     oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
 
-    tensor::dims stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
-    tensor::dims stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
-    tensor::dims block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
+    tdims_t stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
+    tdims_t stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
+    tdims_t block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
 
-    tensor::descriptor io_desc(oihw_dims, atensor.get_data_type(), stride, block_dims, stride_inner);
+    tdesc_t io_desc(oihw_dims, atensor.get_data_type(), stride, block_dims, stride_inner);
     atensor.set_descriptor(io_desc);
   }
 };
@@ -741,8 +737,8 @@ public:
       std::vector<int32_t>& axis_info, int axis, bool add_axis) {
     reorder reorder_;
     std::vector<tensor> outputs;
-    tensor::dims output_dims(input.get_dims());
-    tensor::dims offset_dims(output_dims.size(), 0);
+    tdims_t output_dims(input.get_dims());
+    tdims_t offset_dims(output_dims.size(), 0);
     IDEEP_ENFORCE(axis < input.ndims(), "invalid axis in split");
 
     for (unsigned i = 0; i < axis_info.size(); ++i) {
@@ -754,7 +750,7 @@ public:
       if (input.has_scale()) output.set_scale(input.get_scale());
 
       if (add_axis) {
-        tensor::dims out_dims(output_dims);
+        tdims_t out_dims(output_dims);
         out_dims.erase(out_dims.begin() + axis);
         output.reshape(out_dims);
       }
@@ -796,7 +792,7 @@ public:
     reset(result);
   }
 
-  void init(const descriptor_group& adesc, const std::vector<tensor::descriptor> &args) {
+  void init(const descriptor_group& adesc, const std::vector<tdesc_t> &args) {
     IDEEP_ENFORCE(adesc.num_of_inputs() == (int)args.size(), "Unmatch the number of inputs");
     inputs_num_ = (int)args.size();
     outputs_num_ = adesc.num_of_outputs();
@@ -864,7 +860,7 @@ private:
 struct sum : public computation,
   public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
-    descriptor(const scale_t &scales, const std::vector<tensor::descriptor> &inputs) {
+    descriptor(const scale_t &scales, const std::vector<tdesc_t> &inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
@@ -873,9 +869,7 @@ struct sum : public computation,
       reset(result);
     }
 
-    descriptor(const scale_t &scales,
-        const std::vector<tensor::descriptor> &inputs,
-        const tensor::descriptor& output_desc) {
+    descriptor(const scale_t &scales, const std::vector<tdesc_t> &inputs, const tdesc_t& output_desc) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
@@ -891,23 +885,23 @@ public:
 
   sum() = default;
 
-  void init(const scale_t &scales, const std::vector<tensor::descriptor> &inputs) {
+  void init(const scale_t &scales, const std::vector<tdesc_t> &inputs) {
     descriptor forward_descriptor(scales, inputs);
     computation::init(forward_descriptor, inputs);
   }
 
-  void init(const scale_t &scales, const std::vector<tensor::descriptor> &inputs,
-      const tensor::descriptor& output) {
+  void init(const scale_t &scales, const std::vector<tdesc_t> &inputs,
+      const tdesc_t& output) {
     descriptor forward_descriptor(scales, inputs, output);
     computation::init(forward_descriptor, inputs);
   }
 
-  sum(const scale_t &scales, const std::vector<tensor::descriptor> &inputs_desc,
-      const tensor::descriptor& output_desc) {
+  sum(const scale_t &scales, const std::vector<tdesc_t> &inputs_desc,
+      const tdesc_t& output_desc) {
     init(scales, inputs_desc, output_desc);
   }
 
-  sum(const scale_t& scales, const std::vector<tensor::descriptor>& inputs_desc) {
+  sum(const scale_t& scales, const std::vector<tdesc_t>& inputs_desc) {
     init(scales, inputs_desc);
   }
 
@@ -918,11 +912,11 @@ public:
   template<class alloc = utils::allocator>
   static void compute(const scale_t &scales, const std::vector<tensor>& inputs, tensor& output) {
     std::vector<tensor> inputs_in;
-    std::vector<tensor::descriptor> inputs_desc;
+    std::vector<tdesc_t> inputs_desc;
     for (auto in : inputs) {
       auto _in = in;
-      if (in.get_data_type() != tensor::data_type::f32) {
-        _in.init<alloc, sum>({in.get_dims(), tensor::data_type::f32});
+      if (in.get_data_type() != tdtype_t::f32) {
+        _in.init<alloc, sum>({in.get_dims(), tdtype_t::f32});
         IDEEP_ENFORCE(in.has_scale(), "Can not find scales");
         IDEEP_ENFORCE(in.get_scale().size() == 1, "Incorrect scale size");
         auto scale = IDEEP_DEF_SCALE;
@@ -950,10 +944,9 @@ struct convolution_forward: public computation,
   public utils::computation_cache<convolution_forward> {
   /// Descriptor class for describing convolution forward process
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-        const tensor::descriptor &bias_desc, const tensor::descriptor &dst_desc,
-        const tensor::dims& strides, const tensor::dims& dilates, const tensor::dims& padding_l,
-        const tensor::dims& padding_r, const attr_t& attr = attr_t(),
+    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &bias_desc,
+        const tdesc_t &dst_desc, const tdims_t& strides, const tdims_t& dilates,
+        const tdims_t& padding_l, const tdims_t& padding_r, const attr_t& attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
         padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims({strides, dilates, padding_l, padding_r});
@@ -963,7 +956,7 @@ struct convolution_forward: public computation,
       mkldnn_memory_desc_t bias_data = bias_desc.format_any();
       mkldnn_memory_desc_t dst_data = attr.get_post_ops().has_op_kind(kind::sum) ?
         *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
-      tensor::dims dilates_in {0, 0};
+      tdims_t dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -981,9 +974,8 @@ struct convolution_forward: public computation,
       reset(result);
     }
 
-    descriptor(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-        const tensor::descriptor &dst_desc, const tensor::dims& strides,
-        const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
+    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc,
+        const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::convolution_direct,
         prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims({strides, dilates, padding_l, padding_r});
@@ -992,7 +984,7 @@ struct convolution_forward: public computation,
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
       mkldnn_memory_desc_t dst_data = attr.get_post_ops().has_op_kind(kind::sum) ?
         *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
-      tensor::dims dilates_in {0, 0};
+      tdims_t dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1012,6 +1004,7 @@ struct convolution_forward: public computation,
   };
 
  public:
+  using attr_t = descriptor::attr_t;
   using computation::expected_input_descriptor;
   using computation::expected_dst_descriptor;
   using computation::expected_weights_descriptor;
@@ -1022,18 +1015,17 @@ struct convolution_forward: public computation,
   }
 
   template<typename T, typename ...Ts,
-           typename = typename std::enable_if<
-             std::is_same<T, tensor::descriptor>::value>::type>
-  void init(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-      const tensor::descriptor &bias, const T &dst, Ts&&... args) {
+    typename = typename std::enable_if<std::is_same<T, tdesc_t>::value>::type>
+  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
+      const tdesc_t &bias, const T &dst, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, src_desc, weights_desc, bias);
   }
 
   template<typename T, typename ...Ts,
-    typename  = typename std::enable_if<std::is_same<T, tensor::dims>::value>::type>
-  void init(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-      const tensor::descriptor &dst, const T something, Ts&&... args) {
+    typename = typename std::enable_if<std::is_same<T, tdims_t>::value>::type>
+  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
+      const tdesc_t &dst, const T something, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, src_desc, weights_desc);
   }
@@ -1089,13 +1081,13 @@ struct convolution_forward: public computation,
 
   template <class alloc, bool with_bias, typename ...Ts>
   static void compute_impl(key_t &key, const tensor& src, const tensor& weights, const tensor& bias,
-      const tensor::dims& dst_dims, tensor& dst, const tensor::dims& strides,
-      const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
-      const scale_t& src_scales, const scale_t& weights_scales, const scale_t& dst_scales,
-      const descriptor::attr_t& attr, const lowp_kind alowp_kind, Ts&&... args) {
-    descriptor::attr_t op_attr;
+      const tdims_t& dst_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, const scale_t& src_scales,
+      const scale_t& weights_scales, const scale_t& dst_scales, const attr_t& attr,
+      const lowp_kind alowp_kind, Ts&&... args) {
+    attr_t op_attr;
     int weights_mask = 0, bias_mask = 0;
-    tensor::descriptor src_desc, weights_desc, bias_desc;
+    tdesc_t src_desc, weights_desc, bias_desc;
     auto& post_ops = attr.get_post_ops();
 
     auto dst_data_type = src.get_data_type();
@@ -1110,15 +1102,15 @@ struct convolution_forward: public computation,
 
     if (!weights_scales_in.empty()) {
       IDEEP_ENFORCE(alowp_kind == LOWP_U8S8 || alowp_kind == LOWP_S8S8, "Unsupported lowp kind");
-      auto src_dt = alowp_kind == LOWP_U8S8 ? tensor::data_type::u8 : tensor::data_type::s8;
+      auto src_dt = alowp_kind == LOWP_U8S8 ? tdtype_t::u8 : tdtype_t::s8;
       src_desc = {src.get_dims(), src_dt};
 
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
-      weights_desc = {weights.get_dims(), tensor::data_type::s8};
+      weights_desc = {weights.get_dims(), tdtype_t::s8};
       weights_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, weights.is_grouped());
 
       if (with_bias) {
-        bias_desc = {bias.get_dims(), tensor::data_type::s32};
+        bias_desc = {bias.get_dims(), tdtype_t::s32};
         bias_mask = IDEEP_TENSOR_SCALE_MASK(scale_size, false);
         bias_scales.resize(scale_size);
       }
@@ -1127,16 +1119,16 @@ struct convolution_forward: public computation,
       if (post_ops.has_op_kind(kind::sum)) {
         dst_data_type = dst.get_data_type();
       } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
-        dst_data_type = tensor::data_type::f32;
+        dst_data_type = tdtype_t::f32;
       } else if (post_ops.non_negitive_output()){
-        dst_data_type = tensor::data_type::u8;
+        dst_data_type = tdtype_t::u8;
       } else {
-        dst_data_type = tensor::data_type::s8;
+        dst_data_type = tdtype_t::s8;
       }
 
       // fill primitive attr
       scale_t op_scales(scale_size);
-      dst_scales_in = (dst_scales.empty() || dst_data_type == tensor::data_type::f32)
+      dst_scales_in = (dst_scales.empty() || dst_data_type == tdtype_t::f32)
         ? IDEEP_DEF_SCALE : dst_scales;
       for (int i = 0; i < scale_size; i++) {
         if (with_bias) {
@@ -1162,7 +1154,7 @@ struct convolution_forward: public computation,
         op_attr.set_post_ops(descriptor::post_ops::relu());
       }
     } else {
-      src_desc = {src.get_dims(), tensor::data_type::f32};
+      src_desc = {src.get_dims(), tdtype_t::f32};
       src_scales_in = IDEEP_DEF_SCALE;
       if (src.has_scale()) {
         src_scales_in[0] = 1.0f / src.get_scale()[0];
@@ -1170,18 +1162,18 @@ struct convolution_forward: public computation,
 
       weights_scales_in = IDEEP_DEF_SCALE;
       weights_desc = weights.get_descriptor();
-      IDEEP_ENFORCE(weights.get_data_type() == tensor::data_type::f32,
+      IDEEP_ENFORCE(weights.get_data_type() == tdtype_t::f32,
           "Incorrect data type in weights");
 
       if (with_bias) {
-        IDEEP_ENFORCE(bias.get_data_type() == tensor::data_type::f32,
+        IDEEP_ENFORCE(bias.get_data_type() == tdtype_t::f32,
             "Incorrect data type in bias");
         bias_desc = bias.get_descriptor();
         bias_scales = IDEEP_DEF_SCALE;
       }
 
       op_attr = attr;
-      dst_data_type = tensor::data_type::f32;
+      dst_data_type = tdtype_t::f32;
     }
 
     if (key.empty()) {
@@ -1195,7 +1187,7 @@ struct convolution_forward: public computation,
             strides, dilates, padding_l, padding_r, op_attr, src_scales, dst_scales, args...);
     }
 
-    tensor::descriptor dst_desc_in(dst_dims, dst_data_type, dst_format);
+    tdesc_t dst_desc_in(dst_dims, dst_data_type, dst_format);
     auto it = find(key);
     if (it == end()) {
       it = with_bias
@@ -1236,13 +1228,13 @@ struct convolution_forward: public computation,
 
     auto dst_desc = comp.expected_dst_descriptor();
     if (dst.get_descriptor() != dst_desc) {
-      comp.dst_exp_desc_.reset(new tensor::descriptor(dst_desc));
+      comp.dst_exp_desc_.reset(new tdesc_t(dst_desc));
       IDEEP_ENFORCE(!post_ops.has_op_kind(kind::sum),
           "Unmatch format or data type in Conv Sum fusion");
       dst.reinit<alloc, convolution_forward>(dst_desc);
     }
 
-    if (!dst_scales.empty() && dst_data_type != tensor::data_type::f32) {
+    if (!dst_scales.empty() && dst_data_type != tdtype_t::f32) {
       dst.set_scale(dst_scales_in);
       comp.dst_scales_.reset(new scale_t(dst_scales_in));
     }
@@ -1267,10 +1259,10 @@ struct convolution_forward: public computation,
       comp.execute(src_in, weights_in, dst);
     }
 
-    if (post_ops.non_negitive_output() && dst.get_data_type() == tensor::data_type::s8) {
-      tensor::descriptor dst_u8_desc { dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()};
+    if (post_ops.non_negitive_output() && dst.get_data_type() == tdtype_t::s8) {
+      tdesc_t dst_u8_desc { dst.get_dims(), tdtype_t::u8, dst.get_internal_format()};
       dst.set_descriptor(dst_u8_desc);
-      comp.dst_u8_desc_ = std::make_shared<tensor::descriptor>(dst_u8_desc);
+      comp.dst_u8_desc_ = std::make_shared<tdesc_t>(dst_u8_desc);
     }
 
     comp.src_in_ = std::make_shared<tensor>(src_in);
@@ -1280,10 +1272,10 @@ struct convolution_forward: public computation,
 
   template<class alloc = utils::allocator>
   static void compute(key_t &key, const tensor &src, const tensor& weights,
-      const tensor::dims& result_dims, tensor& dst, const tensor::dims& strides,
-      const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
-      int group, const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
-      const scale_t& dst_scales = scale_t(), const descriptor::attr_t& attr = descriptor::attr_t(),
+      const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, int group,
+      const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(), const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero, const lowp_kind alowp_kind = LOWP_U8S8) {
     tensor dummy_bias;
@@ -1308,10 +1300,10 @@ struct convolution_forward: public computation,
 
   template<class alloc = utils::allocator>
   static void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias,
-      const tensor::dims& result_dims, tensor& dst, const tensor::dims& strides,
-      const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
-      int group, const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
-      const scale_t& dst_scales = scale_t(), const descriptor::attr_t& attr = descriptor::attr_t(),
+      const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, int group,
+      const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(), const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
       padding_kind appading_kind = padding_kind::zero, const lowp_kind alowp_kind = LOWP_U8S8) {
     auto weights_in = weights;
@@ -1333,12 +1325,12 @@ struct convolution_forward: public computation,
     }
   }
 
-  static tensor::descriptor expected_weights_descriptor( const tensor::dims& weights_dims,
-      tensor::data_type dtype = tensor::data_type::f32, const tensor::dims& strides = {1, 1},
-      const tensor::dims& padding_l = {0, 0}, const tensor::dims& padding_r = {0, 0},
-      const tensor::dims& dilates = {0, 0}, int group = 1, algorithm aalgorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward, tensor::data_type x_dtype = tensor::data_type::f32,
-      const tensor::dims& src_dims = tensor::dims()) {
+  static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims,
+      tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1},
+      const tdims_t& padding_l = {0, 0}, const tdims_t& padding_r = {0, 0},
+      const tdims_t& dilates = {0, 0}, int group = 1, algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward, tdtype_t x_dtype = tdtype_t::f32,
+      const tdims_t& src_dims = tdims_t()) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -1347,7 +1339,7 @@ struct convolution_forward: public computation,
     auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
     auto g = grouped ? dims_in[0] : 1;
 
-    tensor::dims dilates_in {0, 0};
+    tdims_t dilates_in {0, 0};
     if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
       dilates_in = dilates;
       IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1374,12 +1366,12 @@ struct convolution_forward: public computation,
     auto oh = (h - ((kh - 1) * (dilates_in[0] + 1) + 1) + (padding_l[0] + padding_r[0])) / strides[0] + 1;
     auto ow = (w - ((kw - 1) * (dilates_in[1] + 1) + 1) + (padding_l[1] + padding_r[1])) / strides[1] + 1;
 
-    tensor::dims x_dims = { mb, ic, h, w};
-    tensor::dims y_dims = { mb, oc, oh, ow};
-    auto y_dtype = (dtype != tensor::data_type::s8) ? dtype : tensor::data_type::s32;
-    tensor::descriptor x_desc(x_dims, x_dtype, format::nchw);
-    tensor::descriptor y_desc(y_dims, y_dtype, format::nchw);
-    tensor::descriptor weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
+    tdims_t x_dims = { mb, ic, h, w};
+    tdims_t y_dims = { mb, oc, oh, ow};
+    auto y_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::s32;
+    tdesc_t x_desc(x_dims, x_dtype, format::nchw);
+    tdesc_t y_desc(y_dims, y_dtype, format::nchw);
+    tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
     // FIXME: workaroud winograd format issue in inference
     auto apkind = aprop_kind;
@@ -1388,24 +1380,23 @@ struct convolution_forward: public computation,
     }
 
     convolution_forward comp(x_desc, weights_desc, y_desc, strides, dilates, padding_l, padding_r,
-        descriptor::attr_t(), aalgorithm, apkind);
+        attr_t(), aalgorithm, apkind);
     return comp.dup_weights_descriptor();
   }
 
 private:
   std::shared_ptr<reorder> src_reorder_, weights_reorder_, bias_reorder_;
   std::shared_ptr<tensor> src_in_, weights_in_, bias_in_;
-  std::shared_ptr<tensor::descriptor> dst_exp_desc_;
-  std::shared_ptr<tensor::descriptor> dst_u8_desc_;
+  std::shared_ptr<tdesc_t> dst_exp_desc_;
+  std::shared_ptr<tdesc_t> dst_u8_desc_;
   std::shared_ptr<scale_t> dst_scales_;
 };
 
 struct convolution_backward_data : public computation,
   public utils::computation_cache<convolution_backward_data> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &grady_desc, const tensor::descriptor &weights_desc,
-        const tensor::descriptor &gradx_desc, const tensor::dims& strides,
-        const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
+    descriptor(const tdesc_t &grady_desc, const tdesc_t &weights_desc, const tdesc_t &gradx_desc,
+        const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
       : hint_(gradx_desc, weights_desc, grady_desc, strides, dilates, padding_l, padding_r)  {
       utils::validate_dims({strides, dilates, padding_l, padding_r});
@@ -1413,7 +1404,7 @@ struct convolution_backward_data : public computation,
       mkldnn_memory_desc_t diff_src_any = gradx_desc.format_any();
       mkldnn_memory_desc_t weights_any = weights_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
-      tensor::dims dilates_in {0, 0};
+      tdims_t dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1438,8 +1429,8 @@ public:
   using computation::expected_gradx_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &grady_desc, const tensor::descriptor &weights_desc,
-      const tensor::descriptor &gradx_desc, Ts&&... args) {
+  void init(const tdesc_t &grady_desc, const tdesc_t &weights_desc,
+      const tdesc_t &gradx_desc, Ts&&... args) {
     descriptor backward_data_descriptor(grady_desc, weights_desc, gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
   }
@@ -1455,8 +1446,8 @@ public:
 
   template<class alloc, typename ...Ts>
   static void compute_impl(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx, Ts&&... args) {
-    tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
+      const tdims_t& gradx_dims, tensor& gradx, Ts&&... args) {
+    tdesc_t result_desc(gradx_dims, grady.get_data_type());
     key_t key;
     utils::create_key(key, grady.get_data_type(), grady.get_dims(),
         weights.get_dims(), gradx_dims, args...);
@@ -1483,21 +1474,18 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx, const tensor::dims& strides,
-      const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
-      algorithm aalgorithm = algorithm::convolution_direct,
+  static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims,
+      tensor& gradx, const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l,
+      const tdims_t& padding_r, algorithm aalgorithm = algorithm::convolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx, const tensor::dims& strides,
-      const tensor::dims& dilates, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, const int group,
-      algorithm aalgorithm = algorithm::convolution_direct,
+  static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims,
+      tensor& gradx, const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l,
+      const tdims_t& padding_r, const int group, algorithm aalgorithm = algorithm::convolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     auto weights_in = weights;
     weights_in.make_group(group);
@@ -1509,10 +1497,10 @@ public:
 struct convolution_backward_weights : public computation,
   public utils::computation_cache<convolution_backward_weights> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &x_desc, const tensor::descriptor &grady_desc,
-        const tensor::descriptor &gradw_desc, const tensor::descriptor &gradb_desc,
-        const tensor::dims& strides, const tensor::dims& dilates, const tensor::dims& padding_l,
-        const tensor::dims& padding_r, algorithm aalgorithm = algorithm::convolution_direct,
+    descriptor(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc,
+        const tdesc_t &gradb_desc, const tdims_t& strides, const tdims_t& dilates,
+        const tdims_t& padding_l, const tdims_t& padding_r,
+        algorithm aalgorithm = algorithm::convolution_direct,
         padding_kind apadding_kind = padding_kind::zero)
       : hint_(x_desc, gradw_desc, gradb_desc, grady_desc,
          strides, dilates, padding_l, padding_r) {
@@ -1522,13 +1510,12 @@ struct convolution_backward_weights : public computation,
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
       mkldnn_memory_desc_t diff_bias_any = gradb_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
-      tensor::dims dilates_in {0, 0};
+      tdims_t dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
       }
-      error::wrap_c_api(
-          mkldnn_dilated_convolution_backward_weights_desc_init(
+      error::wrap_c_api( mkldnn_dilated_convolution_backward_weights_desc_init(
             &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, &diff_bias_any,
             &diff_dst_any, &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
             mkldnn::convert_to_c(apadding_kind)),
@@ -1539,9 +1526,8 @@ struct convolution_backward_weights : public computation,
           "could not create a convolution backward weights primitive descriptor");
       reset(result);
     }
-    descriptor(const tensor::descriptor &x_desc, const tensor::descriptor &grady_desc,
-        const tensor::descriptor &gradw_desc, const tensor::dims& strides,
-        const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
+    descriptor(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc,
+        const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
     : hint_(x_desc, gradw_desc, grady_desc,
         strides, dilates, padding_l, padding_r) {
@@ -1550,7 +1536,7 @@ struct convolution_backward_weights : public computation,
       mkldnn_memory_desc_t src_any = x_desc.format_any();
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
-      tensor::dims dilates_in {0, 0};
+      tdims_t dilates_in {0, 0};
       if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -1574,8 +1560,8 @@ public:
   using computation::expected_gradb_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, const tensor::descriptor &grady_desc,
-      const tensor::descriptor &gradw_desc, Ts&&... args) {
+  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc,
+      const tdesc_t &gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
@@ -1594,10 +1580,10 @@ public:
   }
 
   template<class alloc, typename ...Ts>
-  static void compute_impl(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, tensor& gradw, tensor& gradb, Ts&&... args) {
-    tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
-    tensor::descriptor gradb_desc(tensor::dims {grady.get_dim(1)}, src.get_data_type());
+  static void compute_impl(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, tensor& gradb, Ts&&... args) {
+    tdesc_t gradw_desc(gradw_dims, src.get_data_type());
+    tdesc_t gradb_desc(tdims_t {grady.get_dim(1)}, src.get_data_type());
 
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(),
@@ -1625,8 +1611,8 @@ public:
 
   template<class alloc, typename ...Ts>
   static void compute_impl(const tensor& src, const tensor& grady,
-      const tensor::dims& gradw_dims, tensor& gradw, Ts&&... args) {
-    tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
+      const tdims_t& gradw_dims, tensor& gradw, Ts&&... args) {
+    tdesc_t gradw_desc(gradw_dims, src.get_data_type());
 
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(),
@@ -1652,9 +1638,9 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& grady, const tensor::dims& gradw_dims,
-      tensor& gradw, const tensor::dims& strides, const tensor::dims& dilates,
-      const tensor::dims& padding_l, const tensor::dims& padding_r,
+  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r,
       algorithm aalgorithm = algorithm::convolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     compute_impl<alloc>(src, grady, gradw_dims, gradw, strides,
@@ -1663,18 +1649,18 @@ public:
 
   template<class alloc = utils::allocator>
   static void compute(const tensor& src,
-      const tensor& grady, const tensor::dims& gradw_dims, tensor& gradw, tensor& gradb,
-      const tensor::dims& strides, const tensor::dims& dilates, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm = algorithm::convolution_direct,
+      const tensor& grady, const tdims_t& gradw_dims, tensor& gradw, tensor& gradb,
+      const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l,
+      const tdims_t& padding_r, algorithm aalgorithm = algorithm::convolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb, strides,
         dilates, padding_l, padding_r, aalgorithm, apadding_kind);
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& grady, const tensor::dims& gradw_dims,
-      tensor& gradw, const tensor::dims& strides, const tensor::dims& dilates,
-      const tensor::dims& padding_l, const tensor::dims& padding_r, const int group,
+  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, const int group,
       algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero) {
     auto gw_dims_in = gradw_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
@@ -1692,10 +1678,9 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& src,
-      const tensor& grady, const tensor::dims& gradw_dims, tensor& gradw, tensor& gradb,
-      const tensor::dims& strides, const tensor::dims& dilates, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, const int group, algorithm aalgorithm = algorithm::convolution_direct,
+  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, tensor& gradb, const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l,
+      const tdims_t& padding_r, const int group, algorithm aalgorithm = algorithm::convolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     auto gw_dims_in = gradw_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
@@ -1716,9 +1701,8 @@ public:
 struct convolution_transpose_forward : public computation,
       public utils::computation_cache<convolution_transpose_forward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor& src_desc, const tensor::descriptor& weights_desc,
-        const tensor::descriptor& bias_desc, const tensor::descriptor& dst_desc,
-        const tensor::dims& strides, const tensor::dims& padding_l, const tensor::dims& padding_r,
+    descriptor(const tdesc_t& src_desc, const tdesc_t& weights_desc, const tdesc_t& bias_desc,
+        const tdesc_t& dst_desc, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
         const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
         prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims({strides, padding_l, padding_r});
@@ -1740,9 +1724,8 @@ struct convolution_transpose_forward : public computation,
       reset(result);
     }
 
-    descriptor(const tensor::descriptor& src_desc, const tensor::descriptor& weights_desc,
-        const tensor::descriptor& dst_desc, const tensor::dims& strides,
-        const tensor::dims& padding_l, const tensor::dims& padding_r, const attr_t& attr = attr_t(),
+    descriptor(const tdesc_t& src_desc, const tdesc_t& weights_desc, const tdesc_t& dst_desc,
+        const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r, const attr_t& attr = attr_t(),
         algorithm aalgorithm = algorithm::deconvolution_direct, prop_kind aprop_kind = prop_kind::forward,
         padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims({strides, padding_l, padding_r});
@@ -1765,22 +1748,23 @@ struct convolution_transpose_forward : public computation,
   };
 
  public:
+  using attr_t = descriptor::attr_t;
   using computation::expected_dst_descriptor;
   using computation::expected_input_descriptor;
   using computation::expected_weights_descriptor;
 
   template <typename T, typename... Ts, typename = typename std::enable_if<
-          std::is_same<T, tensor::descriptor>::value>::type>
-  void init( const tensor::descriptor& src_desc, const tensor::descriptor& weights_desc,
-      const tensor::descriptor& bias, const T& dst, Ts&&... args) {
+          std::is_same<T, tdesc_t>::value>::type>
+  void init( const tdesc_t& src_desc, const tdesc_t& weights_desc,
+      const tdesc_t& bias, const T& dst, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, src_desc, weights_desc, bias);
   }
 
   template <typename T, typename... Ts,
-           typename = typename std::enable_if<std::is_same<T, tensor::dims>::value>::type>
-  void init( const tensor::descriptor& src_desc, const tensor::descriptor& weights_desc,
-      const tensor::descriptor& dst, const T something, Ts&&... args) {
+           typename = typename std::enable_if<std::is_same<T, tdims_t>::value>::type>
+  void init( const tdesc_t& src_desc, const tdesc_t& weights_desc,
+      const tdesc_t& dst, const T something, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, src_desc, weights_desc);
   }
@@ -1800,13 +1784,13 @@ struct convolution_transpose_forward : public computation,
 
   template <class alloc, typename... Ts>
   static void compute_impl(const tensor& src, const tensor& weights, const tensor& bias,
-      const tensor::dims& dst_dims, tensor& dst, Ts&&... args) {
+      const tdims_t& dst_dims, tensor& dst, Ts&&... args) {
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), bias.get_dims(),
         dst_dims, args...);
 
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
-        bias.get_descriptor(), tensor::descriptor{dst_dims, src.get_data_type()},
+        bias.get_descriptor(), tdesc_t{dst_dims, src.get_data_type()},
         std::forward<Ts>(args)...);
 
     auto src_in = src;
@@ -1829,15 +1813,14 @@ struct convolution_transpose_forward : public computation,
   }
 
   template <class alloc, typename... Ts>
-  static void compute_impl(const tensor& src, const tensor& weights, const tensor::dims& dst_dims,
+  static void compute_impl(const tensor& src, const tensor& weights, const tdims_t& dst_dims,
       tensor& dst, Ts&&... args) {
-    tensor::descriptor result_desc(dst_dims, src.get_data_type());
+    tdesc_t result_desc(dst_dims, src.get_data_type());
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), dst_dims,
-        args...);
+    utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), dst_dims, args...);
 
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
-        tensor::descriptor{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
+        tdesc_t{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
 
     auto src_in = src;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
@@ -1859,29 +1842,26 @@ struct convolution_transpose_forward : public computation,
   }
 
   template <class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& weights, const tensor::dims& result_dims,
-      tensor& dst, const tensor::dims& strides, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalgorithm = algorithm::deconvolution_direct, prop_kind aprop_kind = prop_kind::forward,
-      padding_kind appading_kind = padding_kind::zero) {
+  static void compute(const tensor& src, const tensor& weights, const tdims_t& result_dims,
+      tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+      const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
+      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
     compute_impl<alloc>(src, weights, result_dims, dst, strides, padding_l, padding_r, attr,
         aalgorithm, aprop_kind, appading_kind);
   }
 
   template <class alloc = utils::allocator>
-  static void compute( const tensor& src, const tensor& weights, const tensor& bias,
-      const tensor::dims& result_dims, tensor& dst, const tensor::dims& strides,
-      const tensor::dims& padding_l, const tensor::dims& padding_r,
-      const descriptor::attr_t& attr = descriptor::attr_t(),
-      algorithm aalgorithm = algorithm::deconvolution_direct,
+  static void compute( const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
+      tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+      const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
     compute_impl<alloc>(src, weights, bias, result_dims, dst, strides, padding_l, padding_r,
         attr, aalgorithm, aprop_kind, appading_kind);
   }
 
-  static tensor::descriptor expected_weights_descriptor( const tensor::dims& weights_dims,
-      tensor::data_type dtype = tensor::data_type::f32, const tensor::dims& strides = {1, 1},
-      const tensor::dims& padding_l = {0, 0}, const tensor::dims& padding_r = {0, 0}, int group = 1) {
+  static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims,
+      tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1},
+      const tdims_t& padding_l = {0, 0}, const tdims_t& padding_r = {0, 0}, int group = 1) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -1899,14 +1879,14 @@ struct convolution_transpose_forward : public computation,
     auto oh = (h - 1) * strides[0] + kh - padding_l[0] - padding_r[0];
     auto ow = (w - 1) * strides[1] + kw - padding_l[1] - padding_r[1];
 
-    tensor::dims x_dims = {1, ic, h, w};
-    tensor::dims y_dims = {1, oc, oh, ow};
-    auto x_dtype = (dtype != tensor::data_type::s8) ? dtype : tensor::data_type::u8;
-    auto y_dtype = (dtype != tensor::data_type::s8) ? dtype : tensor::data_type::s32;
+    tdims_t x_dims = {1, ic, h, w};
+    tdims_t y_dims = {1, oc, oh, ow};
+    auto x_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::u8;
+    auto y_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::s32;
 
-    tensor::descriptor x_desc(x_dims, x_dtype, format::nchw);
-    tensor::descriptor y_desc(y_dims, y_dtype, format::nchw);
-    tensor::descriptor weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
+    tdesc_t x_desc(x_dims, x_dtype, format::nchw);
+    tdesc_t y_desc(y_dims, y_dtype, format::nchw);
+    tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
     convolution_transpose_forward comp( x_desc, weights_desc, y_desc, strides, padding_l, padding_r);
     return comp.dup_weights_descriptor();
@@ -1916,11 +1896,9 @@ struct convolution_transpose_forward : public computation,
 struct convolution_transpose_backward_data : public computation,
       public utils::computation_cache<convolution_transpose_backward_data> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor& grady_desc, const tensor::descriptor& weights_desc,
-        const tensor::descriptor& gradx_desc, const tensor::dims& strides,
-        const tensor::dims& padding_l, const tensor::dims& padding_r,
-        algorithm aalgorithm = algorithm::deconvolution_direct,
-        padding_kind apadding_kind = padding_kind::zero)
+    descriptor(const tdesc_t& grady_desc, const tdesc_t& weights_desc, const tdesc_t& gradx_desc,
+        const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+        algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
         : hint_(gradx_desc, weights_desc, grady_desc, strides, padding_l, padding_r) {
       utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_memory_desc_t diff_src_any = gradx_desc.format_any();
@@ -1949,8 +1927,8 @@ struct convolution_transpose_backward_data : public computation,
   using computation::expected_gradx_descriptor;
 
   template <typename... Ts>
-  void init(const tensor::descriptor& grady_desc, const tensor::descriptor& weights_desc,
-      const tensor::descriptor& gradx_desc, Ts&&... args) {
+  void init(const tdesc_t& grady_desc, const tdesc_t& weights_desc,
+      const tdesc_t& gradx_desc, Ts&&... args) {
     descriptor backward_data_descriptor(
         grady_desc, weights_desc, gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
@@ -1967,14 +1945,14 @@ struct convolution_transpose_backward_data : public computation,
 
   template <class alloc, typename... Ts>
   static void compute_impl(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx, Ts&&... args) {
-    tensor::descriptor result_desc(gradx_dims, grady.get_data_type());
-    tensor::descriptor weight_desc;
-    tensor::dims oihw_dims;
+      const tdims_t& gradx_dims, tensor& gradx, Ts&&... args) {
+    tdesc_t result_desc(gradx_dims, grady.get_data_type());
+    tdesc_t weight_desc;
+    tdims_t oihw_dims;
     bool is_iohw = weights.is_iohw_public_layout();
     if (is_iohw) {
       oihw_dims = {weights.get_dim(1), weights.get_dim(0), weights.get_dim(2), weights.get_dim(3)};
-      tensor::descriptor desc(oihw_dims, weights.get_data_type(), format::oihw);
+      tdesc_t desc(oihw_dims, weights.get_data_type(), format::oihw);
       weight_desc = desc;
     }
 
@@ -2003,10 +1981,9 @@ struct convolution_transpose_backward_data : public computation,
   }
 
   template <class alloc = utils::allocator>
-  static void compute(const tensor& grady, const tensor& weights, const tensor::dims& gradx_dims,
-      tensor& gradx, const tensor::dims& strides, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
-      padding_kind apadding_kind = padding_kind::zero) {
+  static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims,
+      tensor& gradx, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+      algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero) {
     compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides, padding_l, padding_r,
         aalgorithm, apadding_kind);
   }
@@ -2016,11 +1993,9 @@ struct convolution_transpose_backward_weights
     : public computation,
       public utils::computation_cache<convolution_transpose_backward_weights> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor& x_desc, const tensor::descriptor& grady_desc,
-        const tensor::descriptor& gradw_desc, const tensor::descriptor& gradb_desc,
-        const tensor::dims& strides, const tensor::dims& padding_l,
-        const tensor::dims& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
-        padding_kind apadding_kind = padding_kind::zero)
+    descriptor(const tdesc_t& x_desc, const tdesc_t& grady_desc, const tdesc_t& gradw_desc,
+        const tdesc_t& gradb_desc, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+        algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
         : hint_(x_desc, gradw_desc, gradb_desc, grady_desc, strides, padding_l, padding_r) {
       utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_deconvolution_desc_t data;
@@ -2040,11 +2015,10 @@ struct convolution_transpose_backward_weights
           "could not create a deconvolution backward weights primitive descriptor");
       reset(result);
     }
-    descriptor(const tensor::descriptor& x_desc, const tensor::descriptor& grady_desc,
-        const tensor::descriptor& gradw_desc, const tensor::dims& strides,
-        const tensor::dims& padding_l, const tensor::dims& padding_r,
-        algorithm aalgorithm = algorithm::deconvolution_direct,
-        padding_kind apadding_kind = padding_kind::zero)
+
+    descriptor(const tdesc_t& x_desc, const tdesc_t& grady_desc, const tdesc_t& gradw_desc,
+        const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+        algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
         : hint_(x_desc, gradw_desc, grady_desc, strides, padding_l, padding_r) {
       utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_deconvolution_desc_t data;
@@ -2071,8 +2045,8 @@ struct convolution_transpose_backward_weights
   using computation::expected_gradw_descriptor;
 
   template <typename... Ts>
-  void init(const tensor::descriptor& x_desc, const tensor::descriptor& grady_desc,
-      const tensor::descriptor& gradw_desc, Ts&&... args) {
+  void init(const tdesc_t& x_desc, const tdesc_t& grady_desc,
+      const tdesc_t& gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
@@ -2095,10 +2069,10 @@ struct convolution_transpose_backward_weights
    * https://github.com/intel/mkl-dnn/commit/86f152b614c947b87633062a182c57775856a348
    */
   template <class alloc, typename... Ts>
-  static void compute_impl(const tensor& src, const tensor& grady, const tensor::dims& gradw_dims,
+  static void compute_impl(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, tensor& gbias, Ts&&... args) {
-    tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
-    tensor::descriptor gradb_desc(tensor::dims{grady.get_dim(1)}, src.get_data_type());
+    tdesc_t gradw_desc(gradw_dims, src.get_data_type());
+    tdesc_t gradb_desc(tdims_t{grady.get_dim(1)}, src.get_data_type());
 
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(), grady.get_dims(), gradw_dims,
@@ -2124,9 +2098,9 @@ struct convolution_transpose_backward_weights
   }
 
   template <class alloc, typename... Ts>
-  static void compute_impl(const tensor& src, const tensor& grady, const tensor::dims& gradw_dims,
+  static void compute_impl(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, Ts&&... args) {
-    tensor::descriptor gradw_desc(gradw_dims, src.get_data_type());
+    tdesc_t gradw_desc(gradw_dims, src.get_data_type());
 
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(), grady.get_dims(), gradw_dims, args...);
@@ -2150,18 +2124,18 @@ struct convolution_transpose_backward_weights
   }
 
   template <class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& grady, const tensor::dims& gradw_dims,
-      tensor& gradw, const tensor::dims& strides, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
+  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, const tdims_t& strides, const tdims_t& padding_l,
+      const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     compute_impl<alloc>(src, grady, gradw_dims, gradw, strides, padding_l, padding_r,
         aalgorithm, apadding_kind);
   }
 
   template <class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& grady, const tensor::dims& gradw_dims,
-      tensor& gradw, tensor& gradb, const tensor::dims& strides, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
+  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, tensor& gradb, const tdims_t& strides, const tdims_t& padding_l,
+      const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     compute_impl<alloc>(src, grady, gradw_dims, gradw, gradb, strides, padding_l, padding_r,
         aalgorithm, apadding_kind);
@@ -2171,7 +2145,7 @@ struct convolution_transpose_backward_weights
 struct lrn_forward : public computation,
   public utils::computation_cache<lrn_forward> {
   struct descriptor : public descriptor_group {
-    descriptor (const tensor::descriptor &x_desc, int local_size, float alpha, float beta, float k = 1.0,
+    descriptor (const tdesc_t &x_desc, int local_size, float alpha, float beta, float k = 1.0,
         algorithm aalgorithm = algorithm::lrn_across_channels, prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_lrn_desc_t data;
       auto src_data = x_desc.get_mkldnn_memory_desc_t();
@@ -2192,7 +2166,7 @@ public:
   using computation::expected_src_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, Ts&&... args) {
+  void init(const tdesc_t &x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
@@ -2220,16 +2194,16 @@ public:
       prop_kind aprop_kind = prop_kind::forward_training) {
 
     auto src_in = src;
-    tensor::descriptor src_desc;
+    tdesc_t src_desc;
     scale_t src_scales(IDEEP_DEF_SCALE);
     if (src_in.has_scale()) {
-      IDEEP_ENFORCE(src_in.get_data_type() != tensor::data_type::f32, "Incorrect data type");
+      IDEEP_ENFORCE(src_in.get_data_type() != tdtype_t::f32, "Incorrect data type");
       IDEEP_ENFORCE(src_in.get_scale().size() == 1, "Invalid scale size");
-      src_desc = {src_in.get_dims(), tensor::data_type::f32};
+      src_desc = {src_in.get_dims(), tdtype_t::f32};
       src_scales[0] /= src_in.get_scale()[0];
     } else {
       src_desc = src_in.get_descriptor();
-      IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32, "Incorrect src data type");
+      IDEEP_ENFORCE(src_in.get_data_type() == tdtype_t::f32, "Incorrect src data type");
     }
 
     if (key.empty())
@@ -2266,8 +2240,8 @@ public:
 struct lrn_backward : public computation,
   public utils::computation_cache<lrn_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &x_desc, const tensor::descriptor &gx_desc, int local_size,
-        float alpha, float beta, float k = 1.0, algorithm aalgorithm = algorithm::lrn_across_channels)
+    descriptor(const tdesc_t &x_desc, const tdesc_t &gx_desc, int local_size, float alpha,
+        float beta, float k = 1.0, algorithm aalgorithm = algorithm::lrn_across_channels)
       : hint_(x_desc, local_size, alpha, beta, k, aalgorithm) {
       mkldnn_lrn_desc_t data;
       error::wrap_c_api(mkldnn_lrn_backward_desc_init(
@@ -2288,8 +2262,8 @@ public:
   using computation::expected_gradx_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc,
-      const tensor::descriptor &grady_desc, Ts&&... args) {
+  void init(const tdesc_t &x_desc,
+      const tdesc_t &grady_desc, Ts&&... args) {
     descriptor backward_data_descriptor(x_desc, grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor, x_desc, grady_desc);
   }
@@ -2307,8 +2281,8 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& x, const tensor& grady, const tensor& y,
-      tensor& gradx, int local_size, float alpha, float beta, float k = 1.0,
+  static void compute(const tensor& x, const tensor& grady, const tensor& y, tensor& gradx,
+      int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
     key_t key;
     utils::create_key(key, x.get_data_type(), x.get_dims(),
@@ -2326,10 +2300,9 @@ struct pooling_forward : public computation,
   public utils::computation_cache<pooling_forward> {
   struct descriptor : descriptor_group {
     descriptor() = default;
-    descriptor(const tensor::descriptor &x_desc, const tensor::descriptor &y_desc,
-        const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
-        const tensor::dims& padding_r, algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
-        padding_kind apadding_kind = padding_kind::zero) {
+    descriptor(const tdesc_t &x_desc, const tdesc_t &y_desc, const tdims_t& strides,
+        const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r, algorithm aalgorithm,
+        prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims({strides, kernel, padding_l, padding_r});
       auto src_data = x_desc.get_mkldnn_memory_desc_t();
       auto dst_data = y_desc.format_any();
@@ -2350,7 +2323,7 @@ public:
   using computation::expected_workspace_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, Ts &&...args) {
+  void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
@@ -2372,16 +2345,15 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor& src, const tensor::dims& dst_dims, tensor& dst,
-      const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
-      padding_kind apadding_kind = padding_kind::zero) {
+  static void compute(key_t &key, const tensor& src, const tdims_t& dst_dims, tensor& dst,
+      const tdims_t& strides, const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
+      algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
     if (key.empty())
       utils::create_key(key, src.get_data_type(), src.get_dims(),
           src.get_internal_format(), dst_dims, strides, kernel, padding_l,
           padding_r, aalgorithm, aprop_kind, apadding_kind);
 
-    tensor::descriptor dst_desc(dst_dims, src.get_data_type());
+    tdesc_t dst_desc(dst_dims, src.get_data_type());
     fetch_or_create_m(comp, key, src.get_descriptor(), dst_desc, strides, kernel, padding_l,
         padding_r, aalgorithm, aprop_kind, apadding_kind);
 
@@ -2401,10 +2373,9 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor::dims& dst_dims, tensor& dst,
-      const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
-      padding_kind apadding_kind = padding_kind::zero) {
+  static void compute(const tensor& src, const tdims_t& dst_dims, tensor& dst, const tdims_t& strides,
+      const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r, algorithm aalgorithm,
+      prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
     key_t key;
     compute<alloc>(key, src, dst_dims, dst, strides, kernel,
         padding_l, padding_r, aalgorithm, aprop_kind, apadding_kind);
@@ -2414,9 +2385,9 @@ public:
 struct pooling_backward : public computation,
   public utils::computation_cache<pooling_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &gradx_desc, const tensor::descriptor &grady_desc,
-            const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
-            const tensor::dims& padding_r, algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero)
+    descriptor(const tdesc_t &gradx_desc, const tdesc_t &grady_desc, const tdims_t& strides,
+        const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
+        algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero)
       : hint_([&]() {
               utils::validate_dims({strides, kernel, padding_l, padding_r});
               auto gradx_data = gradx_desc.get_mkldnn_memory_desc_t();
@@ -2458,8 +2429,8 @@ public:
   using computation::expected_gradx_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &gradx_desc,
-      const tensor::descriptor &grady_desc, Ts &&...args) {
+  void init(const tdesc_t &gradx_desc,
+      const tdesc_t &grady_desc, Ts &&...args) {
     descriptor backward_descriptor(gradx_desc, grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc, gradx_desc);
   }
@@ -2478,8 +2449,8 @@ public:
 
   template<class alloc = utils::allocator>
   static void compute(const tensor& grady, const tensor& y, const tensor& x, tensor& gradx,
-      const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
-      const tensor::dims& padding_r, algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
+      const tdims_t& strides, const tdims_t& kernel, const tdims_t& padding_l,
+      const tdims_t& padding_r, algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto grady_in = grady;
     if (grady.get_internal_format() != x.get_internal_format()) {
       grady_in.init<alloc, pooling_backward>({grady.get_dims(),grady.get_data_type(), x.get_internal_format()});
@@ -2502,7 +2473,7 @@ public:
 struct eltwise_forward : public computation,
   public utils::computation_cache<eltwise_forward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &x_desc, float alpha = 0.0, float beta = 0.0,
+    descriptor(const tdesc_t &x_desc, float alpha = 0.0, float beta = 0.0,
         algorithm alg_kind = algorithm::eltwise_relu, prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_eltwise_desc_t data;
       error::wrap_c_api(mkldnn_eltwise_forward_desc_init(
@@ -2523,7 +2494,7 @@ public:
   using computation::expected_dst_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, Ts &&...args) {
+  void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
@@ -2543,8 +2514,8 @@ public:
       float alpha = 0.0, float beta = 0.0) {
     auto src_in = src;
     if (aalgorithm != algorithm::eltwise_relu
-        && src.get_data_type() != tensor::data_type::f32) {
-      src_in.init<alloc, eltwise_forward>({src.get_dims(), tensor::data_type::f32});
+        && src.get_data_type() != tdtype_t::f32) {
+      src_in.init<alloc, eltwise_forward>({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       IDEEP_ENFORCE(src.get_scale().size() == 1, "Incorrect scale size");
       auto scale = IDEEP_DEF_SCALE;
@@ -2566,8 +2537,8 @@ public:
 
     comp.execute(src_in, dst);
     if (dst.has_scale() && aalgorithm == algorithm::eltwise_relu
-        && dst.get_data_type() == tensor::data_type::s8)
-      dst.set_descriptor({dst.get_dims(), tensor::data_type::u8, dst.get_internal_format()});
+        && dst.get_data_type() == tdtype_t::s8)
+      dst.set_descriptor({dst.get_dims(), tdtype_t::u8, dst.get_internal_format()});
   }
 
   template<class alloc = utils::allocator>
@@ -2581,7 +2552,7 @@ public:
 struct eltwise_backward : public computation,
   public utils::computation_cache<eltwise_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &grady_desc, const tensor::descriptor &x_desc,
+    descriptor(const tdesc_t &grady_desc, const tdesc_t &x_desc,
         float alpha = 0.0, float beta = 0.0, algorithm alg_kind = algorithm::eltwise_relu)
       : hint_(x_desc, alg_kind) {
       mkldnn_eltwise_desc_t data;
@@ -2603,7 +2574,7 @@ public:
   using computation::expected_gradx_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &grady_desc, const tensor::descriptor &x_desc, Ts &&...args) {
+  void init(const tdesc_t &grady_desc, const tdesc_t &x_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, x_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc, x_desc);
   }
@@ -2649,7 +2620,7 @@ public:
 struct channel_shuffle_forward: public computation,
   public utils::computation_cache<channel_shuffle_forward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &src_desc, const int group_size, const int axis = 1,
+    descriptor(const tdesc_t &src_desc, const int group_size, const int axis = 1,
         prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_shuffle_desc_t data;
       error::wrap_c_api(mkldnn_shuffle_forward_desc_init(
@@ -2665,7 +2636,7 @@ struct channel_shuffle_forward: public computation,
   };
 public:
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, Ts &&...args) {
+  void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, x_desc);
   }
@@ -2683,7 +2654,7 @@ public:
   static void compute(const tensor& src, tensor& dst, const int group,
       const int axis = 1, prop_kind aprop_kind = prop_kind::forward) {
     IDEEP_ENFORCE(src.get_dim(axis) % group == 0, "Invalid channel and group");
-    IDEEP_ENFORCE(src.get_data_type() == tensor::data_type::f32, "invalid data type");
+    IDEEP_ENFORCE(src.get_data_type() == tdtype_t::f32, "invalid data type");
 
     auto group_size = src.get_dim(axis) / group;
     key_t key;
@@ -2709,7 +2680,7 @@ public:
 struct channel_shuffle_backward : public computation,
   public utils::computation_cache<channel_shuffle_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &grady_desc, const int group_size, const int axis = 1) {
+    descriptor(const tdesc_t &grady_desc, const int group_size, const int axis = 1) {
       mkldnn_shuffle_desc_t data;
       error::wrap_c_api(mkldnn_shuffle_backward_desc_init(
             &data, grady_desc.get_mkldnn_memory_desc_t(), static_cast<int>(axis),
@@ -2724,7 +2695,7 @@ struct channel_shuffle_backward : public computation,
   };
 public:
   template<typename ...Ts>
-  void init(const tensor::descriptor &grady_desc, Ts &&...args) {
+  void init(const tdesc_t &grady_desc, Ts &&...args) {
     descriptor backward_descriptor( grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc);
   }
@@ -2739,8 +2710,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& grady,
-      tensor& gradx, const int group, const int axis = 1) {
+  static void compute(const tensor& grady, tensor& gradx, const int group, const int axis = 1) {
     auto group_size = grady.get_dim(axis) / group;
     key_t key;
     utils::create_key(key, grady.get_data_type(), grady.get_dims(),
@@ -2763,8 +2733,7 @@ public:
 struct concat : public computation,
   public utils::computation_cache<concat> {
   struct descriptor : public descriptor_group {
-    descriptor(int concat_dimension,
-        const std::vector<tensor::descriptor> &inputs) {
+    descriptor(int concat_dimension, const std::vector<tdesc_t> &inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
@@ -2773,8 +2742,7 @@ struct concat : public computation,
       reset(result);
     }
 
-    descriptor(int concat_dimension, const std::vector<tensor::descriptor> &inputs,
-        const tensor::descriptor out_desc) {
+    descriptor(int concat_dimension, const std::vector<tdesc_t> &inputs, const tdesc_t out_desc) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
@@ -2788,12 +2756,12 @@ public:
   using computation::execute;
   using computation::expected_dst_descriptor;
 
-  void init(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
+  void init(int concat_dimension, const std::vector<tdesc_t> &inputs) {
     descriptor forward_descriptor (concat_dimension, inputs);
     computation::init(forward_descriptor, inputs);
   }
 
-  concat(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
+  concat(int concat_dimension, const std::vector<tdesc_t> &inputs) {
     init(concat_dimension, inputs);
   }
 
@@ -2803,9 +2771,9 @@ public:
 
   template<class alloc = utils::allocator>
   static void compute(key_t &key, std::vector<tensor>& inputs, int axis, tensor& output) {
-    std::vector<tensor::descriptor> tdesc;
-    std::vector<tensor::data_type> inputs_dt;
-    std::vector<tensor::dims> inputs_dims;
+    std::vector<tdesc_t> tdesc;
+    std::vector<tdtype_t> inputs_dt;
+    std::vector<tdims_t> inputs_dims;
     std::vector<format> inputs_format;
     for (tensor elems : inputs) {
       tdesc.push_back(elems.get_descriptor());
@@ -2844,8 +2812,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static std::vector<int32_t> compute(
-      std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
+  static std::vector<int32_t> compute( std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
     IDEEP_ENFORCE(axis < (inputs[0].ndims() + (add_axis ? 1 : 0)), "invalid axis in concat");
     for (int i = 0; i < inputs[0].ndims(); i++) {
       if (i == axis && !add_axis) continue;
@@ -2861,7 +2828,7 @@ public:
       dst_channels += axis_info[k];
     }
 
-    tensor::dims dst_dims(inputs[0].get_dims());
+    tdims_t dst_dims(inputs[0].get_dims());
     if (add_axis)
       dst_dims.insert(dst_dims.begin() + axis, dst_channels);
     else
@@ -2870,12 +2837,12 @@ public:
     auto dst_data_type = inputs[0].get_data_type();
     auto dst_format = inputs[0].get_internal_format();
     scale_t min_scale(IDEEP_DEF_SCALE);
-    if (dst_data_type != tensor::data_type::f32) {
+    if (dst_data_type != tdtype_t::f32) {
       min_scale[0] = std::numeric_limits<float>::max();
       for (auto i : inputs) {
         if (i.get_data_type() != dst_data_type) {
           min_scale = IDEEP_DEF_SCALE;
-          dst_data_type = tensor::data_type::f32;
+          dst_data_type = tdtype_t::f32;
           break;
         }
         if (i.has_scale() && (min_scale[0] > i.get_scale()[0])) {
@@ -2885,12 +2852,12 @@ public:
       }
     }
 
-    tensor::dims offset_dims(dst_dims.size(), 0);
+    tdims_t offset_dims(dst_dims.size(), 0);
     if (add_axis)
       dst.reinit({dst_dims, dst_data_type});
     else
       dst.reinit({dst_dims, dst_data_type, dst_format});
-    if (dst_data_type != tensor::data_type::f32)
+    if (dst_data_type != tdtype_t::f32)
       dst.set_scale(min_scale);
 
     reorder reorder_;
@@ -2921,9 +2888,9 @@ public:
     for (unsigned i = 0; i < inputs.size(); ++i) {
       scales[0] = min_scale[0] / (inputs[i].has_scale() ? inputs[i].get_scale()[0] : 1.0f);
       if (add_axis) {
-        tensor::dims in_dims(inputs[i].get_dims());
+        tdims_t in_dims(inputs[i].get_dims());
         in_dims.insert(in_dims.begin() + axis, 1);
-        tensor::descriptor in_desc(inputs[i].get_descriptor().reshape(in_dims));
+        tdesc_t in_desc(inputs[i].get_descriptor().reshape(in_dims));
         auto view = dst.create_view(in_dims, offset_dims);
         reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
         reorder_({in_desc, inputs[i].get_data_handle()}, dst);
@@ -2941,8 +2908,7 @@ public:
 
 struct softmax_forward : public computation {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &x_desc, int softmax_axis,
-        prop_kind aprop_kind = prop_kind::forward) {
+    descriptor(const tdesc_t &x_desc, int softmax_axis, prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_softmax_desc_t data;
       error::wrap_c_api(mkldnn_softmax_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), x_desc.get_mkldnn_memory_desc_t(), softmax_axis),
@@ -2960,7 +2926,7 @@ public:
   using computation::expected_dst_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor& src_desc, const tensor::descriptor& dst_desc, Ts&&... args) {
+  void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, Ts&&... args) {
     descriptor softmax_descriptor(src_desc, std::forward<Ts>(args)...);
     computation::init(softmax_descriptor, src_desc, dst_desc);
   }
@@ -2972,8 +2938,7 @@ public:
 
 struct batch_norm_forward_base : public computation {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &src_desc, float epsilon,
-        unsigned flags, prop_kind aprop_kind) {
+    descriptor(const tdesc_t &src_desc, float epsilon, unsigned flags, prop_kind aprop_kind) {
       mkldnn_batch_normalization_desc_t data;
       error::wrap_c_api(mkldnn_batch_normalization_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), epsilon, flags),
@@ -2984,8 +2949,8 @@ struct batch_norm_forward_base : public computation {
           "could not create a batch normalization forward primitive descriptor");
       reset(result);
     }
-    descriptor(const tensor::descriptor &src_desc, float epsilon, attr_t attr,
-        unsigned flags, prop_kind aprop_kind) {
+
+    descriptor(const tdesc_t &src_desc, float epsilon, attr_t attr, unsigned flags, prop_kind aprop_kind) {
       mkldnn_batch_normalization_desc_t data;
       error::wrap_c_api(mkldnn_batch_normalization_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), epsilon, flags),
@@ -3002,8 +2967,7 @@ public:
   using computation::expected_dst_descriptor;
 
   template<typename... Ts>
-  void init(float epsilon, unsigned flags, prop_kind aprop_kind,
-      const tensor::descriptor &src_desc, Ts&... rest) {
+  void init(float epsilon, unsigned flags, prop_kind aprop_kind, const tdesc_t &src_desc, Ts&... rest) {
     descriptor batch_norm_forward(src_desc, epsilon, flags, aprop_kind);
     init(batch_norm_forward, src_desc, rest...);
   }
@@ -3037,9 +3001,8 @@ public:
 
 public:
 
-  void init(const tensor::descriptor& src_desc, float epsilon,
-      unsigned flag = batch_normalization_flag::use_global_stats |
-      batch_normalization_flag::use_scale_shift) {
+  void init(const tdesc_t& src_desc, float epsilon,
+      unsigned flag = batch_normalization_flag::use_global_stats | batch_normalization_flag::use_scale_shift) {
     descriptor batch_norm_forward(src_desc, epsilon, flag, prop_kind::forward_scoring);
     weights_.init(batch_norm_forward.expected_weights_descriptor());
     computation::init(batch_norm_forward);
@@ -3054,8 +3017,7 @@ public:
   void execute(const tensor& src, const tensor& scale, const tensor& shift, const tensor& dst) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(),
-        shift.get_data_handle(), shift.get_size());
+    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
     computation::execute(src, weights_, dst);
   }
 
@@ -3064,8 +3026,7 @@ public:
       const tensor& scale, const tensor& shift, const tensor& dst) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(),
-        shift.get_data_handle(), shift.get_size());
+    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
     computation::execute(src, mean, variance, weights_, dst);
   }
 
@@ -3076,9 +3037,8 @@ public:
   static void compute(key_t &key, const tensor& src, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
-    if (src.get_data_type() != tensor::data_type::f32) {
-      src_in.init<alloc, batch_normalization_forward_inference>(
-          {src.get_dims(), tensor::data_type::f32});
+    if (src.get_data_type() != tdtype_t::f32) {
+      src_in.init<alloc, batch_normalization_forward_inference>( {src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
@@ -3101,9 +3061,8 @@ public:
   static void compute(key_t &key, const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& scale, const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
-    if (src.get_data_type() != tensor::data_type::f32) {
-      src_in.init<alloc, batch_normalization_forward_inference>(
-          {src.get_dims(), tensor::data_type::f32});
+    if (src.get_data_type() != tdtype_t::f32) {
+      src_in.init<alloc, batch_normalization_forward_inference>( {src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
@@ -3130,9 +3089,8 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& src, const tensor& mean,
-      const tensor& variance, const tensor& scale,
-      const tensor& shift, tensor& dst, float epsilon) {
+  static void compute(const tensor& src, const tensor& mean, const tensor& variance,
+      const tensor& scale, const tensor& shift, tensor& dst, float epsilon) {
     key_t key;
     compute<alloc>(key, src, mean, variance, scale, shift, dst, epsilon);
   }
@@ -3154,9 +3112,8 @@ public:
   using computation::expected_dst_descriptor;
   using batch_norm_forward_base::execute;
 
-  void init(const tensor::descriptor& src_desc, const tensor::descriptor& scale,
-      const tensor::descriptor& shift, float momentum, float epsilon,
-      unsigned flags = batch_normalization_flag::use_scale_shift) {
+  void init(const tdesc_t& src_desc, const tdesc_t& scale, const tdesc_t& shift, float momentum,
+      float epsilon, unsigned flags = batch_normalization_flag::use_scale_shift) {
     // IDEEP_ENFORCE(scale.ndims() == 1 && shift.ndims() == 1, "Incorrect dims");
     descriptor batch_norm_forward(src_desc, epsilon, flags, prop_kind::forward_training);
     computation::init(batch_norm_forward, src_desc);
@@ -3201,16 +3158,16 @@ public:
   }
 
   // TODO: deprecates these two
-  tensor::descriptor expected_mean_descriptor() const {
+  tdesc_t expected_mean_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 1);
   }
 
-  tensor::descriptor expected_variance_descriptor() const {
+  tdesc_t expected_variance_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 2);
   }
 
   // TODO: this is good one
-  tensor::descriptor expected_statistic_descriptor() const {
+  tdesc_t expected_statistic_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 1);
   }
 
@@ -3267,7 +3224,7 @@ private:
 struct batch_normalization_backward : public computation,
   public utils::computation_cache<batch_normalization_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &gradx_desc, const tensor::descriptor &x_desc,
+    descriptor(const tdesc_t &gradx_desc, const tdesc_t &x_desc,
         float epsilon, unsigned flags, prop_kind aprop_kind)
       : hint_(x_desc, epsilon, flags, prop_kind::forward_training) {
       mkldnn_batch_normalization_desc_t data;
@@ -3298,13 +3255,13 @@ public:
   using computation::expected_input_descriptor;
   using computation::expected_gradx_descriptor;
 
-  tensor::descriptor expected_grad_scale_descriptor() const {
+  tdesc_t expected_grad_scale_descriptor() const {
     return expected_descriptor_of(query::src_pd, 2);
   }
-  tensor::descriptor expected_grad_shift_descriptor() const {
+  tdesc_t expected_grad_shift_descriptor() const {
     return expected_descriptor_of(query::src_pd, 1);
   }
-  tensor::descriptor expected_statistic_descriptor() const {
+  tdesc_t expected_statistic_descriptor() const {
     return expected_descriptor_of(query::src_pd, 1);
   }
 
@@ -3316,9 +3273,8 @@ public:
     return static_cast<prop_kind>(p_desc->prop_kind);
   }
 
-  void init(const tensor::descriptor& gradx_desc, const tensor::descriptor& src_desc,
-      float epsilon, unsigned flags = batch_normalization_flag::use_scale_shift,
-      prop_kind aprop_kind=prop_kind::backward) {
+  void init(const tdesc_t& gradx_desc, const tdesc_t& src_desc, float epsilon,
+      unsigned flags = batch_normalization_flag::use_scale_shift, prop_kind aprop_kind=prop_kind::backward) {
     descriptor batch_norm_backward(gradx_desc, src_desc, epsilon, flags, aprop_kind);
     computation::init(batch_norm_backward);
     weights_.init(batch_norm_backward.expected_weights_descriptor());
@@ -3346,8 +3302,7 @@ public:
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), get_epsilon());
+    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), get_epsilon());
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), get_epsilon());
     grad_scale_shift_.reinit(comp.expected_gradw_descriptor());
 
@@ -3413,9 +3368,8 @@ private:
 struct inner_product_forward: public computation,
   public utils::computation_cache<inner_product_forward> {
   struct descriptor: public descriptor_group {
-    descriptor(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-            const tensor::descriptor &bias_desc, const tensor::descriptor &dst_desc,
-            prop_kind aprop_kind = prop_kind::forward) {
+    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &bias_desc,
+        const tdesc_t &dst_desc, prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_inner_product_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
@@ -3433,9 +3387,7 @@ struct inner_product_forward: public computation,
       reset(result);
     }
 
-    descriptor(const tensor::descriptor &src_desc,
-            const tensor::descriptor &weights_desc,
-            const tensor::descriptor &dst_desc,
+    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc,
             prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_inner_product_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
@@ -3459,14 +3411,13 @@ struct inner_product_forward: public computation,
   using computation::expected_weights_descriptor;
   using computation::expected_src_descriptor;
 
-  void init(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-      const tensor::descriptor &dst_desc) {
+  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, dst_desc);
     computation::init(forward_descriptor, src_desc, weights_desc);
   }
 
-  void init(const tensor::descriptor &src_desc, const tensor::descriptor &weights_desc,
-      const tensor::descriptor &bias_desc, const tensor::descriptor &dst_desc) {
+  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
+      const tdesc_t &bias_desc, const tdesc_t &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, bias_desc, dst_desc);
     computation::init(forward_descriptor, src_desc, weights_desc, bias_desc);
   }
@@ -3496,14 +3447,14 @@ struct inner_product_forward: public computation,
       }
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(), "Invalid dims in src or weights");
-    IDEEP_ENFORCE(!weights_in.has_scale() && weights_in.get_data_type() == tensor::data_type::f32,
+    IDEEP_ENFORCE(!weights_in.has_scale() && weights_in.get_data_type() == tdtype_t::f32,
           "INT8 mode is not supported");
 
     auto src_desc = src_in.get_descriptor();
-    IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32, "Incorrect src data type");
+    IDEEP_ENFORCE(src_in.get_data_type() == tdtype_t::f32, "Incorrect src data type");
 
-    tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
+    tdims_t dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
+    tdesc_t dst_desc(dst_dims, src_desc.get_data_type());
 
     if (key.empty())
       utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
@@ -3534,8 +3485,7 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t & key, const tensor& src,
-      const tensor& weights, tensor& dst) {
+  static void compute(key_t & key, const tensor& src, const tensor& weights, tensor& dst) {
     auto weights_in = weights;
     auto _src = src.has_scale() ? src.to_public() : src;
     auto src_in = _src;
@@ -3553,14 +3503,14 @@ struct inner_product_forward: public computation,
       }
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(), "Invalid dims in src or weights");
-    IDEEP_ENFORCE(!weights_in.has_scale() && weights_in.get_data_type() == tensor::data_type::f32,
+    IDEEP_ENFORCE(!weights_in.has_scale() && weights_in.get_data_type() == tdtype_t::f32,
           "INT8 mode is not supported");
 
     auto src_desc = src_in.get_descriptor();
-    IDEEP_ENFORCE(src_in.get_data_type() == tensor::data_type::f32, "Incorrect src data type");
+    IDEEP_ENFORCE(src_in.get_data_type() == tdtype_t::f32, "Incorrect src data type");
 
-    tensor::dims dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
-    tensor::descriptor dst_desc(dst_dims, src_desc.get_data_type());
+    tdims_t dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
+    tdesc_t dst_desc(dst_dims, src_desc.get_data_type());
 
     if (key.empty())
       utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
@@ -3588,17 +3538,16 @@ struct inner_product_forward: public computation,
     compute<alloc>(key, src, weights, dst);
   }
 
-  static tensor::descriptor expected_weights_descriptor( const tensor::dims& weights_dims,
-      tensor::data_type dtype = tensor::data_type::f32) {
+  static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims, tdtype_t dtype = tdtype_t::f32) {
     auto x_dims = weights_dims;
     x_dims[0] = 1;
     auto y_dims = {x_dims[0], weights_dims[0]};
     auto ndims = weights_dims.size();
 
     IDEEP_ENFORCE(x_dims.size() == weights_dims.size(), "Invalid dims for data and weights");
-    tensor::descriptor x_desc(x_dims, dtype, ndims == 2 ? format::nc : format::nchw);
-    tensor::descriptor y_desc(y_dims, dtype, format::nc);
-    tensor::descriptor weights_desc(weights_dims, dtype, ndims == 2 ? format::oi : format::oihw);
+    tdesc_t x_desc(x_dims, dtype, ndims == 2 ? format::nc : format::nchw);
+    tdesc_t y_desc(y_dims, dtype, format::nc);
+    tdesc_t weights_desc(weights_dims, dtype, ndims == 2 ? format::oi : format::oihw);
 
     inner_product_forward comp(x_desc, weights_desc, y_desc);
     return comp.dup_weights_descriptor();
@@ -3609,8 +3558,7 @@ struct inner_product_forward: public computation,
 struct inner_product_backward_data: public computation,
   public utils::computation_cache<inner_product_backward_data> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &gradx_desc, const tensor::descriptor &weights_desc,
-        const tensor::descriptor &grady_desc)
+    descriptor(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc)
       : hint_(gradx_desc, weights_desc, grady_desc) {
       auto diff_src_data = gradx_desc.format_any();
       auto weights_data = weights_desc.format_any();
@@ -3635,8 +3583,7 @@ public:
   using computation::expected_weights_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &gradx_desc, const tensor::descriptor &weights_desc,
-      const tensor::descriptor &grady_desc) {
+  void init(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc) {
     descriptor backward_data_descriptor(gradx_desc, weights_desc, grady_desc);
     computation::init(backward_data_descriptor, grady_desc, weights_desc);
   }
@@ -3651,8 +3598,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor& grady, const tensor& weights,
-      const tensor::dims& gradx_dims, tensor& gradx) {
+  static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims, tensor& gradx) {
     auto weights_in = weights;
     if (gradx_dims.size() != weights_in.ndims()) {
       auto new_dims = gradx_dims;
@@ -3661,7 +3607,7 @@ public:
     }
     IDEEP_ENFORCE(gradx_dims.size() == weights_in.ndims(), "Invalid dims in src or weights");
 
-    tensor::descriptor gradx_desc(gradx_dims, grady.get_data_type());
+    tdesc_t gradx_desc(gradx_dims, grady.get_data_type());
 
     key_t key;
     utils::create_key(key, grady.get_data_type(), grady.get_dims(),
@@ -3688,8 +3634,8 @@ public:
 struct inner_product_backward_weights : public computation,
   public utils::computation_cache<inner_product_backward_weights> {
   struct descriptor : public descriptor_group {
-    descriptor(const tensor::descriptor &x_desc, const tensor::descriptor &gradw_desc,
-        const tensor::descriptor &gradb_desc, const tensor::descriptor &grady_desc)
+    descriptor(const tdesc_t &x_desc, const tdesc_t &gradw_desc,
+        const tdesc_t &gradb_desc, const tdesc_t &grady_desc)
       : hint_(x_desc, gradw_desc, gradb_desc, grady_desc) {
       mkldnn_inner_product_desc_t data;
       auto src_data = x_desc.format_any();
@@ -3706,8 +3652,7 @@ struct inner_product_backward_weights : public computation,
       reset(result);
     }
 
-    descriptor(const tensor::descriptor &x_desc, const tensor::descriptor &gradw_desc,
-        const tensor::descriptor &grady_desc)
+    descriptor(const tdesc_t &x_desc, const tdesc_t &gradw_desc, const tdesc_t &grady_desc)
     : hint_(x_desc, gradw_desc, grady_desc) {
       mkldnn_inner_product_desc_t data;
       auto src_data = x_desc.format_any();
@@ -3730,8 +3675,7 @@ public:
   using computation::expected_gradb_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &x_desc, const tensor::descriptor &grady_desc,
-      const tensor::descriptor &gradw_desc, Ts&&... args) {
+  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor, x_desc, grady_desc);
   }
@@ -3753,7 +3697,7 @@ public:
   static void compute(const tensor& x, const tensor& grady, tensor& gradw) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
-    tensor::descriptor gradw_desc(gradw_dims, grady.get_data_type());
+    tdesc_t gradw_desc(gradw_dims, grady.get_data_type());
 
     key_t key;
     utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, grady.get_dims());
@@ -3781,9 +3725,9 @@ public:
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
 
-    tensor::dims gradb_dims = {grady.get_dim(1)};
-    tensor::descriptor gradw_desc(gradw_dims, x.get_data_type());
-    tensor::descriptor gradb_desc(gradb_dims, x.get_data_type());
+    tdims_t gradb_dims = {grady.get_dim(1)};
+    tdesc_t gradw_desc(gradw_dims, x.get_data_type());
+    tdesc_t gradb_desc(gradb_dims, x.get_data_type());
 
     key_t key;
     utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, gradb_dims, grady.get_dims());
@@ -3837,19 +3781,19 @@ public:
   static void compute(const tensor &src, float ratio,
       tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
-    case tensor::data_type::f32:
+    case tdtype_t::f32:
       compute_impl<alloc, float>(src, ratio, dst, mask);
       break;
-    case tensor::data_type::s32:
+    case tdtype_t::s32:
       compute_impl<alloc, int32_t>(src, ratio, dst, mask);
       break;
-    case tensor::data_type::s16:
+    case tdtype_t::s16:
       compute_impl<alloc, int16_t>(src, ratio, dst, mask);
       break;
-    case tensor::data_type::s8:
+    case tdtype_t::s8:
       compute_impl<alloc, int8_t>(src, ratio, dst, mask);
       break;
-    case tensor::data_type::u8:
+    case tdtype_t::u8:
       compute_impl<alloc, uint8_t>(src, ratio, dst, mask);
       break;
     default:
@@ -3879,19 +3823,19 @@ public:
   template<class alloc = utils::allocator>
   static void compute(const tensor &mask, const tensor &gy, tensor& gx) {
     switch(gy.get_data_type()) {
-    case tensor::data_type::f32:
+    case tdtype_t::f32:
       compute_impl<alloc, float>(mask, gy, gx);
       break;
-    case tensor::data_type::s32:
+    case tdtype_t::s32:
       compute_impl<alloc, int32_t>(mask, gy, gx);
       break;
-    case tensor::data_type::s16:
+    case tdtype_t::s16:
       compute_impl<alloc, int16_t>(mask, gy, gx);
       break;
-    case tensor::data_type::s8:
+    case tdtype_t::s8:
       compute_impl<alloc, int8_t>(mask, gy, gx);
       break;
-    case tensor::data_type::u8:
+    case tdtype_t::u8:
       compute_impl<alloc, uint8_t>(mask, gy, gx);
       break;
     default:

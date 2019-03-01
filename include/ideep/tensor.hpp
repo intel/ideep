@@ -128,8 +128,7 @@ public:
 
     /// Initiate a descriptor from primitive_desc_t struct
     descriptor(mkldnn_primitive_desc_t adesc) : descriptor(adesc,
-      public_format(convert_to_public_format(
-            mkldnn_primitive_desc_query_memory_d(adesc)->format))) {}
+      public_format(convert_to_public_format(mkldnn_primitive_desc_query_memory_d(adesc)->format))) {}
 
     /// Initiate a descriptor from primitive_desc_t struct
     descriptor(const_mkldnn_primitive_desc_t adesc, format aformat)
@@ -393,8 +392,7 @@ public:
     }
 
     inline bool format_compatible_with(format aformat) const {
-      if ( public_format_ == format::format_undef
-          && public_format_ == aformat ) {
+      if ( public_format_ == format::format_undef && public_format_ == aformat ) {
           return true;
       } else {
         switch(public_format_) {
@@ -462,8 +460,7 @@ public:
         return result;
       }()) {}
 
-      attr_t(int mask, scale_t &scales,
-          round_mode mode = round_mode::round_nearest)
+      attr_t(int mask, scale_t &scales, round_mode mode = round_mode::round_nearest)
         : c_wrapper([]() {
         mkldnn_primitive_attr_t result;
         error::wrap_c_api(mkldnn_primitive_attr_create(&result),
@@ -485,8 +482,7 @@ public:
     };
 
     struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
-      descriptor(const param::descriptor &input,
-          const param::descriptor &output,
+      descriptor(const param::descriptor &input, const param::descriptor &output,
           const attr_t attr = attr_t()) {
         IDEEP_ENFORCE(!(input.get_data_type() == data_type::s8
               && output.get_data_type() == data_type::u8),
@@ -501,9 +497,7 @@ public:
 
     reorder() = default;
 
-    void execute(const param& input,
-        const param& output,
-        const attr_t attr = attr_t()) {
+    void execute(const param& input, const param& output, const attr_t attr = attr_t()) {
       auto input_d = input.get_descriptor();
       auto output_d = output.get_descriptor();
       auto reorder_d = descriptor(input_d, output_d, attr);
@@ -511,8 +505,7 @@ public:
       mkldnn_primitive_t result;
       mkldnn_primitive_at_t inputs[] = { {input.get(), 0} };
       const_mkldnn_primitive_t outputs[] = { output.get() };
-      error::wrap_c_api(mkldnn_primitive_create(
-            &result, reorder_d.get(), inputs, outputs),
+      error::wrap_c_api(mkldnn_primitive_create(&result, reorder_d.get(), inputs, outputs),
           "could not create a reorder primitive");
       reset(result);
 
@@ -531,8 +524,8 @@ public:
   template<class alloc = utils::allocator, class computation_t = computation>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
-    error::wrap_c_api(mkldnn_primitive_create(
-          &result, adesc.get(), nullptr, nullptr), "could not create a memory primitive");
+    error::wrap_c_api(mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
+        "could not create a memory primitive");
 
     reset(result);
     // TODO: lazy buffer allocation
@@ -672,8 +665,7 @@ public:
   /// Returns pointer to structure of primitive descriptor.
   const_mkldnn_primitive_desc_t get_mkldnn_primitive_desc_t() const {
     const_mkldnn_primitive_desc_t cdesc;
-    error::wrap_c_api(mkldnn_primitive_get_primitive_desc(get(),
-                &cdesc),
+    error::wrap_c_api(mkldnn_primitive_get_primitive_desc(get(), &cdesc),
             "could not get primitive descriptor from a memory primitive");
     return cdesc;
   }
@@ -726,8 +718,7 @@ public:
 
   /// Return size of specified dimension
   inline dim_t get_dim(int index) const {
-    if (index < 0 || index >= ndims())
-      return static_cast<dim_t>(0);
+    if (index < 0 || index >= ndims()) return static_cast<dim_t>(0);
     const mkldnn_memory_desc_t *mdesc = get_mkldnn_memory_desc_t();
     return mdesc->dims[index];
   }
@@ -810,7 +801,6 @@ public:
   void materialize() {
     if (!materialized()) {
       auto adesc = get_descriptor();
-
       buffer_.reset(utils::allocator::template malloc<computation>(adesc.get_size()),
           utils::allocator::template free<computation>);
       // set_data_handle will generate exception if malloc fail
@@ -869,8 +859,7 @@ public:
     const mkldnn_memory_desc_t *adesc = mkldnn_primitive_desc_query_memory_d(get_descriptor().get());
     auto origin = adesc->dims;
     auto volume_old = std::accumulate(origin, &origin[adesc->ndims], 1, std::multiplies<int>());
-    auto volume_new = std::accumulate(
-        next.begin(), next.end(), 1, std::multiplies<dims::value_type>());
+    auto volume_new = std::accumulate( next.begin(), next.end(), 1, std::multiplies<dims::value_type>());
 
     // More check than just volume
     return volume_old == volume_new;
@@ -878,8 +867,7 @@ public:
 
   inline bool is_public_format() const {
     auto desc = get_descriptor();
-    return desc.get_mkldnn_memory_desc_t()->format ==
-           convert_to_c(descriptor::public_compatible_format(desc));
+    return desc.get_mkldnn_memory_desc_t()->format == convert_to_c(descriptor::public_compatible_format(desc));
   }
 
   inline bool is_weights() const {
@@ -904,8 +892,7 @@ public:
 
   void make_group(int group) {
     if (group > 1 && !is_grouped()) {
-      IDEEP_ENFORCE(is_public_format(),
-          "can not make grouped with internal format");
+      IDEEP_ENFORCE(is_public_format(), "can not make grouped with internal format");
       auto adims = get_dims();
       group_dims(adims, group);
       set_descriptor({adims, get_data_type(), format::goihw});
@@ -931,25 +918,6 @@ protected:
   std::shared_ptr<char> buffer_;
   std::shared_ptr<scale_t> scale_;
   size_t capacity_;
-
-  // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-  void iohw_definedby_blocked() {
-    IDEEP_ENFORCE(ndims() == 4, "Only support 4 dims tensor");
-
-    dims oihw_dims {get_dim(1), get_dim(0), get_dim(2), get_dim(3)};
-    descriptor desc(oihw_dims, get_data_type(), format::oihw);
-    auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
-    auto oi_blk = oi_primitive_desc->layout_desc.blocking;
-    oi_blk.strides[0][0] = oi_blk.strides[0][1];
-    oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
-
-    dims stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
-    dims stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
-    dims block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
-    descriptor io_desc(oihw_dims, get_data_type(), stride, block_dims, stride_inner);
-
-    set_descriptor(io_desc);
-  }
 };
 
 /// Tensor that describes data buffer and its explanation.
@@ -1241,7 +1209,7 @@ public:
         ret.init<alloc, computation_t>({iohw_dims, data_type::f32, format::oihw});
       else
         ret.init({iohw_dims, data_type::f32, format::oihw}, array);
-      ret.iohw_definedby_blocked();
+      iohw_definedby_blocked(ret);
     } else {
       if (array == nullptr)
         ret.init<alloc, computation_t>({get_dims(), data_type::f32, dst_format});
@@ -1281,6 +1249,25 @@ public:
       return false;
     }
     return true;
+  }
+
+  // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+  static void iohw_definedby_blocked(tensor &atensor) {
+    IDEEP_ENFORCE(atensor.ndims() == 4, "Only support 4 dims tensor");
+    dims oihw_dims {atensor.get_dim(1), atensor.get_dim(0), atensor.get_dim(2), atensor.get_dim(3)};
+    descriptor desc(oihw_dims, atensor.get_data_type(), format::oihw);
+
+    auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
+    auto oi_blk = oi_primitive_desc->layout_desc.blocking;
+    oi_blk.strides[0][0] = oi_blk.strides[0][1];
+    oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
+
+    dims stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
+    dims stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
+    dims block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
+
+    descriptor io_desc(oihw_dims, atensor.get_data_type(), stride, block_dims, stride_inner);
+    atensor.set_descriptor(io_desc);
   }
 
 protected:

@@ -649,7 +649,7 @@ public:
     // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
     auto input_in = input;
     if (input_in.is_iohw_public_layout()) {
-      iohw_definedby_blocked(input_in);
+      tensor::iohw_definedby_blocked(input_in);
     }
 
     key_t key;
@@ -690,25 +690,6 @@ public:
 
 protected:
   tensor in_, out_;
-
-  // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-  static void iohw_definedby_blocked(tensor &atensor) {
-    IDEEP_ENFORCE(atensor.ndims() == 4, "Only support 4 dims tensor");
-    tdims_t oihw_dims {atensor.get_dim(1), atensor.get_dim(0), atensor.get_dim(2), atensor.get_dim(3)};
-    tdesc_t desc(oihw_dims, atensor.get_data_type(), format::oihw);
-
-    auto oi_primitive_desc = desc.get_mkldnn_memory_desc_t();
-    auto oi_blk = oi_primitive_desc->layout_desc.blocking;
-    oi_blk.strides[0][0] = oi_blk.strides[0][1];
-    oi_blk.strides[0][1] = oi_blk.strides[0][0] * oi_blk.padding_dims[0];
-
-    tdims_t stride(oi_blk.strides[0], oi_blk.strides[0] + oi_primitive_desc->ndims);
-    tdims_t stride_inner(oi_blk.strides[1], oi_blk.strides[1] + oi_primitive_desc->ndims);
-    tdims_t block_dims(oi_blk.block_dims, oi_blk.block_dims + oi_primitive_desc->ndims);
-
-    tdesc_t io_desc(oihw_dims, atensor.get_data_type(), stride, block_dims, stride_inner);
-    atensor.set_descriptor(io_desc);
-  }
 };
 
 struct direct_copy : public reorder {

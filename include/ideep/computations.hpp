@@ -956,10 +956,7 @@ struct convolution_forward: public computation,
         const tensor::dims& padding_r, const attr_t& attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
         padding_kind apadding_kind = padding_kind::zero) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(dilates);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, dilates, padding_l, padding_r});
       mkldnn_convolution_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
@@ -989,10 +986,7 @@ struct convolution_forward: public computation,
         const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
         const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::convolution_direct,
         prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(dilates);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, dilates, padding_l, padding_r});
       mkldnn_convolution_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
@@ -1417,10 +1411,7 @@ struct convolution_backward_data : public computation,
         const tensor::dims& dilates, const tensor::dims& padding_l, const tensor::dims& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
       : hint_(gradx_desc, weights_desc, grady_desc, strides, dilates, padding_l, padding_r)  {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(dilates);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, dilates, padding_l, padding_r});
       mkldnn_convolution_desc_t data;
       mkldnn_memory_desc_t diff_src_any = gradx_desc.format_any();
       mkldnn_memory_desc_t weights_any = weights_desc.format_any();
@@ -1530,10 +1521,7 @@ struct convolution_backward_weights : public computation,
         padding_kind apadding_kind = padding_kind::zero)
       : hint_(x_desc, gradw_desc, gradb_desc, grady_desc,
          strides, dilates, padding_l, padding_r) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(dilates);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, dilates, padding_l, padding_r});
       mkldnn_convolution_desc_t data;
       mkldnn_memory_desc_t src_any = x_desc.format_any();
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
@@ -1562,10 +1550,7 @@ struct convolution_backward_weights : public computation,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
     : hint_(x_desc, gradw_desc, grady_desc,
         strides, dilates, padding_l, padding_r) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(dilates);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, dilates, padding_l, padding_r});
       mkldnn_convolution_desc_t data;
       mkldnn_memory_desc_t src_any = x_desc.format_any();
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
@@ -1743,9 +1728,7 @@ struct convolution_transpose_forward : public computation,
         const tensor::dims& strides, const tensor::dims& padding_l, const tensor::dims& padding_r,
         const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
         prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_deconvolution_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
@@ -1769,9 +1752,7 @@ struct convolution_transpose_forward : public computation,
         const tensor::dims& padding_l, const tensor::dims& padding_r, const attr_t& attr = attr_t(),
         algorithm aalgorithm = algorithm::deconvolution_direct, prop_kind aprop_kind = prop_kind::forward,
         padding_kind apadding_kind = padding_kind::zero) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_deconvolution_desc_t data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
       mkldnn_memory_desc_t weights_data = weights_desc.format_any();
@@ -1950,9 +1931,7 @@ struct convolution_transpose_backward_data : public computation,
         algorithm aalgorithm = algorithm::deconvolution_direct,
         padding_kind apadding_kind = padding_kind::zero)
         : hint_(gradx_desc, weights_desc, grady_desc, strides, padding_l, padding_r) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_memory_desc_t diff_src_any = gradx_desc.format_any();
       mkldnn_memory_desc_t weights_any = weights_desc.format_any();
       mkldnn_memory_desc_t diff_dst_any = grady_desc.format_any();
@@ -1965,7 +1944,7 @@ struct convolution_transpose_backward_data : public computation,
 
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(
-              &result, &data, engine::cpu_engine().get(), hint_.get()),
+            &result, &data, engine::cpu_engine().get(), hint_.get()),
           "could not create a deconvolution backward data primitive descriptor");
       reset(result);
     }
@@ -2054,9 +2033,7 @@ struct convolution_transpose_backward_weights
         const tensor::dims& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
         padding_kind apadding_kind = padding_kind::zero)
         : hint_(x_desc, gradw_desc, gradb_desc, grady_desc, strides, padding_l, padding_r) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_deconvolution_desc_t data;
       mkldnn_memory_desc_t src_any = x_desc.format_any();
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
@@ -2080,9 +2057,7 @@ struct convolution_transpose_backward_weights
         algorithm aalgorithm = algorithm::deconvolution_direct,
         padding_kind apadding_kind = padding_kind::zero)
         : hint_(x_desc, gradw_desc, grady_desc, strides, padding_l, padding_r) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, padding_l, padding_r});
       mkldnn_deconvolution_desc_t data;
       mkldnn_memory_desc_t src_any = x_desc.format_any();
       mkldnn_memory_desc_t diff_weights_any = gradw_desc.format_any();
@@ -2341,8 +2316,7 @@ public:
     init(arg, std::forward<Ts>(args)...);
   }
 
-  void execute(const tensor& x, const tensor& grady, const tensor& y,
-      const tensor& gradx) {
+  void execute(const tensor& x, const tensor& grady, const tensor& y, const tensor& gradx) {
     if (num_of_inputs() == 2)
       computation::execute(x, grady, gradx);
     else
@@ -2373,10 +2347,7 @@ struct pooling_forward : public computation,
         const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
         const tensor::dims& padding_r, algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward,
         padding_kind apadding_kind = padding_kind::zero) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(kernel);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, kernel, padding_l, padding_r});
       auto src_data = x_desc.get_mkldnn_memory_desc_t();
       auto dst_data = y_desc.format_any();
       mkldnn_pooling_desc_t data;
@@ -2466,10 +2437,7 @@ struct pooling_backward : public computation,
             const tensor::dims& strides, const tensor::dims& kernel, const tensor::dims& padding_l,
             const tensor::dims& padding_r, algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero)
       : hint_([&]() {
-              mkldnn::memory::validate_dims(strides);
-              mkldnn::memory::validate_dims(kernel);
-              mkldnn::memory::validate_dims(padding_l);
-              mkldnn::memory::validate_dims(padding_r);
+              utils::validate_dims({strides, kernel, padding_l, padding_r});
               auto gradx_data = gradx_desc.get_mkldnn_memory_desc_t();
               auto grady_data = grady_desc.format_any();
               mkldnn_pooling_desc_t data;
@@ -2487,10 +2455,7 @@ struct pooling_backward : public computation,
               hint.reset(result);
               return hint;
             } ()) {
-      mkldnn::memory::validate_dims(strides);
-      mkldnn::memory::validate_dims(kernel);
-      mkldnn::memory::validate_dims(padding_l);
-      mkldnn::memory::validate_dims(padding_r);
+      utils::validate_dims({strides, kernel, padding_l, padding_r});
       auto gradx_data = gradx_desc.format_any();
       mkldnn_pooling_desc_t data;
       error::wrap_c_api(mkldnn_pooling_backward_desc_init(
@@ -2564,7 +2529,7 @@ struct eltwise_forward : public computation,
       error::wrap_c_api(mkldnn_eltwise_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), mkldnn::convert_to_c(alg_kind),
             x_desc.get_mkldnn_memory_desc_t(), alpha, beta),
-              "could not create a eltwise forward descriptor");
+          "could not create a eltwise forward descriptor");
 
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(
@@ -2661,8 +2626,7 @@ public:
   using computation::expected_gradx_descriptor;
 
   template<typename ...Ts>
-  void init(const tensor::descriptor &grady_desc,
-      const tensor::descriptor &x_desc, Ts &&...args) {
+  void init(const tensor::descriptor &grady_desc, const tensor::descriptor &x_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, x_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc, x_desc);
   }
@@ -2716,7 +2680,7 @@ struct channel_shuffle_forward: public computation,
       error::wrap_c_api(mkldnn_shuffle_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind),
             src_desc.get_mkldnn_memory_desc_t(), axis, group_size),
-              "could not create a shuffle forward descriptor");
+          "could not create a shuffle forward descriptor");
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create(
             &result, &data, engine::cpu_engine().get(), nullptr),
@@ -2833,7 +2797,7 @@ struct concat : public computation,
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = cpp_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
-              &result, nullptr, (int)c_api_inputs.size(), concat_dimension, &c_api_inputs[0]),
+            &result, nullptr, (int)c_api_inputs.size(), concat_dimension, &c_api_inputs[0]),
           "could not create a concat primitive descriptor");
       reset(result);
     }
@@ -2853,8 +2817,7 @@ public:
   using computation::execute;
   using computation::expected_dst_descriptor;
 
-  void init(int concat_dimension,
-      const std::vector<tensor::descriptor> &inputs) {
+  void init(int concat_dimension, const std::vector<tensor::descriptor> &inputs) {
     descriptor forward_descriptor (concat_dimension, inputs);
     computation::init(forward_descriptor, inputs);
   }

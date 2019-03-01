@@ -27,11 +27,15 @@ namespace ideep {
 #define IDEEP_EXPORT
 #endif
 
+#ifndef NDEBUG
 #define IDEEP_ENFORCE(condition, message) \
   do {  \
     error::wrap_c_api((condition) \
         ? mkldnn_success : mkldnn_invalid_arguments, (message));  \
-  } while(false) \
+  } while(false)
+#else
+#define IDEEP_ENFORCE(condition, message)
+#endif
 
 #define IDEEP_STD_ALL_EQ(v, i) \
   std::all_of(v.begin(), v.end(), []( \

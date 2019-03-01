@@ -193,6 +193,16 @@ static void bernoulli_generate(const long n, const double p, int* r) {
   }
 }
 
+static void validate_dims(std::initializer_list<tensor::dims> dims_vec) {
+#ifndef NDEBUG
+  for (auto dims : dims_vec) {
+    if (dims.size() > TENSOR_MAX_DIMS) {
+      error::wrap_c_api(mkldnn_invalid_arguments, "Invalid dimesions");
+    }
+  }
+#endif
+}
+
 }
 }
 #endif

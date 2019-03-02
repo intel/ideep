@@ -25,16 +25,13 @@ public:
   // Only class possible, we can't use typedef or using. Or can we?
   class node_t : public std::pair<map_it, value_t> {
   public:
-    node_t (const std::pair<map_it, value_t> &l)
-      : std::pair<map_it, value_t>(l) {}
-    node_t (std::pair<map_it, value_t> &&l)
-      : std::pair<map_it, value_t>(std::move(l)) {}
+    node_t (const std::pair<map_it, value_t> &l) : std::pair<map_it, value_t>(l) {}
+    node_t (std::pair<map_it, value_t> &&l) : std::pair<map_it, value_t>(std::move(l)) {}
   };
 
   typedef typename std::list<node_t>::size_type size_type;
 
-  lru_cache(size_type capacity)
-    : capacity_(capacity) {}
+  lru_cache(size_type capacity) : capacity_(capacity) {}
 
   size_type size() const { map_.size(); }
 

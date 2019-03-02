@@ -5,6 +5,7 @@
 #include <numeric>
 #include <cstring>
 #include <cmath>
+
 #include "abstract_types.hpp"
 #include "allocators.hpp"
 
@@ -83,7 +84,8 @@ public:
 
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_memory_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get()), "could not initialize a memory descriptor");
+            &result, &data, engine::cpu_engine().get()),
+          "could not initialize a memory descriptor");
       return result;
     }()), public_format_(format::blocked) {}
 
@@ -272,12 +274,10 @@ public:
       return mkldnn_primitive_desc_query_memory_d(get());
     }
 
-    /// Operator ==
     inline bool operator ==(const descriptor &other) const {
       return mkldnn_memory_primitive_desc_equal(get(), other.get());
     }
 
-    /// Operator !=
     inline bool operator !=(const descriptor &other) const {
       return !operator==(other);
     }
@@ -518,10 +518,8 @@ public:
     }
   };
 
-  /// The template initialize param with a descriptor, allocate and manage
-  /// buffer automatically. A customized allocator can be specified to override
-  /// default implementation.
-  template<class alloc = utils::allocator, class computation_t = computation>
+  /// The template initialize param with a descriptor. 
+  template<class computation_t = computation>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
     error::wrap_c_api(mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
@@ -530,8 +528,7 @@ public:
     reset(result);
     // TODO: lazy buffer allocation
     scale_.reset();
-    buffer_.reset(alloc::template malloc<computation_t>(
-          adesc.get_size()), alloc::template free<computation_t>);
+    buffer_.reset(utils::allocator::malloc(adesc.get_size()), utils::allocator::free);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
     capacity_ = adesc.get_size();
@@ -551,15 +548,13 @@ public:
     capacity_ = 0;
   }
 
-  /// The template initialize param with a descriptor, allocate and manage
-  /// buffer automatically. A customized allocator can be specified to override
-  /// default implementation.
+  /// The template initialize param with a descriptor.
   void init(const descriptor &adesc) {
-    init<utils::allocator, computation>(adesc);
+    init<computation>(adesc);
   }
 
   /// Function that refill tensor with new description or buffer
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   void reinit(const descriptor &adesc) {
     auto curr_size = get_capacity();
     auto new_size = adesc.get_size();
@@ -572,22 +567,22 @@ public:
       set_descriptor(adesc);
     } else {
       // re-allocate new room
-      init<alloc, computation_t>(adesc);
+      init<computation_t>(adesc);
     }
   }
 
   /// Function that refill tensor with new description or buffer
   void reinit(const descriptor &adesc) {
-    reinit<utils::allocator, computation>(adesc);
+    reinit<computation>(adesc);
   }
 
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   void reinit_like(const param &aparam) {
-    reinit<alloc, computation_t>(aparam.get_descriptor());
+    reinit<computation_t>(aparam.get_descriptor());
   }
 
   void reinit_like(const param &aparam) {
-    reinit<utils::allocator, computation>(aparam.get_descriptor());
+    reinit<computation>(aparam.get_descriptor());
   }
 
   /// Empty construction
@@ -656,10 +651,10 @@ public:
   /// Recreate a param with completely different content from old one
   /// but reuse the param shell. Notice that after resize, its format
   /// is undefined
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
-    reinit<alloc, computation_t>(adesc);
+    reinit<computation_t>(adesc);
   }
 
   /// Returns pointer to structure of primitive descriptor.
@@ -801,8 +796,7 @@ public:
   void materialize() {
     if (!materialized()) {
       auto adesc = get_descriptor();
-      buffer_.reset(utils::allocator::template malloc<computation>(adesc.get_size()),
-          utils::allocator::template free<computation>);
+      buffer_.reset(utils::allocator::malloc(adesc.get_size()), utils::allocator::free);
       // set_data_handle will generate exception if malloc fail
       set_data_handle(buffer_.get());
     }
@@ -847,8 +841,7 @@ public:
   }
 
   inline int canonical_axis_index(int axis_index) const {
-    IDEEP_ENFORCE((axis_index >= -ndims()) && (axis_index < ndims()),
-        "Invalid axis index");
+    IDEEP_ENFORCE((axis_index >= -ndims()) && (axis_index < ndims()), "Invalid axis index");
     if (axis_index < 0) {
       return axis_index + ndims();
     }
@@ -927,12 +920,11 @@ class IDEEP_EXPORT tensor : public param {
 public:
   using param::param;
 
-  /// Pack an extra tensor into current one, allocate buffer using specified
-  /// allocator.
-  template<class alloc = utils::allocator, class computation_t = computation>
+  /// Pack an extra tensor into current one, allocate buffer using specified allocator.
+  template<class computation_t = computation>
   void init_extra(const descriptor &workspace) {
     auto twin = new tensor();
-    twin->init<alloc, computation_t>(workspace);
+    twin->init<computation_t>(workspace);
     twin_.reset(twin);
   }
 
@@ -1005,9 +997,9 @@ public:
     return *this;
   }
 
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   void init(const descriptor &adesc) {
-    param::init<alloc, computation_t>(adesc);
+    param::init<computation_t>(adesc);
     twin_.reset();
   }
 
@@ -1021,25 +1013,25 @@ public:
     twin_.reset();
   }
 
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   void reinit(const descriptor &adesc) {
-    param::reinit<alloc, computation_t>(adesc);
+    param::reinit<computation_t>(adesc);
     twin_.reset();
   }
 
   void reinit(const descriptor &adesc) {
-    param::reinit<utils::allocator, computation>(adesc);
+    param::reinit<computation>(adesc);
     twin_.reset();
   }
 
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   void reinit_like(const param &aparam) {
-    param::reinit<alloc, computation_t>(aparam.get_descriptor());
+    param::reinit<computation_t>(aparam.get_descriptor());
     twin_.reset();
   }
 
   void reinit_like(const param &aparam) {
-    param::reinit<utils::allocator, computation>(aparam.get_descriptor());
+    param::reinit<computation>(aparam.get_descriptor());
     twin_.reset();
   }
 
@@ -1075,14 +1067,14 @@ public:
   }
 
   /// Reshape a param, reorder might happen if its format is internal
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   tensor& reshape(dims new_dims) {
     if (!get_descriptor().is_shape_compatible(new_dims)) {
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
     } else if (new_dims != get_dims()) {
       if (!is_public_format()) {
         tensor p;
-        p.init<alloc, computation_t>({get_dims(), get_data_type()});
+        p.init<computation_t>({get_dims(), get_data_type()});
         reorder().execute (*this, p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
@@ -1144,9 +1136,9 @@ public:
 #ifdef _OPENMP
 #pragma omp parallel for private(dim) collapse(4) schedule(static)
 #endif
-      for (int i = 0; i < src_dims[0]; i++) {
-        for (int o = 0; o < src_dims[1]; o++) {
-          for (int h = 0; h < src_dims[2]; h++) {
+      for (int i = 0; i < src_dims[0]; i++)
+        for (int o = 0; o < src_dims[1]; o++)
+          for (int h = 0; h < src_dims[2]; h++)
             for (int w = 0; w < src_dims[3]; w++) {
               dim[0] = i; dim[1] = o; dim[2] = h; dim[3] = w;
               auto Y_off = ((dim[axes[0]] * Y_dims[1] + dim[axes[1]])
@@ -1155,9 +1147,6 @@ public:
                   * src_dims[2] + dim[2]) * src_dims[3] + dim[3];
               Ydata[Y_off] = Xdata[X_off];
             }
-          }
-        }
-      }
     }
   }
 
@@ -1195,7 +1184,7 @@ public:
   }
 
   /// Convert the tensor to public format and data type
-  template<class alloc = utils::allocator, class computation_t = computation>
+  template<class computation_t = computation>
   inline tensor to_public(void *array = nullptr) const {
     tensor ret;
     auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
@@ -1206,13 +1195,13 @@ public:
     if (public_format_ == format::iohw) {
       iohw_dims = get_public_format_dims();
       if (array == nullptr)
-        ret.init<alloc, computation_t>({iohw_dims, data_type::f32, format::oihw});
+        ret.init<computation_t>({iohw_dims, data_type::f32, format::oihw});
       else
         ret.init({iohw_dims, data_type::f32, format::oihw}, array);
       iohw_definedby_blocked(ret);
     } else {
       if (array == nullptr)
-        ret.init<alloc, computation_t>({get_dims(), data_type::f32, dst_format});
+        ret.init<computation_t>({get_dims(), data_type::f32, dst_format});
       else
         ret.init({get_dims(), data_type::f32, dst_format}, array);
     }

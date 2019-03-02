@@ -39,6 +39,5 @@
 #include "ideep/abstract_types.hpp"
 #include "ideep/tensor.hpp"
 #include "ideep/computations.hpp"
-#include "ideep/allocators.hpp"
 
 #endif

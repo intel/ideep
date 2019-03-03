@@ -186,8 +186,7 @@ public:
     std::pair<scale_t, int> get_output_scales() const {
       int count, c_mask;
       const float *c_scales;
-      error::wrap_c_api(mkldnn_primitive_attr_get_output_scales(
-            get(), &count, &c_mask, &c_scales),
+      error::wrap_c_api(mkldnn_primitive_attr_get_output_scales(get(), &count, &c_mask, &c_scales),
           "could not get int output scales");
       return std::make_pair(scale_t(c_scales, c_scales + count), c_mask);
     }
@@ -233,7 +232,7 @@ public:
       return attr;
     }
 
-    static inline attr_t residual( float sum_scale = 1.0, float relu_scale = 1.0,
+    static inline attr_t residual(float sum_scale = 1.0, float relu_scale = 1.0,
         float alpha = 0.f, float beta = 0.f) {
       attr_t attr;
       attr.set_post_ops(post_ops::residual(sum_scale, relu_scale, alpha, beta));
@@ -638,7 +637,7 @@ public:
         "could not execute reorder");
   }
 
-  static void compute( const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
+  static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
     if (input.is_empty() || output.is_empty())
       return;
 
@@ -669,7 +668,7 @@ public:
   }
 
   // TODO: make this right
-  static tensor compute( const tensor &input, const tdims_t &volume, const tdims_t &start) {
+  static tensor compute(const tensor &input, const tdims_t &volume, const tdims_t &start) {
     key_t key;
     utils::create_key(key, input.get_dims(), input.get_data_type(),
         input.get_internal_format(), volume, start);
@@ -1261,7 +1260,7 @@ struct convolution_forward: public computation,
         aalgorithm, aprop_kind, appading_kind, alowp_kind);
   }
 
-  static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims,
+  static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims,
       tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1},
       const tdims_t& padding_l = {0, 0}, const tdims_t& padding_r = {0, 0},
       const tdims_t& dilates = {0, 0}, int group = 1, algorithm aalgorithm = algorithm::convolution_direct,
@@ -1449,7 +1448,7 @@ struct convolution_backward_weights : public computation,
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
       }
-      error::wrap_c_api( mkldnn_dilated_convolution_backward_weights_desc_init(
+      error::wrap_c_api(mkldnn_dilated_convolution_backward_weights_desc_init(
             &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, &diff_bias_any,
             &diff_dst_any, &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
             mkldnn::convert_to_c(apadding_kind)),
@@ -1476,7 +1475,7 @@ struct convolution_backward_weights : public computation,
         dilates_in = dilates;
         IDEEP_STD_EACH_SUB(dilates_in, 1);
       }
-      error::wrap_c_api( mkldnn_dilated_convolution_backward_weights_desc_init(
+      error::wrap_c_api(mkldnn_dilated_convolution_backward_weights_desc_init(
             &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, nullptr, &diff_dst_any,
             &strides[0], &dilates_in[0],  &padding_l[0], &padding_r[0],
             mkldnn::convert_to_c(apadding_kind)),
@@ -1685,7 +1684,7 @@ struct convolution_transpose_forward : public computation,
 
   template <typename T, typename... Ts, typename = typename std::enable_if<
           std::is_same<T, tdesc_t>::value>::type>
-  void init( const tdesc_t& src_desc, const tdesc_t& weights_desc,
+  void init(const tdesc_t& src_desc, const tdesc_t& weights_desc,
       const tdesc_t& bias, const T& dst, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, src_desc, weights_desc, bias);
@@ -1693,7 +1692,7 @@ struct convolution_transpose_forward : public computation,
 
   template <typename T, typename... Ts,
            typename = typename std::enable_if<std::is_same<T, tdims_t>::value>::type>
-  void init( const tdesc_t& src_desc, const tdesc_t& weights_desc,
+  void init(const tdesc_t& src_desc, const tdesc_t& weights_desc,
       const tdesc_t& dst, const T something, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
     computation::init(forward_descriptor, src_desc, weights_desc);
@@ -1778,7 +1777,7 @@ struct convolution_transpose_forward : public computation,
         aalgorithm, aprop_kind, appading_kind);
   }
 
-  static void compute( const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
+  static void compute(const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
       tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
       const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
@@ -1786,7 +1785,7 @@ struct convolution_transpose_forward : public computation,
         attr, aalgorithm, aprop_kind, appading_kind);
   }
 
-  static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims,
+  static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims,
       tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1},
       const tdims_t& padding_l = {0, 0}, const tdims_t& padding_r = {0, 0}, int group = 1) {
     auto dims_in = weights_dims;
@@ -1815,7 +1814,7 @@ struct convolution_transpose_forward : public computation,
     tdesc_t y_desc(y_dims, y_dtype, format::nchw);
     tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
-    convolution_transpose_forward comp( x_desc, weights_desc, y_desc, strides, padding_l, padding_r);
+    convolution_transpose_forward comp(x_desc, weights_desc, y_desc, strides, padding_l, padding_r);
     return comp.dup_weights_descriptor();
   }
 };
@@ -1891,7 +1890,7 @@ struct convolution_transpose_backward_data : public computation,
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_transpose_backward_data>( comp.expected_grady_descriptor());
+      grady_in.init<convolution_transpose_backward_data>(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
@@ -1936,7 +1935,7 @@ struct convolution_transpose_backward_weights
               mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward weights descriptor");
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api( mkldnn_primitive_desc_create(
+      error::wrap_c_api(mkldnn_primitive_desc_create(
               &result, &data, engine::cpu_engine().get(), hint_.get()),
           "could not create a deconvolution backward weights primitive descriptor");
       reset(result);
@@ -2606,7 +2605,7 @@ struct channel_shuffle_backward : public computation,
 public:
   template<typename ...Ts>
   void init(const tdesc_t &grady_desc, Ts &&...args) {
-    descriptor backward_descriptor( grady_desc, std::forward<Ts>(args)...);
+    descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor, grady_desc);
   }
 
@@ -2718,7 +2717,7 @@ public:
     compute(key, inputs, axis, output);
   }
 
-  static std::vector<int32_t> compute( std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
+  static std::vector<int32_t> compute(std::vector<tensor>& inputs, int axis, bool add_axis, tensor& dst) {
     IDEEP_ENFORCE(axis < (inputs[0].ndims() + (add_axis ? 1 : 0)), "invalid axis in concat");
     for (int i = 0; i < inputs[0].ndims(); i++) {
       if (i == axis && !add_axis) continue;
@@ -2943,7 +2942,7 @@ public:
       const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tdtype_t::f32) {
-      src_in.init<batch_normalization_forward_inference>( {src.get_dims(), tdtype_t::f32});
+      src_in.init<batch_normalization_forward_inference>({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
@@ -2966,7 +2965,7 @@ public:
       const tensor& scale, const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tdtype_t::f32) {
-      src_in.init<batch_normalization_forward_inference>( {src.get_dims(), tdtype_t::f32});
+      src_in.init<batch_normalization_forward_inference>({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
@@ -3274,7 +3273,7 @@ struct inner_product_forward: public computation,
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
 
-      error::wrap_c_api( mkldnn_inner_product_forward_desc_init(
+      error::wrap_c_api(mkldnn_inner_product_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), &src_data, &weights_data, &bias_data, &dst_data),
           "could not create a inner product forward descriptor");
 
@@ -3292,7 +3291,7 @@ struct inner_product_forward: public computation,
       auto weights_data = weights_desc.format_any();
       auto dst_data = dst_desc.format_any();
 
-      error::wrap_c_api( mkldnn_inner_product_forward_desc_init(
+      error::wrap_c_api(mkldnn_inner_product_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), &src_data, &weights_data, nullptr, &dst_data),
           "could not create a inner product forward descriptor");
 
@@ -3325,6 +3324,7 @@ struct inner_product_forward: public computation,
     init(arg, std::forward<Ts>(args)...);
   }
 
+  template<bool with_bias = true>
   static void compute(key_t &key, const tensor& src, const tensor& weights,
       const tensor& bias, tensor& dst) {
     auto weights_in = weights;
@@ -3353,12 +3353,22 @@ struct inner_product_forward: public computation,
     tdims_t dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
     tdesc_t dst_desc(dst_dims, src_desc.get_data_type());
 
-    if (key.empty())
-      utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
-          weights_in.get_dims(), bias_in.get_dims(), dst_dims);
+    if (key.empty()) {
+      if (with_bias)
+        utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
+            weights_in.get_dims(), bias_in.get_dims(), dst_dims);
+      else
+        utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
+            weights_in.get_dims(), dst_dims);
+    }
 
-    fetch_or_create_m(comp, key, src_desc,
-        weights_in.get_descriptor(), bias_in.get_descriptor(), dst_desc);
+    auto it = find(key);
+    if (it == end()) {
+      it = with_bias
+        ? create(key, src_desc, weights_in.get_descriptor(), bias_in.get_descriptor(), dst_desc)
+        : create(key, src_desc, weights_in.get_descriptor(), dst_desc);
+    }
+    auto comp = fetch(it);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<inner_product_forward>(comp.expected_src_descriptor());
@@ -3371,67 +3381,18 @@ struct inner_product_forward: public computation,
     }
 
     dst.reinit<inner_product_forward>(comp.expected_dst_descriptor());
-    comp.execute(src_in, weights_in, bias_in, dst);
+    if (with_bias)
+      comp.execute(src_in, weights_in, bias_in, dst);
+    else
+      comp.execute(src_in, weights_in, dst);
   }
 
-  static void compute(const tensor& src, const tensor& weights,
-      const tensor& bias, tensor& dst) {
-    key_t key;
-    compute(key, src, weights, bias, dst);
+  static void compute(key_t &key, const tensor& src, const tensor& weights, tensor& dst) {
+    static tensor dummy_bias;
+    compute<false>(key, src, weights, dummy_bias, dst);
   }
 
-  static void compute(key_t & key, const tensor& src, const tensor& weights, tensor& dst) {
-    auto weights_in = weights;
-    auto _src = src.has_scale() ? src.to_public() : src;
-    auto src_in = _src;
-
-    if (src_in.ndims() != weights_in.ndims()) {
-      auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
-      if (ndims != src_in.ndims()) {
-        auto new_dims = weights_in.get_dims();
-        new_dims[0] = src_in.get_dim(0);
-        src_in.reshape(new_dims);
-      } else if (ndims != weights_in.ndims()) {
-        auto new_dims = src_in.get_dims();
-        new_dims[0] = weights_in.get_dim(0);
-        weights_in.reshape(new_dims);
-      }
-    }
-    IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(), "Invalid dims in src or weights");
-    IDEEP_ENFORCE(!weights_in.has_scale() && weights_in.get_data_type() == tdtype_t::f32,
-          "INT8 mode is not supported");
-
-    auto src_desc = src_in.get_descriptor();
-    IDEEP_ENFORCE(src_in.get_data_type() == tdtype_t::f32, "Incorrect src data type");
-
-    tdims_t dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
-    tdesc_t dst_desc(dst_dims, src_desc.get_data_type());
-
-    if (key.empty())
-      utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(), weights_in.get_dims(), dst_dims);
-
-    fetch_or_create_m(comp, key, src_desc, weights_in.get_descriptor(), dst_desc);
-
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<inner_product_forward>(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<inner_product_forward>(comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
-    dst.reinit<inner_product_forward>(comp.expected_dst_descriptor());
-    comp.execute(src_in, weights_in, dst);
-  }
-
-  static void compute(const tensor& src, const tensor& weights, tensor& dst) {
-    key_t key;
-    compute(key, src, weights, dst);
-  }
-
-  static tdesc_t expected_weights_descriptor( const tdims_t& weights_dims, tdtype_t dtype = tdtype_t::f32) {
+  static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims, tdtype_t dtype = tdtype_t::f32) {
     auto x_dims = weights_dims;
     x_dims[0] = 1;
     auto y_dims = {x_dims[0], weights_dims[0]};
@@ -3533,7 +3494,7 @@ struct inner_product_backward_weights : public computation,
       auto diff_dst_data = grady_desc.format_any();
       auto diff_weights_data = gradw_desc.format_any();
       auto diff_bias_data = gradb_desc.format_any();
-      error::wrap_c_api( mkldnn_inner_product_backward_weights_desc_init(
+      error::wrap_c_api(mkldnn_inner_product_backward_weights_desc_init(
             &data, &src_data, &diff_weights_data, &diff_bias_data, &diff_dst_data),
           "could not create a inner product backward weights descriptor");
       mkldnn_primitive_desc_t result;
@@ -3549,7 +3510,7 @@ struct inner_product_backward_weights : public computation,
       auto src_data = x_desc.format_any();
       auto diff_dst_data = grady_desc.format_any();
       auto diff_weights_data = gradw_desc.format_any();
-      error::wrap_c_api( mkldnn_inner_product_backward_weights_desc_init(
+      error::wrap_c_api(mkldnn_inner_product_backward_weights_desc_init(
           &data, &src_data, &diff_weights_data, nullptr, &diff_dst_data),
           "could not create a inner product backward weights descriptor");
       mkldnn_primitive_desc_t result;

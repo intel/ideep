@@ -72,7 +72,7 @@ public:
     return *this;
   }
 
-  reference operator[]( size_type pos ) {
+  reference operator[](size_type pos) {
     return storage_.get()[pos];
   }
 

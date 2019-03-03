@@ -391,7 +391,7 @@ public:
     }
 
     inline bool format_compatible_with(format aformat) const {
-      if ( public_format_ == format::format_undef && public_format_ == aformat ) {
+      if (public_format_ == format::format_undef && public_format_ == aformat ) {
           return true;
       } else {
         switch(public_format_) {
@@ -449,7 +449,7 @@ public:
     }
   };
 
-  struct reorder: public c_wrapper<mkldnn_primitive_t> {
+  struct reorder {
     class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
     public:
       attr_t() : c_wrapper([]() {
@@ -493,9 +493,7 @@ public:
       }
     };
 
-    reorder() = default;
-
-    void execute(const param& input, const param& output, const attr_t attr = attr_t()) {
+    static void execute(const param& input, const param& output, const attr_t attr = attr_t()) {
       auto input_d = input.get_descriptor();
       auto output_d = output.get_descriptor();
       auto reorder_d = descriptor(input_d, output_d, attr);
@@ -505,14 +503,12 @@ public:
       const_mkldnn_primitive_t outputs[] = { output.get() };
       error::wrap_c_api(mkldnn_primitive_create(&result, reorder_d.get(), inputs, outputs),
           "could not create a reorder primitive");
-      reset(result);
 
       std::vector<mkldnn_primitive_t> execution_sequence = {result};
       mkldnn_primitive_t c_api_error_primitive;
-
-      error::wrap_c_api(mkldnn_stream_submit(
-            stream::default_stream().get(), execution_sequence.size(), &execution_sequence[0],
-           &c_api_error_primitive), "could not execute reorder");
+      error::wrap_c_api(mkldnn_stream_submit(stream::default_stream().get(),
+            execution_sequence.size(), &execution_sequence[0], &c_api_error_primitive),
+          "could not execute reorder");
     }
   };
 
@@ -850,7 +846,7 @@ public:
     const mkldnn_memory_desc_t *adesc = mkldnn_primitive_desc_query_memory_d(get_descriptor().get());
     auto origin = adesc->dims;
     auto volume_old = std::accumulate(origin, &origin[adesc->ndims], 1, std::multiplies<int>());
-    auto volume_new = std::accumulate( next.begin(), next.end(), 1, std::multiplies<dims::value_type>());
+    auto volume_new = std::accumulate(next.begin(), next.end(), 1, std::multiplies<dims::value_type>());
 
     // More check than just volume
     return volume_old == volume_new;
@@ -1073,7 +1069,7 @@ public:
       if (!is_public_format()) {
         tensor p;
         p.init<computation_t>({get_dims(), get_data_type()});
-        reorder().execute (*this, p);
+        reorder::execute(*this, p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
       }
@@ -1173,7 +1169,7 @@ public:
       scales[i] = dst_scale[i] / src_scale[i];
     }
     int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), src.is_grouped());
-    reorder().execute(src, *this, {mask, scales});
+    reorder::execute(src, *this, {mask, scales});
   }
 
   /// Fill the tensor with parameters
@@ -1205,7 +1201,7 @@ public:
     }
 
     if (!has_scale()) {
-      reorder().execute(*this, ret);
+      reorder::execute(*this, ret);
     } else {
       auto &src_scale = get_scale();
       scale_t scales(src_scale.size());
@@ -1213,7 +1209,7 @@ public:
         scales[i] = 1.0f / src_scale[i];
       }
       int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), is_grouped());
-      reorder().execute(*this, ret, {mask, scales});
+      reorder::execute(*this, ret, {mask, scales});
     }
 
     // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.

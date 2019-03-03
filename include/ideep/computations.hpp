@@ -534,15 +534,11 @@ protected:
   }
 };
 
-struct reorder: public c_wrapper<mkldnn_primitive_t>,
-  public utils::computation_cache<reorder> {
+struct reorder: public c_wrapper<mkldnn_primitive_t> {
   struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
     using attr_t = descriptor_group::attr_t;
-    using post_ops = descriptor_group::post_ops;
-
     descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input,
-        const tdesc_t &output,
-        const attr_t& attr = attr_t()) {
+        const c_wrapper<mkldnn_primitive_desc_t> &output, const attr_t& attr = attr_t()) {
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
             &result, input.get(), output.get(), attr.get()),
@@ -554,62 +550,33 @@ struct reorder: public c_wrapper<mkldnn_primitive_t>,
 public:
   using attr_t = descriptor::attr_t;
 
-  reorder() = default;
-
-  void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
-    mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
-          &desc, src_desc.get(), dst_desc.get(), attr.get()),
-        "could not create a reorder primitive descriptor");
-    c_wrapper<mkldnn_primitive_desc_t> sg(desc);
-
+  void init(descriptor &desc, const tdesc_t &src_desc, const tdesc_t &dst_desc) {
     in_.init(src_desc, nullptr);
     out_.init(dst_desc, nullptr);
 
     mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in_.get(), 0} };
     const_mkldnn_primitive_t outputs[] = { out_.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
+    error::wrap_c_api(mkldnn_primitive_create(&result, desc.get(), inputs, outputs),
         "could not create a reorder primitive");
     reset(result);
+  }
+
+  void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
+    descriptor desc(src_desc, dst_desc, attr);
+    init(desc, src_desc, dst_desc);
   }
 
   void init(const tview_t& view, const tdesc_t& src_desc,
       const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
-    mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
-          &desc, view.get(), dst_desc.get(), attr.get()),
-        "could not create a reorder primitive descriptor");
-    c_wrapper<mkldnn_primitive_desc_t> sg(desc);
-
-    in_.init(src_desc, nullptr);
-    out_.init(dst_desc, nullptr);
-
-    mkldnn_primitive_t result;
-    mkldnn_primitive_at_t inputs[] = { {in_.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out_.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
-        "could not create a reorder primitive");
-    reset(result);
+    descriptor desc(view, dst_desc, attr);
+    init(desc, src_desc, dst_desc);
   }
 
   void init(const tdesc_t& src_desc, const tview_t& view,
       const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
-    mkldnn_primitive_desc_t desc;
-    error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
-          &desc, src_desc.get(), view.get(), attr.get()),
-        "could not create a reorder primitive descriptor");
-    c_wrapper<mkldnn_primitive_desc_t> sg(desc);
-
-    in_.init(src_desc, nullptr);
-    out_.init(dst_desc, nullptr);
-
-    mkldnn_primitive_t result;
-    mkldnn_primitive_at_t inputs[] = { {in_.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out_.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc, inputs, outputs),
-        "could not create a reorder primitive");
-    reset(result);
+    descriptor desc(src_desc, view, attr);
+    init(desc, src_desc, dst_desc);
   }
 
   template<typename T, typename... Ts>
@@ -647,39 +614,8 @@ public:
       tensor::iohw_definedby_blocked(input_in);
     }
 
-    key_t key;
-    if (output.get_internal_format() == static_cast<format>(mkldnn_blocked) &&
-        input_in.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
-      utils::create_key(key, input_in, output, attr);
-    } else if (output.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
-      utils::create_key(key, input_in.get_dims(), input_in.get_data_type(),
-          input_in.get_internal_format(), output, attr);
-    } else if (input_in.get_internal_format() == static_cast<format>(mkldnn_blocked)) {
-      utils::create_key(key, input_in, output.get_dims(), output.get_data_type(),
-          output.get_internal_format(), attr);
-    } else {
-      utils::create_key(key, input_in.get_dims(), input_in.get_data_type(),
-          input_in.get_internal_format(), output.get_dims(), output.get_data_type(),
-          output.get_internal_format(), attr);
-    }
-
-    fetch_or_create_m(op, key, input_in.get_descriptor(), output.get_descriptor(), attr);
+    reorder op (input_in.get_descriptor(), output.get_descriptor(), attr);
     op(input_in, output);
-  }
-
-  // TODO: make this right
-  static tensor compute(const tensor &input, const tdims_t &volume, const tdims_t &start) {
-    key_t key;
-    utils::create_key(key, input.get_dims(), input.get_data_type(),
-        input.get_internal_format(), volume, start);
-
-    auto view = input.create_view(volume, start);
-    tensor gx;
-    gx.init<reorder>(view.expected_dst_descriptor());
-
-    fetch_or_create_m(op, key, view, input.get_descriptor(), gx.get_descriptor());
-    op(input, gx);
-    return gx;
   }
 
 protected:
@@ -688,8 +624,6 @@ protected:
 
 struct direct_copy : public reorder {
 public:
-  using reorder::reorder;
-
   static void compute(const tensor& input, tensor& output) {
     if (input.is_empty() || input == output) {
       return;
@@ -705,11 +639,8 @@ public:
 
 struct spliter : public reorder {
 public:
-  using reorder::reorder;
-
   static std::vector<tensor> compute(const tensor& input,
       std::vector<int32_t>& axis_info, int axis, bool add_axis) {
-    reorder reorder_;
     std::vector<tensor> outputs;
     tdims_t output_dims(input.get_dims());
     tdims_t offset_dims(output_dims.size(), 0);
@@ -719,7 +650,7 @@ public:
       output_dims[axis] = axis_info[i];
       auto view = input.create_view(output_dims, offset_dims);
       tensor output(view.expected_dst_descriptor());
-      reorder_.init(view, input.get_descriptor(), output.get_descriptor());
+      reorder reorder_(view, input.get_descriptor(), output.get_descriptor());
       reorder_(input, output);
       if (input.has_scale()) output.set_scale(input.get_scale());
 
@@ -1167,8 +1098,7 @@ struct convolution_forward: public computation,
     auto src_in = src;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
       src_in.init<convolution_forward>(comp.expected_src_descriptor());
-      comp.src_reorder_.reset(new reorder);
-      comp.src_reorder_->init(src.get_descriptor(), src_in.get_descriptor(), src_attr);
+      comp.src_reorder_.reset(new reorder(src.get_descriptor(), src_in.get_descriptor(), src_attr));
       comp.src_reorder_->operator()(src, src_in);
     }
 
@@ -1177,8 +1107,7 @@ struct convolution_forward: public computation,
     auto weights_in = _weights;
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
       weights_in.init<convolution_forward>(comp.expected_weights_descriptor());
-      comp.weights_reorder_.reset(new reorder);
-      comp.weights_reorder_->init(_weights.get_descriptor(), weights_in.get_descriptor(), weights_attr);
+      comp.weights_reorder_.reset(new reorder(_weights.get_descriptor(), weights_in.get_descriptor(), weights_attr));
       comp.weights_reorder_->operator()(_weights, weights_in);
     }
 
@@ -1198,8 +1127,7 @@ struct convolution_forward: public computation,
       auto bias_in = bias;
       if (bias.get_descriptor() != bias_desc) {
         bias_in.init<convolution_forward>(bias_desc);
-        comp.bias_reorder_.reset(new reorder);
-        comp.bias_reorder_->init(bias.get_descriptor(), bias_in.get_descriptor(), bias_attr);
+        comp.bias_reorder_.reset(new reorder(bias.get_descriptor(), bias_in.get_descriptor(), bias_attr));
         comp.bias_reorder_->operator()(bias, bias_in);
       }
 
@@ -2661,6 +2589,7 @@ struct concat : public computation,
     }
   };
 public:
+  using attr_t = descriptor::attr_t;
   using computation::execute;
   using computation::expected_dst_descriptor;
 
@@ -2765,7 +2694,6 @@ public:
     if (dst_data_type != tdtype_t::f32)
       dst.set_scale(min_scale);
 
-    reorder reorder_;
     scale_t scales(1);
     // FIXME: To avoid view issue in mkldnn
     // NOTE: In mkldnn concat, dim 3 and 6+ are not supported.
@@ -2779,7 +2707,7 @@ public:
               scales[0] = min_scale[0] / input_scale;
               tensor input_fp = inputs[i];
               input_fp.reinit({inputs[i].get_dims(), dst_data_type, inputs[i].get_internal_format()});
-              reorder_.init(inputs[i].get_descriptor(), input_fp.get_descriptor(), {0, scales});
+              reorder reorder_(inputs[i].get_descriptor(), input_fp.get_descriptor(), attr_t(0, scales));
               reorder_(inputs[i], input_fp);
               inputs[i] = input_fp;
             }
@@ -2797,11 +2725,11 @@ public:
         in_dims.insert(in_dims.begin() + axis, 1);
         tdesc_t in_desc(inputs[i].get_descriptor().reshape(in_dims));
         auto view = dst.create_view(in_dims, offset_dims);
-        reorder_.init(in_desc, view, dst.get_descriptor(), {0, scales});
+        reorder reorder_(in_desc, view, dst.get_descriptor(), attr_t(0, scales));
         reorder_({in_desc, inputs[i].get_data_handle()}, dst);
       } else {
         auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
-        reorder_.init(inputs[i].get_descriptor(), view, dst.get_descriptor(), {0, scales});
+        reorder reorder_(inputs[i].get_descriptor(), view, dst.get_descriptor(), attr_t(0, scales));
         reorder_(inputs[i], dst);
       }
       offset_dims[axis] += axis_info[i];

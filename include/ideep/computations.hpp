@@ -261,130 +261,10 @@ public:
   descriptor_group() = default;
 
   /// Query interface
-  tdesc_t expected_descriptor_of(mkldnn::query q, int index = 0) const {
+  tdesc_t expected_descriptor_of(query q, int index = 0) const {
     const_mkldnn_primitive_desc_t const_cdesc =
         mkldnn_primitive_desc_query_pd(get(), mkldnn::convert_to_c(q), index);
     return param::descriptor(const_cdesc);
-  }
-
-  /// Query expected input descriptor
-  tdesc_t expected_input_descriptor(int index) const {
-    return expected_descriptor_of(mkldnn::input_pd, index);
-  }
-
-  /// Query expected output descriptor
-  tdesc_t expected_output_descriptor(int index) const {
-    return expected_descriptor_of(mkldnn::output_pd, index);
-  }
-
-  /// Query expected src descriptor
-  tdesc_t expected_src_descriptor() const {
-    return expected_descriptor_of(mkldnn::src_pd);
-  }
-
-  /// Query expected weights descriptor
-  tdesc_t expected_weights_descriptor() const {
-    return expected_descriptor_of(mkldnn::weights_pd);
-  }
-
-  /// Query expected bias descriptor
-  tdesc_t expected_bias_descriptor() const {
-    return expected_descriptor_of(mkldnn::weights_pd, 1);
-  }
-
-  /// Query expected dst descriptor
-  tdesc_t expected_dst_descriptor() const {
-    return expected_descriptor_of(mkldnn::dst_pd, 0);
-  }
-
-  /// Query expected workspace descriptor
-  tdesc_t expected_workspace_descriptor() const {
-    return expected_descriptor_of(mkldnn::workspace_pd, 0);
-  }
-
-  /// Query expected gradient X descriptor
-  tdesc_t expected_gradx_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_src_pd, 0);
-  }
-
-  /// Query expected gradient Y descriptor
-  tdesc_t expected_grady_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_dst_pd, 0);
-  }
-
-  /// Qeury expected weights gradient descriptor
-  tdesc_t expected_gradw_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_weights_pd, 0);
-  }
-
-  /// Qeury expected bias gradient descriptor
-  tdesc_t expected_gradb_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_weights_pd, 1);
-  }
-
-  /// Query interface
-  tdesc_t dup_descriptor_of(mkldnn::query q, int index = 0) const {
-    mkldnn_primitive_desc_t cdesc;
-    const_mkldnn_primitive_desc_t const_cdesc =
-        mkldnn_primitive_desc_query_pd(get(), mkldnn::convert_to_c(q), index);
-    error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
-        "could not clone a src primititve descriptor");
-    return param::descriptor(cdesc);
-  }
-
-  /// Query expected input descriptor
-  tdesc_t dup_input_descriptor(int index) const {
-    return dup_descriptor_of(mkldnn::input_pd, index);
-  }
-
-  /// Query expected output descriptor
-  tdesc_t dup_output_descriptor(int index) const {
-    return dup_descriptor_of(mkldnn::output_pd, index);
-  }
-
-  /// Query expected src descriptor
-  tdesc_t dup_src_descriptor() const {
-    return dup_descriptor_of(mkldnn::src_pd);
-  }
-
-  /// Query expected weights descriptor
-  tdesc_t dup_weights_descriptor() const {
-    return dup_descriptor_of(mkldnn::weights_pd);
-  }
-
-  /// Query expected bias descriptor
-  tdesc_t dup_bias_descriptor() const {
-    return dup_descriptor_of(mkldnn::weights_pd, 1);
-  }
-
-  /// Query expected dst descriptor
-  tdesc_t dup_dst_descriptor() const {
-    return dup_descriptor_of(mkldnn::dst_pd, 0);
-  }
-
-  /// Query expected workspace descriptor
-  tdesc_t dup_workspace_descriptor() const {
-    return dup_descriptor_of(mkldnn::workspace_pd, 0);
-  }
-
-  /// Query expected gradient X descriptor
-  tdesc_t dup_gradx_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_src_pd, 0);
-  }
-
-  /// Query expected gradient Y descriptor
-  tdesc_t dup_grady_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_dst_pd, 0);
-  }
-
-  /// Qeury expected weights gradient descriptor
-  tdesc_t dup_gradw_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_weights_pd, 0);
-  }
-
-  /// Qeury expected bias gradient descriptor
-  tdesc_t dup_gradb_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_weights_pd, 1);
   }
 
   /// Query number of inputs
@@ -415,14 +295,14 @@ public:
   }
 
   /// Query interface
-  tdesc_t expected_descriptor_of(mkldnn::query q, int index = 0) const {
+  tdesc_t expected_descriptor_of(query q, int index = 0) const {
     const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
         get_mkldnn_primitive_desc_t(), mkldnn::convert_to_c(q), index);
     return tdesc_t(const_cdesc);
   }
 
   /// Query interface
-  tdesc_t dup_descriptor_of(mkldnn::query q, int index = 0) const {
+  tdesc_t dup_descriptor_of(query q, int index = 0) const {
     mkldnn_primitive_desc_t cdesc;
     const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
         get_mkldnn_primitive_desc_t(), mkldnn::convert_to_c(q), index);
@@ -434,92 +314,47 @@ public:
 protected:
   /// Specific query interface, not valid for all computations.
   tdesc_t expected_input_descriptor(int index) const {
-    return expected_descriptor_of(mkldnn::input_pd, index);
+    return expected_descriptor_of(query::input_pd, index);
   }
 
   tdesc_t expected_output_descriptor(int index) const {
-    return expected_descriptor_of(mkldnn::output_pd, index);
+    return expected_descriptor_of(query::output_pd, index);
   }
 
   tdesc_t expected_src_descriptor() const {
-    return expected_descriptor_of(mkldnn::src_pd);
+    return expected_descriptor_of(query::src_pd);
   }
 
   tdesc_t expected_weights_descriptor() const {
-    return expected_descriptor_of(mkldnn::weights_pd);
+    return expected_descriptor_of(query::weights_pd);
   }
 
   tdesc_t expected_bias_descriptor() const {
-    return expected_descriptor_of(mkldnn::weights_pd, 1);
+    return expected_descriptor_of(query::weights_pd, 1);
   }
 
   tdesc_t expected_dst_descriptor() const {
-    return expected_descriptor_of(mkldnn::dst_pd, 0);
+    return expected_descriptor_of(query::dst_pd, 0);
   }
 
   tdesc_t expected_workspace_descriptor() const {
-    return expected_descriptor_of(mkldnn::workspace_pd, 0);
+    return expected_descriptor_of(query::workspace_pd, 0);
   }
 
   tdesc_t expected_gradx_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_src_pd, 0);
+    return expected_descriptor_of(query::diff_src_pd, 0);
   }
 
   tdesc_t expected_grady_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_dst_pd, 0);
+    return expected_descriptor_of(query::diff_dst_pd, 0);
   }
 
   tdesc_t expected_gradw_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_weights_pd, 0);
+    return expected_descriptor_of(query::diff_weights_pd, 0);
   }
 
   tdesc_t expected_gradb_descriptor() const {
-    return expected_descriptor_of(mkldnn::diff_weights_pd, 1);
-  }
-
-  /// Specific query interface, not valid for all computations.
-  tdesc_t dup_input_descriptor(int index) const {
-    return dup_descriptor_of(mkldnn::input_pd, index);
-  }
-
-  tdesc_t dup_output_descriptor(int index) const {
-    return dup_descriptor_of(mkldnn::output_pd, index);
-  }
-
-  tdesc_t dup_src_descriptor() const {
-    return dup_descriptor_of(mkldnn::src_pd);
-  }
-
-  tdesc_t dup_weights_descriptor() const {
-    return dup_descriptor_of(mkldnn::weights_pd);
-  }
-
-  tdesc_t dup_bias_descriptor() const {
-    return dup_descriptor_of(mkldnn::weights_pd, 1);
-  }
-
-  tdesc_t dup_dst_descriptor() const {
-    return dup_descriptor_of(mkldnn::dst_pd, 0);
-  }
-
-  tdesc_t dup_workspace_descriptor() const {
-    return dup_descriptor_of(mkldnn::workspace_pd, 0);
-  }
-
-  tdesc_t dup_gradx_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_src_pd, 0);
-  }
-
-  tdesc_t dup_grady_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_dst_pd, 0);
-  }
-
-  tdesc_t dup_gradw_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_weights_pd, 0);
-  }
-
-  tdesc_t dup_gradb_descriptor() const {
-    return dup_descriptor_of(mkldnn::diff_weights_pd, 1);
+    return expected_descriptor_of(query::diff_weights_pd, 1);
   }
 
   void execute(stream &parallel_control) {
@@ -534,9 +369,8 @@ protected:
   }
 };
 
-struct reorder: public c_wrapper<mkldnn_primitive_t> {
-  struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
-    using attr_t = descriptor_group::attr_t;
+struct reorder: public primitive_group {
+  struct descriptor : public descriptor_group {
     descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input,
         const c_wrapper<mkldnn_primitive_desc_t> &output, const attr_t& attr = attr_t()) {
       mkldnn_primitive_desc_t result;
@@ -595,13 +429,8 @@ public:
     in_.set_data_handle(input.get_data_handle());
     out_.set_data_handle(output.get_data_handle());
 
-    std::vector<mkldnn_primitive_t> execution_sequence = {get()};
-    mkldnn_primitive_t c_api_error_primitive;
-
-    error::wrap_c_api(mkldnn_stream_submit(
-          stream::default_stream().get(), execution_sequence.size(),
-          &execution_sequence[0], &c_api_error_primitive),
-        "could not execute reorder");
+    stream parallel_control = stream::default_stream();
+    primitive_group::execute(parallel_control);
   }
 
   static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
@@ -681,13 +510,13 @@ public:
 
     std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [inputs_num_]);
     for (int i =0; i < inputs_num_; i ++) {
-      inouts_[i] = {adesc.expected_input_descriptor(i), nullptr };
+      inouts_[i] = {adesc.expected_descriptor_of(query::input_pd, i), nullptr };
       inputs[i] = { inouts_[i].get(), 0 };
     }
 
     std::unique_ptr<const_mkldnn_primitive_t []> outputs(new const_mkldnn_primitive_t [outputs_num_]);
     for (int i = 0; i < outputs_num_; i ++) {
-      inouts_[i + inputs_num_] = {adesc.expected_output_descriptor(i), nullptr };
+      inouts_[i + inputs_num_] = {adesc.expected_descriptor_of(query::output_pd, i), nullptr };
       outputs[i] = inouts_[i + inputs_num_].get();
     }
 
@@ -1244,7 +1073,7 @@ struct convolution_forward: public computation,
 
     convolution_forward comp(x_desc, weights_desc, y_desc, strides, dilates, padding_l, padding_r,
         attr_t(), aalgorithm, apkind);
-    return comp.dup_weights_descriptor();
+    return comp.dup_descriptor_of(query::weights_pd);
   }
 
 private:
@@ -1743,7 +1572,7 @@ struct convolution_transpose_forward : public computation,
     tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
     convolution_transpose_forward comp(x_desc, weights_desc, y_desc, strides, padding_l, padding_r);
-    return comp.dup_weights_descriptor();
+    return comp.dup_descriptor_of(query::weights_pd);
   }
 };
 
@@ -2837,7 +2666,7 @@ public:
   void init(const tdesc_t& src_desc, float epsilon,
       unsigned flag = batch_normalization_flag::use_global_stats | batch_normalization_flag::use_scale_shift) {
     descriptor batch_norm_forward(src_desc, epsilon, flag, prop_kind::forward_scoring);
-    weights_.init(batch_norm_forward.expected_weights_descriptor());
+    weights_.init(batch_norm_forward.expected_descriptor_of(query::weights_pd));
     computation::init(batch_norm_forward);
   }
 
@@ -2948,7 +2777,7 @@ public:
     computation::init(batch_norm_forward, src_desc);
 
     // We borrown scale and bias for the shape of mean and variance
-    weights_.init(batch_norm_forward.expected_weights_descriptor());
+    weights_.init(batch_norm_forward.expected_descriptor_of(query::weights_pd));
     sum_.init({momentum, 1.f - momentum}, {scale, shift});
   }
 
@@ -2986,16 +2815,6 @@ public:
     sum_.execute(inputs_for_var, running_var);
   }
 
-  // TODO: deprecates these two
-  tdesc_t expected_mean_descriptor() const {
-    return expected_descriptor_of(query::dst_pd, 1);
-  }
-
-  tdesc_t expected_variance_descriptor() const {
-    return expected_descriptor_of(query::dst_pd, 2);
-  }
-
-  // TODO: this is good one
   tdesc_t expected_statistic_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 1);
   }
@@ -3082,16 +2901,6 @@ public:
   using computation::expected_input_descriptor;
   using computation::expected_gradx_descriptor;
 
-  tdesc_t expected_grad_scale_descriptor() const {
-    return expected_descriptor_of(query::src_pd, 2);
-  }
-  tdesc_t expected_grad_shift_descriptor() const {
-    return expected_descriptor_of(query::src_pd, 1);
-  }
-  tdesc_t expected_statistic_descriptor() const {
-    return expected_descriptor_of(query::src_pd, 1);
-  }
-
   prop_kind get_prop_kind() const {
     const mkldnn_batch_normalization_desc_t *p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
@@ -3104,8 +2913,8 @@ public:
       unsigned flags = batch_normalization_flag::use_scale_shift, prop_kind aprop_kind=prop_kind::backward) {
     descriptor batch_norm_backward(gradx_desc, src_desc, epsilon, flags, aprop_kind);
     computation::init(batch_norm_backward);
-    weights_.init(batch_norm_backward.expected_weights_descriptor());
-    grad_scale_shift_.init(batch_norm_backward.expected_weights_descriptor());
+    weights_.init(batch_norm_backward.expected_descriptor_of(query::weights_pd));
+    grad_scale_shift_.init(batch_norm_backward.expected_descriptor_of(query::weights_pd));
   }
 
   template<typename T, typename ...Ts>
@@ -3332,7 +3141,7 @@ struct inner_product_forward: public computation,
     tdesc_t weights_desc(weights_dims, dtype, ndims == 2 ? format::oi : format::oihw);
 
     inner_product_forward comp(x_desc, weights_desc, y_desc);
-    return comp.dup_weights_descriptor();
+    return comp.dup_descriptor_of(query::weights_pd);
   }
 };
 

@@ -11,14 +11,6 @@
 
 namespace ideep {
 
-#if defined (__GNUC__)
-#define IDEEP_DEPRECATED __attribute__((deprecated))
-#elif defined(_MSC_VER)
-#define IDEEP_DEPRECATED __declspec(deprecated)
-#else
-#define IDEEP_DEPRECATED
-#endif
-
 #ifdef _WIN32
 #define IDEEP_EXPORT __declspec(dllexport)
 #elif defined(__GNUC__)
@@ -37,19 +29,12 @@ namespace ideep {
 #define IDEEP_ENFORCE(condition, message)
 #endif
 
-#define IDEEP_STD_ALL_EQ(v, i) \
-  std::all_of(v.begin(), v.end(), []( \
-        std::remove_reference<decltype(v)>::type::value_type k){return k == i;})
-
 #define IDEEP_STD_ANY_LE(v, i) \
   std::any_of(v.begin(), v.end(), []( \
         std::remove_reference<decltype(v)>::type::value_type k){return k <= i;})
 
 #define IDEEP_STD_EACH_SUB(v, i) \
   for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
-
-#define IDEEP_CROSS_EQUAL(v1, v2, i1, i2) \
-  (((v1 == i1) && (v2 == i2)) || ((v1 == i2) && (v2 == i1)))
 
 // For 2D convolution with grouped weights, the ndims must be 5 (goihw)
 #define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)

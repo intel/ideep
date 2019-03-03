@@ -76,8 +76,7 @@ public:
     /// Initiate a param descriptor, specifying blocking details.
     descriptor(const dims adims, data_type adata_type, const dims stride,
         const dims block_dims, const dims stride_inner = dims(12, 1))
-      : c_wrapper([&adims, adata_type, &block_dims,
-          &stride, &stride_inner] {
+      : c_wrapper([&adims, adata_type, &block_dims, &stride, &stride_inner] {
       mkldnn_memory_desc_t data;
       fill_param(data, adims, adata_type, format::blocked);
       fill_blocking(data, adims, block_dims, stride, stride_inner);
@@ -463,8 +462,7 @@ public:
       attr_t(int mask, scale_t &scales, round_mode mode = round_mode::round_nearest)
         : c_wrapper([]() {
         mkldnn_primitive_attr_t result;
-        error::wrap_c_api(mkldnn_primitive_attr_create(&result),
-            "could not create a primitive attr");
+        error::wrap_c_api(mkldnn_primitive_attr_create(&result), "could not create a primitive attr");
         return result; }()) {
         set_output_scales(mask, scales);
         set_int_output_round_mode(round_mode::round_nearest);
@@ -476,8 +474,8 @@ public:
       }
 
       void set_output_scales(int mask, const scale_t &scales) {
-        error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(get(),
-              (int)scales.size(), mask, &scales[0]), "could not set int output scales");
+        error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(
+              get(), (int)scales.size(), mask, &scales[0]), "could not set int output scales");
       }
     };
 
@@ -518,7 +516,7 @@ public:
     }
   };
 
-  /// The template initialize param with a descriptor. 
+  /// The template initialize param with a descriptor.
   template<class computation_t = computation>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;

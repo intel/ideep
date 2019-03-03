@@ -116,12 +116,7 @@ public:
 
     /// Initiate a param descriptor, assume nature format.
     descriptor(dims adims, data_type adata_type)
-      : descriptor(adims, adata_type, engine::default_format((int)adims.size())) {
-
-      // TODO: Do we need this checking?
-      if (adims.size() == 4 || adims.size() == 2)
-        public_format_ = format::format_undef;
-    }
+      : descriptor(adims, adata_type, engine::default_format((int)adims.size())) {}
 
     /// Initiate a descriptor from primitive_desc_t struct
     descriptor(mkldnn_primitive_desc_t adesc, format aformat)
@@ -145,7 +140,7 @@ public:
       : c_wrapper(adesc), public_format_ (adesc.public_format_) {}
 
     /// Empty decriptor constructor
-    descriptor():descriptor(dims(0), data_type::f32, format::format_undef) {}
+    descriptor():descriptor(dims(0), data_type::data_undef, format::format_undef) {}
 
     /// Share a descriptor from another, share resource
     descriptor &operator=(const descriptor& adesc) {

@@ -329,10 +329,6 @@ protected:
     return expected_descriptor_of(query::weights_pd);
   }
 
-  tdesc_t expected_bias_descriptor() const {
-    return expected_descriptor_of(query::weights_pd, 1);
-  }
-
   tdesc_t expected_dst_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 0);
   }
@@ -458,7 +454,7 @@ public:
       return;
     }
 
-    output.reinit<direct_copy>(input.get_descriptor());
+    output.reinit(input.get_descriptor());
     reorder::compute(input, output);
     if (input.has_scale()) {
       output.set_scale(input.get_scale());
@@ -502,6 +498,7 @@ struct computation : public primitive_group {
 public:
   template<class ...T>
   using s_vector = utils::s_vector<T...>;
+  using attr_t = descriptor_group::attr_t;
 
   computation() = default;
 
@@ -560,8 +557,8 @@ public:
     connect_handle_for(index + 1, rest...);
   }
 
-  void execute(const std::vector<tensor>& inputs, const tensor& outputs) {
-    connect_handle_for(inputs, outputs);
+  void execute(const std::vector<tensor>& inputs, const tensor& output) {
+    connect_handle_for(inputs, output);
     stream parallel_control = stream::default_stream();
     primitive_group::execute(parallel_control);
   }
@@ -649,7 +646,7 @@ public:
     for (auto in : inputs) {
       auto _in = in;
       if (in.get_data_type() != tdtype_t::f32) {
-        _in.init<sum>({in.get_dims(), tdtype_t::f32});
+        _in.init({in.get_dims(), tdtype_t::f32});
         IDEEP_ENFORCE(in.has_scale(), "Can not find scales");
         IDEEP_ENFORCE(in.get_scale().size() == 1, "Incorrect scale size");
         auto scale = IDEEP_DEF_SCALE;
@@ -662,7 +659,7 @@ public:
 
     if (output != inputs_in[0]) {
       sum comp(scales, inputs_desc);
-      output.reinit<sum>(comp.expected_dst_descriptor());
+      output.reinit(comp.expected_dst_descriptor());
       comp.execute(inputs_in, output);
     } else {
       sum comp(scales, inputs_desc, output.get_descriptor());
@@ -789,7 +786,7 @@ struct convolution_forward: public computation,
     }
 
     if (comp.dst_exp_desc_) {
-      dst.reinit<convolution_forward>(*comp.dst_exp_desc_);
+      dst.reinit(*comp.dst_exp_desc_);
     }
     if (comp.dst_scales_) {
       dst.set_scale(*comp.dst_scales_);
@@ -926,7 +923,7 @@ struct convolution_forward: public computation,
 
     auto src_in = src;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_forward>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       comp.src_reorder_.reset(new reorder(src.get_descriptor(), src_in.get_descriptor(), src_attr));
       comp.src_reorder_->operator()(src, src_in);
     }
@@ -935,7 +932,7 @@ struct convolution_forward: public computation,
     auto _weights = weights.as_weights();
     auto weights_in = _weights;
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<convolution_forward>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       comp.weights_reorder_.reset(new reorder(_weights.get_descriptor(), weights_in.get_descriptor(), weights_attr));
       comp.weights_reorder_->operator()(_weights, weights_in);
     }
@@ -944,7 +941,7 @@ struct convolution_forward: public computation,
     if (dst.get_descriptor() != dst_desc) {
       comp.dst_exp_desc_.reset(new tdesc_t(dst_desc));
       IDEEP_ENFORCE(!post_ops.has_op_kind(kind::sum), "Unmatch format or data type in Conv Sum fusion");
-      dst.reinit<convolution_forward>(dst_desc);
+      dst.reinit(dst_desc);
     }
 
     if (!dst_scales.empty() && dst_data_type != tdtype_t::f32) {
@@ -955,7 +952,7 @@ struct convolution_forward: public computation,
     if (with_bias) {
       auto bias_in = bias;
       if (bias.get_descriptor() != bias_desc) {
-        bias_in.init<convolution_forward>(bias_desc);
+        bias_in.init(bias_desc);
         comp.bias_reorder_.reset(new reorder(bias.get_descriptor(), bias_in.get_descriptor(), bias_attr));
         comp.bias_reorder_->operator()(bias, bias_in);
       }
@@ -1149,7 +1146,7 @@ public:
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_backward_data>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
@@ -1157,11 +1154,11 @@ public:
     auto _weights = weights.as_weights();
     auto weights_in = _weights;
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<convolution_backward_data>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       reorder::compute(weights, weights_in);
     }
 
-    gradx.reinit<convolution_backward_data>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
 
@@ -1285,18 +1282,18 @@ public:
 
     auto src_in = src;
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_backward_weights>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_backward_weights>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    gradw.reinit<convolution_backward_weights>(comp.expected_gradw_descriptor());
-    gradb.reinit<convolution_backward_weights>(comp.expected_gradb_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
+    gradb.reinit(comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gradb);
   }
 
@@ -1313,17 +1310,17 @@ public:
 
     auto src_in = src;
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_backward_weights>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_backward_weights>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    gradw.reinit<convolution_backward_weights>(comp.expected_gradw_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
   }
 
@@ -1480,7 +1477,7 @@ struct convolution_transpose_forward : public computation,
 
     auto src_in = src;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_transpose_forward>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
@@ -1488,12 +1485,12 @@ struct convolution_transpose_forward : public computation,
     auto _weights = weights.as_weights();
     auto weights_in = _weights;
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<convolution_transpose_forward>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       reorder::compute(_weights, weights_in);
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
-    dst.reinit<convolution_transpose_forward>(std::move(dst_desc));
+    dst.reinit(std::move(dst_desc));
     comp.execute(src_in, weights_in, bias, dst);
   }
 
@@ -1509,7 +1506,7 @@ struct convolution_transpose_forward : public computation,
 
     auto src_in = src;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_transpose_forward>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
@@ -1517,12 +1514,12 @@ struct convolution_transpose_forward : public computation,
     auto _weights = weights.as_weights();
     auto weights_in = _weights;
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<convolution_transpose_forward>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       reorder::compute(_weights.as_weights(), weights_in);
     }
 
     auto dst_desc = comp.expected_dst_descriptor();
-    dst.reinit<convolution_transpose_forward>(std::move(dst_desc));
+    dst.reinit(std::move(dst_desc));
     comp.execute(src_in, weights_in, dst);
   }
 
@@ -1647,7 +1644,7 @@ struct convolution_transpose_backward_data : public computation,
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_transpose_backward_data>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
@@ -1655,11 +1652,11 @@ struct convolution_transpose_backward_data : public computation,
     auto _weights = weights;
     auto weights_in = _weights;
     if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<convolution_transpose_backward_data>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       reorder::compute(_weights, weights_in);
     }
 
-    gradx.reinit<convolution_transpose_backward_data>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
 
@@ -1764,18 +1761,18 @@ struct convolution_transpose_backward_weights
 
     auto src_in = src;
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_transpose_backward_weights>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_transpose_backward_weights>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    gradw.reinit<convolution_transpose_backward_weights>(comp.expected_gradw_descriptor());
-    gbias.reinit<convolution_transpose_backward_weights>(comp.expected_gradb_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
+    gbias.reinit(comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gbias);
   }
 
@@ -1791,17 +1788,17 @@ struct convolution_transpose_backward_weights
 
     auto src_in = src;
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<convolution_transpose_backward_weights>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<convolution_transpose_backward_weights>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    gradw.reinit<convolution_transpose_backward_weights>(comp.expected_gradw_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
   }
 
@@ -1892,14 +1889,14 @@ public:
     bool with_workspace = aprop_kind == prop_kind::forward_training;
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<lrn_forward>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in, {0, src_scales});
     }
 
     if (dst != src) {
-      dst.reinit<lrn_forward>(comp.expected_dst_descriptor());
+      dst.reinit(comp.expected_dst_descriptor());
       if (with_workspace)
-        dst.init_extra<lrn_forward>(comp.expected_workspace_descriptor());
+        dst.init_extra(comp.expected_workspace_descriptor());
     }
 
     comp.execute(src_in, dst);
@@ -1966,7 +1963,7 @@ public:
     fetch_or_create_m(comp, key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
-    gradx.reinit<lrn_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(x, grady, y, gradx);
   }
 };
@@ -2035,9 +2032,9 @@ public:
         && aalgorithm == mkldnn::pooling_max;
 
     if (dst != src) {
-      dst.reinit<pooling_forward>(comp.expected_dst_descriptor());
+      dst.reinit(comp.expected_dst_descriptor());
       if (with_workspace)
-        dst.init_extra<pooling_forward>(comp.expected_workspace_descriptor());
+        dst.init_extra(comp.expected_workspace_descriptor());
       if (src.has_scale()) {
         dst.set_scale(src.get_scale());
       }
@@ -2124,7 +2121,7 @@ public:
       const tdims_t& padding_r, algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto grady_in = grady;
     if (grady.get_internal_format() != x.get_internal_format()) {
-      grady_in.init<pooling_backward>({grady.get_dims(),grady.get_data_type(), x.get_internal_format()});
+      grady_in.init({grady.get_dims(),grady.get_data_type(), x.get_internal_format()});
       reorder::compute(grady, grady_in);
     }
 
@@ -2136,7 +2133,7 @@ public:
     fetch_or_create_m(comp, key, x.get_descriptor(), grady_in.get_descriptor(),
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
 
-    gradx.reinit<pooling_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, y, gradx);
   }
 };
@@ -2185,7 +2182,7 @@ public:
     auto src_in = src;
     if (aalgorithm != algorithm::eltwise_relu
         && src.get_data_type() != tdtype_t::f32) {
-      src_in.init<eltwise_forward>({src.get_dims(), tdtype_t::f32});
+      src_in.init({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       IDEEP_ENFORCE(src.get_scale().size() == 1, "Incorrect scale size");
       auto scale = IDEEP_DEF_SCALE;
@@ -2201,7 +2198,7 @@ public:
         alpha, beta, aalgorithm, aprop_kind);
 
     if (dst != src) {
-      dst.reinit<eltwise_forward>(src_in.get_descriptor());
+      dst.reinit(src_in.get_descriptor());
       if (src_in.has_scale()) dst.set_scale(src_in.get_scale());
     }
 
@@ -2264,7 +2261,7 @@ public:
     // if grady is from outside, make it ours
     tensor grady_in = grady;
     if (grady.get_internal_format() != src.get_internal_format()) {
-      grady_in.init<eltwise_backward>(src.get_descriptor());
+      grady_in.init(src.get_descriptor());
       reorder::compute(grady, grady_in);
       if (grady == gradx) {
         gradx.set_descriptor(grady_in.get_descriptor());
@@ -2279,7 +2276,7 @@ public:
         src.get_descriptor(), alpha, beta, aalgorithm);
 
     if (grady != gradx)
-      gradx.reinit<eltwise_backward>(comp.expected_gradx_descriptor());
+      gradx.reinit(comp.expected_gradx_descriptor());
 
     comp.execute(src, grady_in, gradx);
   }
@@ -2331,12 +2328,12 @@ public:
 
     auto src_in = src;
     if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<channel_shuffle_forward>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
     if (dst != src) {
-      dst.reinit<channel_shuffle_forward>(comp.expected_dst_descriptor());
+      dst.reinit(comp.expected_dst_descriptor());
     }
 
     comp.execute(src_in, dst);
@@ -2384,12 +2381,12 @@ public:
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<channel_shuffle_backward>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
     if (gradx != grady)
-      gradx.reinit<channel_shuffle_backward>(comp.expected_gradx_descriptor());
+      gradx.reinit(comp.expected_gradx_descriptor());
 
     comp.execute(grady_in, gradx);
   }
@@ -2457,7 +2454,7 @@ public:
     for (int i = 1; i < tdesc.size(); i++) {
       auto src_in = inputs[i];
       if (inputs_format[i] != inputs_format[0]) {
-        src_in.init<concat>({inputs_dims[i], inputs_dt[i], inputs_format[0]});
+        src_in.init({inputs_dims[i], inputs_dt[i], inputs_format[0]});
         reorder::compute(inputs[i], src_in);
       }
       inputs_in.push_back(src_in);
@@ -2465,7 +2462,7 @@ public:
     }
 
     fetch_or_create_m(comp, key, axis, tdesc);
-    output.reinit<concat>(comp.expected_dst_descriptor());
+    output.reinit(comp.expected_dst_descriptor());
 
     comp.execute(inputs_in, output);
   }
@@ -2699,7 +2696,7 @@ public:
       const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tdtype_t::f32) {
-      src_in.init<batch_normalization_forward_inference>({src.get_dims(), tdtype_t::f32});
+      src_in.init({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
@@ -2714,7 +2711,7 @@ public:
         batch_normalization_flag::use_scale_shift, epsilon);
 
     if (dst != src)
-      dst.reinit<batch_normalization_forward_inference>(comp.expected_dst_descriptor());
+      dst.reinit(comp.expected_dst_descriptor());
     comp.execute(src_in, scale, shift, dst);
   }
 
@@ -2722,7 +2719,7 @@ public:
       const tensor& scale, const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tdtype_t::f32) {
-      src_in.init<batch_normalization_forward_inference>({src.get_dims(), tdtype_t::f32});
+      src_in.init({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
@@ -2736,7 +2733,7 @@ public:
     fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon);
 
     if (dst != src) {
-      dst.reinit<batch_normalization_forward_inference>(comp.expected_dst_descriptor());
+      dst.reinit(comp.expected_dst_descriptor());
     }
     comp.execute(src_in, mean, variance, scale, shift, dst);
   }
@@ -2828,7 +2825,7 @@ public:
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
     comp.eps = epsilon;
 
-    dst.reinit<batch_normalization_forward_training>(comp.expected_dst_descriptor());
+    dst.reinit(comp.expected_dst_descriptor());
     mean.reinit(comp.expected_statistic_descriptor());
     variance.reinit(comp.expected_statistic_descriptor());
 
@@ -2844,7 +2841,7 @@ public:
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
     // TODO: Substitue running statistics calculation with lighter version
-    dst.reinit<batch_normalization_forward_training>(comp.expected_dst_descriptor());
+    dst.reinit(comp.expected_dst_descriptor());
     mean.reinit(comp.expected_statistic_descriptor());
     variance.reinit(comp.expected_statistic_descriptor());
     if (running_mean.get_descriptor() != comp.expected_statistic_descriptor()){
@@ -2964,11 +2961,11 @@ public:
 
     auto grady_in = grady;
     if (grady_in.get_descriptor() != comp.expected_input_descriptor(3)) {
-      grady_in.reinit<batch_normalization_backward>(comp.expected_input_descriptor(3));
+      grady_in.reinit(comp.expected_input_descriptor(3));
       reorder::compute(grady, grady_in);
     }
 
-    gradx.reinit<batch_normalization_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     gradw.reinit(comp.expected_gradw_descriptor());
 
     comp.execute(src, mean, variance, grady_in, scale, gradx, gradw);
@@ -2983,11 +2980,11 @@ public:
 
     auto grady_in = grady;
     if (grady_in.get_descriptor() != comp.expected_input_descriptor(3)) {
-      grady_in.reinit<batch_normalization_backward>(comp.expected_input_descriptor(3));
+      grady_in.reinit(comp.expected_input_descriptor(3));
       reorder::compute(grady, grady_in);
     }
 
-    gradx.reinit<batch_normalization_backward>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     grad_scale.reinit(mean.get_descriptor());
     grad_shift.reinit(mean.get_descriptor());
 
@@ -3108,16 +3105,16 @@ struct inner_product_forward: public computation,
     auto comp = fetch(it);
 
     if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init<inner_product_forward>(comp.expected_src_descriptor());
+      src_in.init(comp.expected_src_descriptor());
       reorder::compute(src, src_in);
     }
 
     if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<inner_product_forward>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       reorder::compute(weights, weights_in);
     }
 
-    dst.reinit<inner_product_forward>(comp.expected_dst_descriptor());
+    dst.reinit(comp.expected_dst_descriptor());
     if (with_bias)
       comp.execute(src_in, weights_in, bias_in, dst);
     else
@@ -3206,16 +3203,16 @@ public:
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<inner_product_backward_data>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
     if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init<inner_product_backward_data>(comp.expected_weights_descriptor());
+      weights_in.init(comp.expected_weights_descriptor());
       reorder::compute(weights, weights_in);
     }
 
-    gradx.reinit<inner_product_backward_data>(comp.expected_gradx_descriptor());
+    gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
 };
@@ -3294,17 +3291,17 @@ public:
 
     auto x_in = x;
     if (x.get_descriptor() != comp.expected_src_descriptor()) {
-      x_in.init<inner_product_backward_weights>(comp.expected_src_descriptor());
+      x_in.init(comp.expected_src_descriptor());
       reorder::compute(x, x_in);
     }
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<inner_product_backward_weights>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    gradw.reinit<inner_product_backward_weights>(comp.expected_gradw_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(x_in, grady_in, gradw);
   }
 
@@ -3322,17 +3319,17 @@ public:
 
     auto x_in = x;
     if (x.get_descriptor() != comp.expected_src_descriptor()) {
-      x_in.init<inner_product_backward_weights>(comp.expected_src_descriptor());
+      x_in.init(comp.expected_src_descriptor());
       reorder::compute(x, x_in);
     }
 
     auto grady_in = grady;
     if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init<inner_product_backward_weights>(comp.expected_grady_descriptor());
+      grady_in.init(comp.expected_grady_descriptor());
       reorder::compute(grady, grady_in);
     }
 
-    gradw.reinit<inner_product_backward_weights>(comp.expected_gradw_descriptor());
+    gradw.reinit(comp.expected_gradw_descriptor());
     gradb.reinit(comp.expected_gradb_descriptor());
 
     comp.execute(x_in, grady_in, gradw, gradb);
@@ -3344,8 +3341,8 @@ public:
   template<class T>
   static void compute_impl(const tensor& src, float ratio, tensor& dst, tensor& mask) {
     dropout_forward comp;
-    mask.reinit<dropout_forward>(src.get_descriptor());
-    dst.reinit<dropout_forward>(src.get_descriptor());
+    mask.reinit(src.get_descriptor());
+    dst.reinit(src.get_descriptor());
     if (src.has_scale()) dst.set_scale(src.get_scale());
 
     const auto scale = 1.0 / (1.0 - ratio);
@@ -3393,7 +3390,7 @@ public:
   template<class T>
   static void compute_impl(const tensor& mask, const tensor& gy, tensor& gx) {
     dropout_backward comp;
-    gx.reinit<dropout_backward>(gy.get_descriptor());
+    gx.reinit(gy.get_descriptor());
 
     const auto size = mask.get_nelems();
     const auto mask_data = static_cast<T *>(mask.get_data_handle());

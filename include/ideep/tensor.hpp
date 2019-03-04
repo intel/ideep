@@ -508,7 +508,6 @@ public:
   };
 
   /// The template initialize param with a descriptor.
-  template<class computation_t = computation>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
     error::wrap_c_api(mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
@@ -537,13 +536,7 @@ public:
     capacity_ = 0;
   }
 
-  /// The template initialize param with a descriptor.
-  void init(const descriptor &adesc) {
-    init<computation>(adesc);
-  }
-
   /// Function that refill tensor with new description or buffer
-  template<class computation_t = computation>
   void reinit(const descriptor &adesc) {
     auto curr_size = get_capacity();
     auto new_size = adesc.get_size();
@@ -556,22 +549,12 @@ public:
       set_descriptor(adesc);
     } else {
       // re-allocate new room
-      init<computation_t>(adesc);
+      init(adesc);
     }
   }
 
-  /// Function that refill tensor with new description or buffer
-  void reinit(const descriptor &adesc) {
-    reinit<computation>(adesc);
-  }
-
-  template<class computation_t = computation>
   void reinit_like(const param &aparam) {
-    reinit<computation_t>(aparam.get_descriptor());
-  }
-
-  void reinit_like(const param &aparam) {
-    reinit<computation>(aparam.get_descriptor());
+    reinit(aparam.get_descriptor());
   }
 
   /// Empty construction
@@ -640,10 +623,9 @@ public:
   /// Recreate a param with completely different content from old one
   /// but reuse the param shell. Notice that after resize, its format
   /// is undefined
-  template<class computation_t = computation>
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
-    reinit<computation_t>(adesc);
+    reinit(adesc);
   }
 
   /// Returns pointer to structure of primitive descriptor.
@@ -910,10 +892,9 @@ public:
   using param::param;
 
   /// Pack an extra tensor into current one, allocate buffer using specified allocator.
-  template<class computation_t = computation>
   void init_extra(const descriptor &workspace) {
     auto twin = new tensor();
-    twin->init<computation_t>(workspace);
+    twin->init(workspace);
     twin_.reset(twin);
   }
 
@@ -986,9 +967,8 @@ public:
     return *this;
   }
 
-  template<class computation_t = computation>
   void init(const descriptor &adesc) {
-    param::init<computation_t>(adesc);
+    param::init(adesc);
     twin_.reset();
   }
 
@@ -997,30 +977,13 @@ public:
     twin_.reset();
   }
 
-  void init(const descriptor &adesc) {
-    param::init(adesc);
-    twin_.reset();
-  }
-
-  template<class computation_t = computation>
   void reinit(const descriptor &adesc) {
-    param::reinit<computation_t>(adesc);
-    twin_.reset();
-  }
-
-  void reinit(const descriptor &adesc) {
-    param::reinit<computation>(adesc);
-    twin_.reset();
-  }
-
-  template<class computation_t = computation>
-  void reinit_like(const param &aparam) {
-    param::reinit<computation_t>(aparam.get_descriptor());
+    param::reinit(adesc);
     twin_.reset();
   }
 
   void reinit_like(const param &aparam) {
-    param::reinit<computation>(aparam.get_descriptor());
+    param::reinit(aparam.get_descriptor());
     twin_.reset();
   }
 
@@ -1056,14 +1019,13 @@ public:
   }
 
   /// Reshape a param, reorder might happen if its format is internal
-  template<class computation_t = computation>
   tensor& reshape(dims new_dims) {
     if (!get_descriptor().is_shape_compatible(new_dims)) {
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
     } else if (new_dims != get_dims()) {
       if (!is_public_format()) {
         tensor p;
-        p.init<computation_t>({get_dims(), get_data_type()});
+        p.init({get_dims(), get_data_type()});
         reorder::execute(*this, p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
@@ -1173,7 +1135,6 @@ public:
   }
 
   /// Convert the tensor to public format and data type
-  template<class computation_t = computation>
   inline tensor to_public(void *array = nullptr) const {
     tensor ret;
     auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
@@ -1184,13 +1145,13 @@ public:
     if (public_format_ == format::iohw) {
       iohw_dims = get_public_format_dims();
       if (array == nullptr)
-        ret.init<computation_t>({iohw_dims, data_type::f32, format::oihw});
+        ret.init({iohw_dims, data_type::f32, format::oihw});
       else
         ret.init({iohw_dims, data_type::f32, format::oihw}, array);
       iohw_definedby_blocked(ret);
     } else {
       if (array == nullptr)
-        ret.init<computation_t>({get_dims(), data_type::f32, dst_format});
+        ret.init({get_dims(), data_type::f32, dst_format});
       else
         ret.init({get_dims(), data_type::f32, dst_format}, array);
     }

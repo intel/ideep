@@ -1150,20 +1150,8 @@ public:
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
+    auto grady_in = comp.transform_input_uncache(0, grady);
+    auto weights_in = comp.transform_input_uncache(1, weights.as_weights());
     gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -1286,18 +1274,8 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
-    auto src_in = src;
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto src_in = comp.transform_input_uncache(0, src);
+    auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
     gradb.reinit(comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gradb);
@@ -1314,18 +1292,8 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(),
         grady.get_descriptor(), gradw_desc, std::forward<Ts>(args)...);
 
-    auto src_in = src;
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto src_in = comp.transform_input_uncache(0, src);
+    auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
   }
@@ -1481,20 +1449,8 @@ struct convolution_transpose_forward : public computation,
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
         bias.get_descriptor(), tdesc_t{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
 
-    auto src_in = src;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      reorder::compute(_weights, weights_in);
-    }
-
+    auto src_in = comp.transform_input_uncache(0, src);
+    auto weights_in = comp.transform_input_uncache(1, weights.as_weights());
     auto dst_desc = comp.expected_dst_descriptor();
     dst.reinit(std::move(dst_desc));
     comp.execute(src_in, weights_in, bias, dst);
@@ -1510,19 +1466,8 @@ struct convolution_transpose_forward : public computation,
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
         tdesc_t{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
 
-    auto src_in = src;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      reorder::compute(_weights.as_weights(), weights_in);
-    }
+    auto src_in = comp.transform_input_uncache(0, src);
+    auto weights_in = comp.transform_input_uncache(1, weights.as_weights());
 
     auto dst_desc = comp.expected_dst_descriptor();
     dst.reinit(std::move(dst_desc));
@@ -1648,20 +1593,8 @@ struct convolution_transpose_backward_data : public computation,
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         is_iohw ? weight_desc : weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights;
-    auto weights_in = _weights;
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      reorder::compute(_weights, weights_in);
-    }
-
+    auto grady_in = comp.transform_input_uncache(0, grady);
+    auto weights_in = comp.transform_input_uncache(1, weights);
     gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -1765,18 +1698,8 @@ struct convolution_transpose_backward_weights
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
-    auto src_in = src;
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto src_in = comp.transform_input_uncache(0, src);
+    auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
     gbias.reinit(comp.expected_gradb_descriptor());
     comp.execute(src_in, grady_in, gradw, gbias);
@@ -1792,18 +1715,8 @@ struct convolution_transpose_backward_weights
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         std::forward<Ts>(args)...);
 
-    auto src_in = src;
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto src_in = comp.transform_input_uncache(0, src);
+    auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(src_in, grady_in, gradw);
   }
@@ -1873,17 +1786,16 @@ public:
       float beta, float k = 1.0, algorithm aalgorithm = algorithm::lrn_across_channels,
       prop_kind aprop_kind = prop_kind::forward_training) {
 
-    auto src_in = src;
     tdesc_t src_desc;
     scale_t src_scales(IDEEP_DEF_SCALE);
-    if (src_in.has_scale()) {
-      IDEEP_ENFORCE(src_in.get_data_type() != tdtype_t::f32, "Incorrect data type");
-      IDEEP_ENFORCE(src_in.get_scale().size() == 1, "Invalid scale size");
-      src_desc = {src_in.get_dims(), tdtype_t::f32};
-      src_scales[0] /= src_in.get_scale()[0];
+    if (src.has_scale()) {
+      IDEEP_ENFORCE(src.get_data_type() != tdtype_t::f32, "Incorrect data type");
+      IDEEP_ENFORCE(src.get_scale().size() == 1, "Invalid scale size");
+      src_desc = {src.get_dims(), tdtype_t::f32};
+      src_scales[0] /= src.get_scale()[0];
     } else {
-      src_desc = src_in.get_descriptor();
-      IDEEP_ENFORCE(src_in.get_data_type() == tdtype_t::f32, "Incorrect src data type");
+      src_desc = src.get_descriptor();
+      IDEEP_ENFORCE(src.get_data_type() == tdtype_t::f32, "Incorrect src data type");
     }
 
     if (key.empty())
@@ -1893,11 +1805,7 @@ public:
     fetch_or_create_m(comp, key, src_desc, local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
-
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in, {0, src_scales});
-    }
+    auto src_in = transform_input_uncache(0, src, {0, src_scales});
 
     if (dst != src) {
       dst.reinit(comp.expected_dst_descriptor());
@@ -2127,7 +2035,7 @@ public:
       const tdims_t& padding_r, algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero) {
     auto grady_in = grady;
     if (grady.get_internal_format() != x.get_internal_format()) {
-      grady_in.init({grady.get_dims(),grady.get_data_type(), x.get_internal_format()});
+      grady_in.init({grady.get_dims(), grady.get_data_type(), x.get_internal_format()});
       reorder::compute(grady, grady_in);
     }
 
@@ -2332,12 +2240,7 @@ public:
         src.get_internal_format(), group_size, axis, aprop_kind);
     fetch_or_create_m(comp, key, src.get_descriptor(), group_size, axis, aprop_kind);
 
-    auto src_in = src;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
+    auto src_in = comp.transform_input_uncache(0, src);
     if (dst != src) {
       dst.reinit(comp.expected_dst_descriptor());
     }
@@ -2385,12 +2288,7 @@ public:
         grady.get_internal_format(), group_size, axis);
     fetch_or_create_m(comp, key, grady.get_descriptor(), group_size, axis);
 
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto grady_in = comp.transform_input_uncache(0, grady);
     if (gradx != grady)
       gradx.reinit(comp.expected_gradx_descriptor());
 
@@ -2962,15 +2860,9 @@ public:
       const tensor& grady, const tensor& scale, tensor& gradx, tensor& gradw, float epsilon) {
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
-
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), epsilon);
 
-    auto grady_in = grady;
-    if (grady_in.get_descriptor() != comp.expected_input_descriptor(3)) {
-      grady_in.reinit(comp.expected_input_descriptor(3));
-      reorder::compute(grady, grady_in);
-    }
-
+    auto grady_in = comp.transform_input_uncache(3, grady);
     gradx.reinit(comp.expected_gradx_descriptor());
     gradw.reinit(comp.expected_gradw_descriptor());
 
@@ -2984,12 +2876,7 @@ public:
     utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), epsilon);
 
-    auto grady_in = grady;
-    if (grady_in.get_descriptor() != comp.expected_input_descriptor(3)) {
-      grady_in.reinit(comp.expected_input_descriptor(3));
-      reorder::compute(grady, grady_in);
-    }
-
+    auto grady_in = comp.transform_input_uncache(3, grady);
     gradx.reinit(comp.expected_gradx_descriptor());
     grad_scale.reinit(mean.get_descriptor());
     grad_shift.reinit(mean.get_descriptor());
@@ -3195,20 +3082,10 @@ public:
 
     key_t key;
     utils::create_key(key, grady.get_data_type(), grady.get_dims(), weights_in.get_dims(), gradx_dims);
-
     fetch_or_create_m(comp, key, gradx_desc, weights_in.get_descriptor(), grady.get_descriptor());
 
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
-    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
+    auto grady_in = comp.transform_input_uncache(0, grady);
+    weights_in = comp.transform_input_uncache(1, weights_in);
     gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -3283,21 +3160,10 @@ public:
 
     key_t key;
     utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, grady.get_dims());
-
     fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, grady.get_descriptor());
 
-    auto x_in = x;
-    if (x.get_descriptor() != comp.expected_src_descriptor()) {
-      x_in.init(comp.expected_src_descriptor());
-      reorder::compute(x, x_in);
-    }
-
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto x_in = comp.transform_input_uncache(0, x);
+    auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
     comp.execute(x_in, grady_in, gradw);
   }
@@ -3314,21 +3180,10 @@ public:
     utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, gradb_dims, grady.get_dims());
     fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, gradb_desc, grady.get_descriptor());
 
-    auto x_in = x;
-    if (x.get_descriptor() != comp.expected_src_descriptor()) {
-      x_in.init(comp.expected_src_descriptor());
-      reorder::compute(x, x_in);
-    }
-
-    auto grady_in = grady;
-    if (grady.get_descriptor() != comp.expected_grady_descriptor()) {
-      grady_in.init(comp.expected_grady_descriptor());
-      reorder::compute(grady, grady_in);
-    }
-
+    auto x_in = comp.transform_input_uncache(0, x);
+    auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
     gradb.reinit(comp.expected_gradb_descriptor());
-
     comp.execute(x_in, grady_in, gradw, gradb);
   }
 };

@@ -313,22 +313,6 @@ public:
 
 protected:
   /// Specific query interface, not valid for all computations.
-  tdesc_t expected_input_descriptor(int index) const {
-    return expected_descriptor_of(query::input_pd, index);
-  }
-
-  tdesc_t expected_output_descriptor(int index) const {
-    return expected_descriptor_of(query::output_pd, index);
-  }
-
-  tdesc_t expected_src_descriptor() const {
-    return expected_descriptor_of(query::src_pd);
-  }
-
-  tdesc_t expected_weights_descriptor() const {
-    return expected_descriptor_of(query::weights_pd);
-  }
-
   tdesc_t expected_dst_descriptor() const {
     return expected_descriptor_of(query::dst_pd, 0);
   }
@@ -339,10 +323,6 @@ protected:
 
   tdesc_t expected_gradx_descriptor() const {
     return expected_descriptor_of(query::diff_src_pd, 0);
-  }
-
-  tdesc_t expected_grady_descriptor() const {
-    return expected_descriptor_of(query::diff_dst_pd, 0);
   }
 
   tdesc_t expected_gradw_descriptor() const {
@@ -655,10 +635,8 @@ struct sum : public computation,
       reset(result);
     }
   };
-public:
-  using computation::execute;
-  using computation::expected_dst_descriptor;
 
+public:
   sum() = default;
 
   void init(const scale_t &scales, const std::vector<tdesc_t> &inputs) {
@@ -780,9 +758,6 @@ struct convolution_forward: public computation,
 
  public:
   using attr_t = descriptor::attr_t;
-  using computation::expected_input_descriptor;
-  using computation::expected_dst_descriptor;
-  using computation::expected_weights_descriptor;
 
   template<typename T, typename ...Ts>
   convolution_forward(T arg, Ts&&... args) {
@@ -1119,10 +1094,8 @@ struct convolution_backward_data : public computation,
   private:
     convolution_forward::descriptor hint_;
   };
-public:
-  using computation::computation;
-  using computation::expected_gradx_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &grady_desc, const tdesc_t &weights_desc,
       const tdesc_t &gradx_desc, Ts&&... args) {
@@ -1237,10 +1210,8 @@ struct convolution_backward_weights : public computation,
   private:
     convolution_forward::descriptor hint_;
   };
-public:
-  using computation::expected_gradw_descriptor;
-  using computation::expected_gradb_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, const tdesc_t &grady_desc,
       const tdesc_t &gradw_desc, Ts&&... args) {
@@ -1406,9 +1377,6 @@ struct convolution_transpose_forward : public computation,
 
  public:
   using attr_t = descriptor::attr_t;
-  using computation::expected_dst_descriptor;
-  using computation::expected_input_descriptor;
-  using computation::expected_weights_descriptor;
 
   template <typename T, typename... Ts, typename = typename std::enable_if<
           std::is_same<T, tdesc_t>::value>::type>
@@ -1554,9 +1522,6 @@ struct convolution_transpose_backward_data : public computation,
   };
 
  public:
-  using computation::computation;
-  using computation::expected_gradx_descriptor;
-
   template <typename... Ts>
   void init(const tdesc_t& grady_desc, const tdesc_t& weights_desc,
       const tdesc_t& gradx_desc, Ts&&... args) {
@@ -1659,9 +1624,6 @@ struct convolution_transpose_backward_weights
   };
 
  public:
-  using computation::expected_gradb_descriptor;
-  using computation::expected_gradw_descriptor;
-
   template <typename... Ts>
   void init(const tdesc_t& x_desc, const tdesc_t& grady_desc,
       const tdesc_t& gradw_desc, Ts&&... args) {
@@ -1755,11 +1717,8 @@ struct lrn_forward : public computation,
       reset(result);
     }
   };
-public:
-  using computation::expected_dst_descriptor;
-  using computation::expected_workspace_descriptor;
-  using computation::expected_src_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
@@ -1805,7 +1764,7 @@ public:
     fetch_or_create_m(comp, key, src_desc, local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
-    auto src_in = transform_input_uncache(0, src, {0, src_scales});
+    auto src_in = comp.transform_input_uncache(0, src, {0, src_scales});
 
     if (dst != src) {
       dst.reinit(comp.expected_dst_descriptor());
@@ -1845,9 +1804,8 @@ struct lrn_backward : public computation,
   private:
     lrn_forward::descriptor hint_;
   };
-public:
-  using computation::expected_gradx_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc,
       const tdesc_t &grady_desc, Ts&&... args) {
@@ -1905,9 +1863,6 @@ struct pooling_forward : public computation,
     }
   };
 public:
-  using computation::expected_dst_descriptor;
-  using computation::expected_workspace_descriptor;
-
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
@@ -2007,10 +1962,8 @@ struct pooling_backward : public computation,
   private:
     pooling_forward::descriptor hint_;
   };
-public:
-  using computation::computation;
-  using computation::expected_gradx_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &gradx_desc,
       const tdesc_t &grady_desc, Ts &&...args) {
@@ -2072,9 +2025,6 @@ struct eltwise_forward : public computation,
   };
 
 public:
-  using computation::computation;
-  using computation::expected_dst_descriptor;
-
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
@@ -2149,10 +2099,8 @@ struct eltwise_backward : public computation,
   private:
     eltwise_forward::descriptor hint_;
   };
-public:
-  using computation::computation;
-  using computation::expected_gradx_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &grady_desc, const tdesc_t &x_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, x_desc, std::forward<Ts>(args)...);
@@ -2320,8 +2268,6 @@ struct concat : public computation,
   };
 public:
   using attr_t = descriptor::attr_t;
-  using computation::execute;
-  using computation::expected_dst_descriptor;
 
   void init(int concat_dimension, const std::vector<tdesc_t> &inputs) {
     descriptor forward_descriptor (concat_dimension, inputs);
@@ -2486,8 +2432,6 @@ struct softmax_forward : public computation {
   };
 
 public:
-  using computation::expected_dst_descriptor;
-
   template<typename ...Ts>
   void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, Ts&&... args) {
     descriptor softmax_descriptor(src_desc, std::forward<Ts>(args)...);
@@ -2527,8 +2471,6 @@ struct batch_norm_forward_base : public computation {
   };
 
 public:
-  using computation::expected_dst_descriptor;
-
   template<typename... Ts>
   void init(float epsilon, unsigned flags, prop_kind aprop_kind, const tdesc_t &src_desc, Ts&... rest) {
     descriptor batch_norm_forward(src_desc, epsilon, flags, aprop_kind);
@@ -2592,8 +2534,6 @@ public:
     std::memcpy((char *)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
     computation::execute(src, mean, variance, weights_, dst);
   }
-
-  using computation::expected_dst_descriptor;
 
   // Inplace support?
   static void compute(key_t &key, const tensor& src, const tensor& scale,
@@ -2668,7 +2608,6 @@ struct batch_normalization_forward_training : public batch_norm_forward_base,
     return p_desc->batch_norm_epsilon;
   }
 public:
-  using computation::expected_dst_descriptor;
   using batch_norm_forward_base::execute;
 
   void init(const tdesc_t& src_desc, const tdesc_t& scale, const tdesc_t& shift, float momentum,
@@ -2799,9 +2738,6 @@ struct batch_normalization_backward : public computation,
   }
 
 public:
-  using computation::expected_input_descriptor;
-  using computation::expected_gradx_descriptor;
-
   prop_kind get_prop_kind() const {
     const mkldnn_batch_normalization_desc_t *p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
@@ -2929,10 +2865,8 @@ struct inner_product_forward: public computation,
       reset(result);
     }
   };
- public:
-  using computation::execute;
-  using computation::expected_dst_descriptor;
 
+ public:
   void init(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, dst_desc);
     computation::init(forward_descriptor, src_desc, weights_desc);
@@ -3050,10 +2984,6 @@ struct inner_product_backward_data: public computation,
   };
 
 public:
-  using computation::expected_gradx_descriptor;
-  using computation::expected_grady_descriptor;
-  using computation::expected_weights_descriptor;
-
   template<typename ...Ts>
   void init(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc) {
     descriptor backward_data_descriptor(gradx_desc, weights_desc, grady_desc);
@@ -3130,10 +3060,8 @@ struct inner_product_backward_weights : public computation,
   private:
     inner_product_forward::descriptor hint_;
   };
-public:
-  using computation::expected_gradw_descriptor;
-  using computation::expected_gradb_descriptor;
 
+public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);

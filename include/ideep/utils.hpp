@@ -84,6 +84,23 @@ public:
     return n_elems_;
   }
 
+  void assign(size_type count, const T& val, const Alloc& alloc = Alloc()) {
+    Alloc dup_alloc(alloc);
+
+    storage_.reset(new (dup_alloc.allocate(count)) T [count] (),
+       [dup_alloc, count](T *p) mutable {
+      for (int i =0; i < count; i ++)
+        p[i].~T();
+      dup_alloc.deallocate(p, count);
+    });
+
+    auto* elems = storage_.get();
+    for (int i =0; i < count; i ++)
+      elems[i] = val;
+
+    n_elems_ = count;
+  }
+
 protected:
   size_type n_elems_;
   std::shared_ptr<T> storage_;

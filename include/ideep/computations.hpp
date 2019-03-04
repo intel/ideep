@@ -528,6 +528,8 @@ public:
     inputs_num_ = (int)args.size();
     outputs_num_ = adesc.num_of_outputs();
     init_internal(adesc);
+    reorders_.assign(inputs_num_, nullptr);
+    ins_buf_.assign(inputs_num_, std::make_shared<tensor>(tensor()));
   }
 
   template<typename... Ts>
@@ -535,6 +537,47 @@ public:
     inputs_num_ = adesc.num_of_inputs();
     outputs_num_ = adesc.num_of_outputs();
     init_internal(adesc);
+    reorders_.assign(inputs_num_, nullptr);
+    ins_buf_.assign(inputs_num_, std::make_shared<tensor>(tensor()));
+  }
+
+  tensor transform_input_cache(int index, const tensor& input, attr_t attr = attr_t()) {
+    IDEEP_ENFORCE(index < inputs_num_, "Invalid input index");
+    if (ins_buf_[index] == nullptr) {
+      return input;
+    }
+    if (reorders_[index]) {
+      reorders_[index]->operator()(input, *ins_buf_[index]);
+      return *ins_buf_[index];
+    }
+
+    auto src_desc = input.get_descriptor();
+    auto dst_desc = inouts_[index].get_descriptor();
+    if (src_desc == dst_desc) {
+      ins_buf_[index] = nullptr;
+      return input;
+    }
+
+    tensor in_ten {dst_desc};
+    reorder reorder_ (src_desc, dst_desc, attr);
+    reorder_(input, in_ten);
+    ins_buf_[index] = std::make_shared<tensor>(in_ten);
+    reorders_[index] = std::make_shared<reorder>(reorder_);
+    return in_ten;
+  }
+
+  tensor transform_input_uncache(int index, const tensor& input, attr_t attr = attr_t()) {
+    IDEEP_ENFORCE(index < inputs_num_, "Invalid input index");
+    auto src_desc = input.get_descriptor();
+    auto dst_desc = inouts_[index].get_descriptor();
+    if (src_desc == dst_desc) {
+      return input;
+    }
+
+    tensor in_ten {dst_desc};
+    reorder reorder_ (src_desc, dst_desc, attr);
+    reorder_(input, in_ten);
+    return in_ten;
   }
 
   void connect_handle_for(int index, const tensor& atensor) {
@@ -586,6 +629,8 @@ private:
   int inputs_num_;
   int outputs_num_;
   s_vector<tensor> inouts_;
+  s_vector<shared_ptr<reorder>> reorders_;
+  s_vector<shared_ptr<tensor>> ins_buf_;
 };
 
 struct sum : public computation,
@@ -771,19 +816,9 @@ struct convolution_forward: public computation,
   template <bool with_bias>
   static void compute_impl(convolution_forward &comp, const tensor& src,
       const tensor& weights, const tensor& bias, tensor& dst) {
-    auto src_in = src;
-    if (comp.src_reorder_) {
-      src_in = *comp.src_in_;
-      comp.src_reorder_->operator()(src, src_in);
-    }
 
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-    if (comp.weights_reorder_) {
-      weights_in = *comp.weights_in_;
-      comp.weights_reorder_->operator()(_weights, weights_in);
-    }
+    auto src_in = comp.transform_input_cache(0, src);
+    auto weights_in = comp.transform_input_cache(1, weights.as_weights());
 
     if (comp.dst_exp_desc_) {
       dst.reinit(*comp.dst_exp_desc_);
@@ -793,13 +828,8 @@ struct convolution_forward: public computation,
     }
 
     if (with_bias) {
-      auto bias_in = bias;
-      if (comp.bias_reorder_) {
-        bias_in = *comp.bias_in_;
-        comp.bias_reorder_->operator()(bias, bias_in);
-      }
+      auto bias_in = comp.transform_input_cache(2, bias);
       comp.execute(src_in, weights_in, bias_in, dst);
-
     } else {
       comp.execute(src_in, weights_in, dst);
     }
@@ -921,21 +951,8 @@ struct convolution_forward: public computation,
     }
     auto comp = fetch(it);
 
-    auto src_in = src;
-    if (src.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      comp.src_reorder_.reset(new reorder(src.get_descriptor(), src_in.get_descriptor(), src_attr));
-      comp.src_reorder_->operator()(src, src_in);
-    }
-
-    // solve the problem that slow reorder from nchw
-    auto _weights = weights.as_weights();
-    auto weights_in = _weights;
-    if (_weights.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      comp.weights_reorder_.reset(new reorder(_weights.get_descriptor(), weights_in.get_descriptor(), weights_attr));
-      comp.weights_reorder_->operator()(_weights, weights_in);
-    }
+    auto src_in = comp.transform_input_cache(0, src, src_attr);
+    auto weights_in = comp.transform_input_cache(1, weights.as_weights(), weights_attr);
 
     auto dst_desc = comp.expected_dst_descriptor();
     if (dst.get_descriptor() != dst_desc) {
@@ -950,15 +967,8 @@ struct convolution_forward: public computation,
     }
 
     if (with_bias) {
-      auto bias_in = bias;
-      if (bias.get_descriptor() != bias_desc) {
-        bias_in.init(bias_desc);
-        comp.bias_reorder_.reset(new reorder(bias.get_descriptor(), bias_in.get_descriptor(), bias_attr));
-        comp.bias_reorder_->operator()(bias, bias_in);
-      }
-
+      auto bias_in = comp.transform_input_cache(2, bias, bias_attr);
       comp.execute(src_in, weights_in, bias_in, dst);
-      comp.bias_in_ = std::make_shared<tensor>(bias_in);
     } else {
       comp.execute(src_in, weights_in, dst);
     }
@@ -969,8 +979,6 @@ struct convolution_forward: public computation,
       comp.dst_u8_desc_ = std::make_shared<tdesc_t>(dst_u8_desc);
     }
 
-    comp.src_in_ = std::make_shared<tensor>(src_in);
-    comp.weights_in_ = std::make_shared<tensor>(weights_in);
     update(comp, it);
   }
 
@@ -1074,8 +1082,6 @@ struct convolution_forward: public computation,
   }
 
 private:
-  std::shared_ptr<reorder> src_reorder_, weights_reorder_, bias_reorder_;
-  std::shared_ptr<tensor> src_in_, weights_in_, bias_in_;
   std::shared_ptr<tdesc_t> dst_exp_desc_;
   std::shared_ptr<tdesc_t> dst_u8_desc_;
   std::shared_ptr<scale_t> dst_scales_;
@@ -3039,8 +3045,6 @@ struct inner_product_forward: public computation,
  public:
   using computation::execute;
   using computation::expected_dst_descriptor;
-  using computation::expected_weights_descriptor;
-  using computation::expected_src_descriptor;
 
   void init(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, dst_desc);
@@ -3104,17 +3108,10 @@ struct inner_product_forward: public computation,
     }
     auto comp = fetch(it);
 
-    if (src_in.get_descriptor() != comp.expected_src_descriptor()) {
-      src_in.init(comp.expected_src_descriptor());
-      reorder::compute(src, src_in);
-    }
-
-    if (weights_in.get_descriptor() != comp.expected_weights_descriptor()) {
-      weights_in.init(comp.expected_weights_descriptor());
-      reorder::compute(weights, weights_in);
-    }
-
+    src_in = comp.transform_input_cache(0, src_in);
+    weights_in = comp.transform_input_cache(1, weights_in);
     dst.reinit(comp.expected_dst_descriptor());
+
     if (with_bias)
       comp.execute(src_in, weights_in, bias_in, dst);
     else

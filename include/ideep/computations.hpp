@@ -1449,14 +1449,9 @@ struct lrn_forward : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, Ts&&... args) {
+  lrn_forward(const tdesc_t &x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  lrn_forward(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &src, const tensor& dst, const tensor& workspace) {
@@ -1486,9 +1481,8 @@ public:
       IDEEP_ENFORCE(src.get_data_type() == tdtype_t::f32, "Incorrect src data type");
     }
 
-    if (key.empty())
-      utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
-          src_desc.get_internal_format(), local_size, alpha, beta, k, aalgorithm, aprop_kind);
+    check_or_create_k(key, src_desc.get_data_type(), src_desc.get_dims(),
+        src_desc.get_internal_format(), local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     fetch_or_create_m(comp, key, src_desc, local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
@@ -1536,14 +1530,9 @@ struct lrn_backward : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, Ts&&... args) {
-    descriptor backward_data_descriptor(x_desc, grady_desc, std::forward<Ts>(args)...);
+  lrn_backward(const tdesc_t &x_desc, Ts&&... args) {
+    descriptor backward_data_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  lrn_backward(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& x, const tensor& grady, const tensor& y, const tensor& gradx) {
@@ -1592,14 +1581,9 @@ struct pooling_forward : public computation,
   };
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, Ts &&...args) {
+  pooling_forward(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  pooling_forward(T arg, Ts &&...args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor &src, const tensor &dst, const tensor &workspace) {
@@ -1616,10 +1600,8 @@ public:
   static void compute(key_t &key, const tensor& src, const tdims_t& dst_dims, tensor& dst,
       const tdims_t& strides, const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
       algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
-    if (key.empty())
-      utils::create_key(key, src.get_data_type(), src.get_dims(),
-          src.get_internal_format(), dst_dims, strides, kernel, padding_l,
-          padding_r, aalgorithm, aprop_kind, apadding_kind);
+    check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
+        dst_dims, strides, kernel, padding_l, padding_r, aalgorithm, aprop_kind, apadding_kind);
 
     tdesc_t dst_desc(dst_dims, src.get_data_type());
     fetch_or_create_m(comp, key, src.get_descriptor(), dst_desc, strides, kernel, padding_l,
@@ -1644,8 +1626,8 @@ public:
       const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r, algorithm aalgorithm,
       prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
     key_t key;
-    compute(key, src, dst_dims, dst, strides, kernel,
-        padding_l, padding_r, aalgorithm, aprop_kind, apadding_kind);
+    compute(key, src, dst_dims, dst, strides, kernel, padding_l, padding_r,
+        aalgorithm, aprop_kind, apadding_kind);
   }
 };
 
@@ -1669,7 +1651,6 @@ struct pooling_backward : public computation,
               error::wrap_c_api(mkldnn_primitive_desc_create(
                     &result, &data, engine::cpu_engine().get(), nullptr),
                   "could not create a forward pooling primitive descriptor");
-
               pooling_forward::descriptor hint;
               hint.reset(result);
               return hint;
@@ -1693,15 +1674,9 @@ struct pooling_backward : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &gradx_desc,
-      const tdesc_t &grady_desc, Ts &&...args) {
-    descriptor backward_descriptor(gradx_desc, grady_desc, std::forward<Ts>(args)...);
+  pooling_backward(const tdesc_t &gradx_desc, Ts &&...args) {
+    descriptor backward_descriptor(gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  pooling_backward(T arg, Ts &&...args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& grady, const tensor& y, const tensor& gradx) {
@@ -1721,9 +1696,8 @@ public:
     }
 
     key_t key;
-    utils::create_key(key, grady_in.get_data_type(), grady_in.get_dims(),
-        grady_in.get_internal_format(), x.get_dims(), strides, kernel, padding_l,
-        padding_r, aalgorithm, apadding_kind);
+    utils::create_key(key, grady_in.get_data_type(), grady_in.get_dims(), grady_in.get_internal_format(),
+        x.get_dims(), strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
 
     fetch_or_create_m(comp, key, x.get_descriptor(), grady_in.get_descriptor(),
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
@@ -1754,26 +1728,15 @@ struct eltwise_forward : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, Ts &&...args) {
+  eltwise_forward(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
 
-  template<typename T, typename ...Ts>
-  eltwise_forward(T arg, Ts &&...args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor &x, const tensor &y) {
-    computation::execute(x, y);
-  }
-
-  static void compute(key_t &key, const tensor& src, tensor& dst,
-      algorithm aalgorithm = algorithm::eltwise_relu, prop_kind aprop_kind = prop_kind::forward,
-      float alpha = 0.0, float beta = 0.0) {
+  static void compute(key_t &key, const tensor& src, tensor& dst, algorithm aalgorithm = algorithm::eltwise_relu,
+      prop_kind aprop_kind = prop_kind::forward, float alpha = 0.0, float beta = 0.0) {
     auto src_in = src;
-    if (aalgorithm != algorithm::eltwise_relu
-        && src.get_data_type() != tdtype_t::f32) {
+    if (aalgorithm != algorithm::eltwise_relu && src.get_data_type() != tdtype_t::f32) {
       src_in.init({src.get_dims(), tdtype_t::f32});
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       IDEEP_ENFORCE(src.get_scale().size() == 1, "Incorrect scale size");
@@ -1782,9 +1745,8 @@ public:
       reorder::compute(src, src_in, {0, scale});
     }
 
-    if (key.empty())
-      utils::create_key(key, src_in.get_data_type(), src_in.get_dims(),
-          src_in.get_internal_format(), alpha, beta, aalgorithm, aprop_kind);
+    check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(), src_in.get_internal_format(),
+        alpha, beta, aalgorithm, aprop_kind);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(),
         alpha, beta, aalgorithm, aprop_kind);
@@ -1810,8 +1772,8 @@ public:
 struct eltwise_backward : public computation,
   public utils::computation_cache<eltwise_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &grady_desc, const tdesc_t &x_desc,
-        float alpha = 0.0, float beta = 0.0, algorithm alg_kind = algorithm::eltwise_relu)
+    descriptor(const tdesc_t &grady_desc, const tdesc_t &x_desc, float alpha = 0.0,
+        float beta = 0.0, algorithm alg_kind = algorithm::eltwise_relu)
       : hint_(x_desc, alg_kind) {
       mkldnn_eltwise_desc_t data;
       error::wrap_c_api(mkldnn_eltwise_backward_desc_init(
@@ -1830,18 +1792,9 @@ struct eltwise_backward : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &grady_desc, const tdesc_t &x_desc, Ts &&...args) {
-    descriptor backward_descriptor(grady_desc, x_desc, std::forward<Ts>(args)...);
+  eltwise_backward(const tdesc_t &grady_desc, Ts &&...args) {
+    descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  eltwise_backward(T grady_desc, T src_desc, Ts &&...args) {
-    init(std::forward<T>(grady_desc), std::forward<T>(src_desc), std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor &x, const tensor &grady, const tensor &gradx) {
-    computation::execute(x, grady, gradx);
   }
 
   // If grady and x had different format, performance is bad.
@@ -1891,29 +1844,21 @@ struct channel_shuffle_forward: public computation,
   };
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, Ts &&...args) {
+  channel_shuffle_forward(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
 
-  template<typename T, typename ...Ts>
-  channel_shuffle_forward(T arg, Ts &&...args) {
-    init(std::forward<T>(arg), std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor &x, const tensor &y) {
-    computation::execute(x, y);
-  }
-
-  static void compute(const tensor& src, tensor& dst, const int group,
-      const int axis = 1, prop_kind aprop_kind = prop_kind::forward) {
+  static void compute(const tensor& src, tensor& dst, const int group, const int axis = 1,
+      prop_kind aprop_kind = prop_kind::forward) {
     IDEEP_ENFORCE(src.get_dim(axis) % group == 0, "Invalid channel and group");
     IDEEP_ENFORCE(src.get_data_type() == tdtype_t::f32, "invalid data type");
-
     auto group_size = src.get_dim(axis) / group;
+
     key_t key;
     utils::create_key(key, src.get_data_type(), src.get_dims(),
         src.get_internal_format(), group_size, axis, aprop_kind);
+
     fetch_or_create_m(comp, key, src.get_descriptor(), group_size, axis, aprop_kind);
 
     auto src_in = comp.transform_input_uncache(0, src);
@@ -1943,18 +1888,9 @@ struct channel_shuffle_backward : public computation,
   };
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &grady_desc, Ts &&...args) {
+  channel_shuffle_backward(const tdesc_t &grady_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  channel_shuffle_backward(T grady_desc, Ts &&...args) {
-    init(std::forward<T>(grady_desc), std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor &grady, const tensor &gradx) {
-    computation::execute(grady, gradx);
   }
 
   static void compute(const tensor& grady, tensor& gradx, const int group, const int axis = 1) {
@@ -1997,17 +1933,9 @@ struct concat : public computation,
 public:
   using attr_t = descriptor::attr_t;
 
-  void init(int concat_dimension, const std::vector<tdesc_t> &inputs) {
+  concat(int concat_dimension, const std::vector<tdesc_t> &inputs) {
     descriptor forward_descriptor (concat_dimension, inputs);
     computation::init(forward_descriptor, inputs);
-  }
-
-  concat(int concat_dimension, const std::vector<tdesc_t> &inputs) {
-    init(concat_dimension, inputs);
-  }
-
-  void execute(const std::vector<tensor> &inputs, const tensor &output) {
-    computation::execute(inputs, output);
   }
 
   static void compute(key_t &key, std::vector<tensor>& inputs, int axis, tensor& output) {
@@ -2022,11 +1950,9 @@ public:
       inputs_format.push_back(elems.get_internal_format());
     }
 
-    if (key.empty())
-      utils::create_key(key, inputs_dt, inputs_dims, inputs_format, axis);
+    check_or_create_k(key, inputs_dt, inputs_dims, inputs_format, axis);
 
-    // FIXME
-    // currently align all inputs format with first one
+    // FIXME: currently align all inputs format with first one
     std::vector<tensor> inputs_in;
     inputs_in.push_back(inputs[0]);
     for (int i = 1; i < tdesc.size(); i++) {
@@ -2140,34 +2066,6 @@ public:
     }
 
     return axis_info;
-  }
-};
-
-struct softmax_forward : public computation {
-  struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &x_desc, int softmax_axis, prop_kind aprop_kind = prop_kind::forward) {
-      mkldnn_softmax_desc_t data;
-      error::wrap_c_api(mkldnn_softmax_forward_desc_init(
-            &data, mkldnn::convert_to_c(aprop_kind), x_desc.get_mkldnn_memory_desc_t(), softmax_axis),
-          "could not create a softmax forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-              &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a softmax forward primitive descriptor");
-      reset(result);
-    }
-  };
-
-public:
-  template<typename ...Ts>
-  void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, Ts&&... args) {
-    descriptor softmax_descriptor(src_desc, std::forward<Ts>(args)...);
-    computation::init(softmax_descriptor);
-  }
-
-  void execute(const tensor& src, const tensor& dst) {
-    computation::execute(src, dst);
   }
 };
 

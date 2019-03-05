@@ -2436,41 +2436,13 @@ struct inner_product_forward: public computation,
           "could not create a inner product forward primitive descriptor");
       reset(result);
     }
-
-    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc,
-            prop_kind aprop_kind = prop_kind::forward) {
-      mkldnn_inner_product_desc_t data;
-      auto src_data = src_desc.format_any();
-      auto weights_data = weights_desc.format_any();
-      auto dst_data = dst_desc.format_any();
-
-      error::wrap_c_api(mkldnn_inner_product_forward_desc_init(
-            &data, mkldnn::convert_to_c(aprop_kind), &src_data, &weights_data, nullptr, &dst_data),
-          "could not create a inner product forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a inner product forward primitive descriptor");
-      reset(result);
-    }
   };
 
  public:
-  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc) {
-    descriptor forward_descriptor(src_desc, weights_desc, dst_desc);
+  template<typename ...Ts>
+  inner_product_forward(const tdesc_t &src_desc, Ts&&... args) {
+    descriptor forward_descriptor(src_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
-  }
-
-  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
-      const tdesc_t &bias_desc, const tdesc_t &dst_desc) {
-    descriptor forward_descriptor(src_desc, weights_desc, bias_desc, dst_desc);
-    computation::init(forward_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  inner_product_forward(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   template<bool with_bias = true>
@@ -2478,7 +2450,10 @@ struct inner_product_forward: public computation,
       const tensor& bias, tensor& dst) {
     auto weights_in = weights;
     auto src_in = src.has_scale() ? src.to_public() : src;
-    auto bias_in = bias.has_scale() ? bias.to_public() : bias;
+    tensor bias_in;
+    if (with_bias) {
+      bias_in = bias.has_scale() ? bias.to_public() : bias;
+    }
 
     if (src_in.ndims() != weights_in.ndims()) {
       auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
@@ -2502,22 +2477,11 @@ struct inner_product_forward: public computation,
     tdims_t dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
     tdesc_t dst_desc(dst_dims, src_desc.get_data_type());
 
-    if (key.empty()) {
-      if (with_bias)
-        utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
-            weights_in.get_dims(), bias_in.get_dims(), dst_dims);
-      else
-        utils::create_key(key, src_desc.get_data_type(), src_desc.get_dims(),
-            weights_in.get_dims(), dst_dims);
-    }
+    check_or_create_k(key, src_desc.get_data_type(), src_desc.get_dims(), weights_in.get_dims(),
+        with_bias, dst_dims);
 
-    auto it = find(key);
-    if (it == end()) {
-      it = with_bias
-        ? create(key, src_desc, weights_in.get_descriptor(), bias_in.get_descriptor(), dst_desc)
-        : create(key, src_desc, weights_in.get_descriptor(), dst_desc);
-    }
-    auto comp = fetch(it);
+    fetch_or_create_m(comp, key, src_desc, weights_in.get_descriptor(),
+        bias_in.get_descriptor(), dst_desc);
 
     src_in = comp.transform_input_cache(0, src_in);
     weights_in = comp.transform_input_cache(1, weights_in);
@@ -2545,7 +2509,7 @@ struct inner_product_forward: public computation,
     tdesc_t y_desc(y_dims, dtype, format::nc);
     tdesc_t weights_desc(weights_dims, dtype, ndims == 2 ? format::oi : format::oihw);
 
-    inner_product_forward comp(x_desc, weights_desc, y_desc);
+    inner_product_forward comp(x_desc, weights_desc, tdesc_t(), y_desc);
     return comp.dup_descriptor_of(query::weights_pd);
   }
 };
@@ -2555,7 +2519,7 @@ struct inner_product_backward_data: public computation,
   public utils::computation_cache<inner_product_backward_data> {
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc)
-      : hint_(gradx_desc, weights_desc, grady_desc) {
+      : hint_(gradx_desc, weights_desc, tdesc_t(), grady_desc) {
       auto diff_src_data = gradx_desc.format_any();
       auto weights_data = weights_desc.format_any();
       auto diff_dst_data = grady_desc.format_any();
@@ -2575,18 +2539,9 @@ struct inner_product_backward_data: public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc) {
-    descriptor backward_data_descriptor(gradx_desc, weights_desc, grady_desc);
+  inner_product_backward_data(const tdesc_t &gradx_desc, Ts&&... args) {
+    descriptor backward_data_descriptor(gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor);
-  }
-
-  template<typename T, typename ...Ts>
-  inner_product_backward_data(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor& grady, const tensor& weights, const tensor& gradx) {
-    computation::execute(grady, weights, gradx);
   }
 
   static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims, tensor& gradx) {
@@ -2632,77 +2587,47 @@ struct inner_product_backward_weights : public computation,
       reset(result);
     }
 
-    descriptor(const tdesc_t &x_desc, const tdesc_t &gradw_desc, const tdesc_t &grady_desc)
-    : hint_(x_desc, gradw_desc, grady_desc) {
-      mkldnn_inner_product_desc_t data;
-      auto src_data = x_desc.format_any();
-      auto diff_dst_data = grady_desc.format_any();
-      auto diff_weights_data = gradw_desc.format_any();
-      error::wrap_c_api(mkldnn_inner_product_backward_weights_desc_init(
-          &data, &src_data, &diff_weights_data, nullptr, &diff_dst_data),
-          "could not create a inner product backward weights descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a inner product backward weights primitive descriptor");
-      reset(result);
-    }
   private:
     inner_product_forward::descriptor hint_;
   };
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc, Ts&&... args) {
-    descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
+  inner_product_backward_weights(const tdesc_t &x_desc, Ts&&... args) {
+    descriptor backward_weights_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor);
   }
 
-  template<typename T, typename ...Ts>
-  inner_product_backward_weights(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor& x, const tensor& grady, const tensor& gradw) {
-    computation::execute(x, grady, gradw);
-  }
-
-  void execute(const tensor& x, const tensor& grady, const tensor& gradw, const tensor& gradb) {
-    computation::execute(x, grady, gradw, gradb);
-  }
-
-  static void compute(const tensor& x, const tensor& grady, tensor& gradw) {
-    auto gradw_dims = x.get_dims();
-    gradw_dims[0] = grady.get_dim(1);
-    tdesc_t gradw_desc(gradw_dims, grady.get_data_type());
-
-    key_t key;
-    utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, grady.get_dims());
-    fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, grady.get_descriptor());
-
-    auto x_in = comp.transform_input_uncache(0, x);
-    auto grady_in = comp.transform_input_uncache(1, grady);
-    gradw.reinit(comp.expected_gradw_descriptor());
-    comp.execute(x_in, grady_in, gradw);
-  }
-
+  template<bool with_gradb = true>
   static void compute(const tensor& x, const tensor& grady, tensor& gradw, tensor& gradb) {
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
 
-    tdims_t gradb_dims = {grady.get_dim(1)};
     tdesc_t gradw_desc(gradw_dims, x.get_data_type());
-    tdesc_t gradb_desc(gradb_dims, x.get_data_type());
+    tdesc_t gradb_desc;
+    if (with_gradb) {
+      gradb_desc = {{grady.get_dim(1)}, x.get_data_type()};
+    }
 
     key_t key;
-    utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, gradb_dims, grady.get_dims());
+    utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, with_gradb, grady.get_dims());
     fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, gradb_desc, grady.get_descriptor());
 
     auto x_in = comp.transform_input_uncache(0, x);
     auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
-    gradb.reinit(comp.expected_gradb_descriptor());
-    comp.execute(x_in, grady_in, gradw, gradb);
+
+    if (with_gradb) {
+      gradb.reinit(comp.expected_gradb_descriptor());
+      comp.execute(x_in, grady_in, gradw, gradb);
+    } else {
+      comp.execute(x_in, grady_in, gradw);
+    }
+  }
+
+  static void compute(const tensor& x, const tensor& grady, tensor& gradw) {
+    static tensor dummy_gradb;
+    compute<false>(x, grady, gradw, dummy_gradb);
   }
 };
 

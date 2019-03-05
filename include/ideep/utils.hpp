@@ -121,6 +121,11 @@ inline void to_bytes(bytestring& bytes, const int arg) {
   bytes.append(as_cstring, len);
 }
 
+inline void to_bytes(bytestring& bytes, const bool arg) {
+  to_bytes(bytes, arg ? 1 : 0);
+  bytes.append(1, 'x');
+}
+
 inline void to_bytes(bytestring& bytes, const float arg) {
   auto as_cstring = reinterpret_cast<const char *>(&arg);
   bytes.append(as_cstring, sizeof(float));
@@ -180,6 +185,9 @@ template <typename ...Ts>
 inline void create_key(key_t& key_to_create, Ts&&... args) {
   to_bytes(key_to_create, std::forward<Ts>(args)...);
 }
+
+#define check_or_create_k(key, ...) \
+  if (key.empty()) { utils::create_key(key, __VA_ARGS__); }
 
 static void bernoulli_generate(const long n, const double p, int* r) {
   std::srand(std::time(0));

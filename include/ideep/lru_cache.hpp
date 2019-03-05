@@ -187,9 +187,10 @@ public:
 };
 
 // Possible better performance, but use inside class scope only (private)
-#define fetch_or_create_m(op, key, ...)  \
-    auto it = find(key);  \
-    auto op = it == end() ? fetch(create(key, __VA_ARGS__)) : fetch(it);
+#define fetch_or_create_m(op, key, ...)                 \
+    auto it = find(key);                                \
+    if (it == end()) { it = create(key, __VA_ARGS__); } \
+    auto op = fetch(it);
 
 }
 }

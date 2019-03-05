@@ -726,72 +726,20 @@ struct convolution_forward: public computation,
           "could not create a convolution forward primitive descriptor");
       reset(result);
     }
-
-    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc,
-        const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
-        const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::convolution_direct,
-        prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
-      utils::validate_dims(strides, dilates, padding_l, padding_r);
-      mkldnn_convolution_desc_t data;
-      auto src_data = src_desc.format_any();
-      auto weights_data = weights_desc.format_any();
-      auto dst_data = attr.get_post_ops().has_op_kind(kind::sum) ?
-        *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
-      tdims_t dilates_in {0, 0};
-      if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
-        dilates_in = dilates;
-        IDEEP_STD_EACH_SUB(dilates_in, 1);
-      }
-      error::wrap_c_api(mkldnn_dilated_convolution_forward_desc_init(
-            &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
-            &src_data, &weights_data, nullptr, &dst_data, &strides[0], &dilates_in[0],
-            &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
-          "could not create a dilated convolution forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-            &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
-          "could not create a convolution forward primitive descriptor");
-      reset(result);
-    }
   };
 
  public:
   using attr_t = descriptor::attr_t;
 
-  template<typename T, typename ...Ts>
-  convolution_forward(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  template<typename T, typename ...Ts,
-    typename = typename std::enable_if<std::is_same<T, tdesc_t>::value>::type>
-  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
-      const tdesc_t &bias, const T &dst, Ts&&... args) {
-    descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
+  template<typename ...Ts>
+  convolution_forward(const tdesc_t& src_desc, Ts&&... args) {
+    descriptor forward_descriptor(src_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
-  }
-
-  template<typename T, typename ...Ts,
-    typename = typename std::enable_if<std::is_same<T, tdims_t>::value>::type>
-  void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
-      const tdesc_t &dst, const T something, Ts&&... args) {
-    descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor);
-  }
-
-  void execute(const tensor& src, const tensor& weights, const tensor& dst) {
-    computation::execute(src, weights, dst);
-  }
-
-  void execute(const tensor& src, const tensor& weights, const tensor& bias, const tensor& dst) {
-    computation::execute(src, weights, bias, dst);
   }
 
   template <bool with_bias>
   static void compute_impl(convolution_forward &comp, const tensor& src,
       const tensor& weights, const tensor& bias, tensor& dst) {
-
     auto src_in = comp.transform_input_cache(0, src);
     auto weights_in = comp.transform_input_cache(1, weights.as_weights());
 
@@ -901,30 +849,16 @@ struct convolution_forward: public computation,
       }
     }
 
-    if (key.empty()) {
-      if (with_bias)
-        utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
-            weights.get_data_type(), weights.get_dims(), weights.get_internal_format(), bias.get_dims(),
-            strides, dilates, padding_l, padding_r, op_attr, src_scales, dst_scales, args...);
-      else
-        utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
-            weights.get_data_type(), weights.get_dims(), weights.get_internal_format(),
-            strides, dilates, padding_l, padding_r, op_attr, src_scales, dst_scales, args...);
-    }
-
     auto dst_format = post_ops.has_op_kind(kind::sum) ?
       dst.get_internal_format() : engine::default_format(dst_dims.size());
     tdesc_t dst_desc_in(dst_dims, dst_data_type, dst_format);
 
-    auto it = find(key);
-    if (it == end()) {
-      it = with_bias
-        ? create(key, src_desc, weights_desc, bias_desc, dst_desc_in, strides, dilates,
-            padding_l, padding_r, op_attr, std::forward<Ts>(args)...)
-        : create(key, src_desc, weights_desc, dst_desc_in, strides, dilates, padding_l, padding_r,
-            op_attr, std::forward<Ts>(args)...);
-    }
-    auto comp = fetch(it);
+    check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
+        weights.get_data_type(), weights.get_dims(), weights.get_internal_format(), with_bias,
+        strides, dilates, padding_l, padding_r, op_attr, src_scales, dst_scales, args...);
+
+    fetch_or_create_m(comp, key, src_desc, weights_desc, bias_desc, dst_desc_in, strides, dilates,
+            padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
 
     auto src_in = comp.transform_input_cache(0, src, src_attr);
     auto weights_in = comp.transform_input_cache(1, weights.as_weights(), weights_attr);
@@ -1051,7 +985,7 @@ struct convolution_forward: public computation,
       apkind = prop_kind::forward;
     }
 
-    convolution_forward comp(x_desc, weights_desc, y_desc, strides, dilates, padding_l, padding_r,
+    convolution_forward comp(x_desc, weights_desc, tdesc_t(), y_desc, strides, dilates, padding_l, padding_r,
         attr_t(), aalgorithm, apkind);
     return comp.dup_descriptor_of(query::weights_pd);
   }
@@ -1068,7 +1002,7 @@ struct convolution_backward_data : public computation,
     descriptor(const tdesc_t &grady_desc, const tdesc_t &weights_desc, const tdesc_t &gradx_desc,
         const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
-      : hint_(gradx_desc, weights_desc, grady_desc, strides, dilates, padding_l, padding_r)  {
+      : hint_(gradx_desc, weights_desc, grady_desc, tdesc_t(), strides, dilates, padding_l, padding_r)  {
       utils::validate_dims(strides, dilates, padding_l, padding_r);
       mkldnn_convolution_desc_t data;
       auto diff_src_any = gradx_desc.format_any();
@@ -1184,7 +1118,7 @@ struct convolution_backward_weights : public computation,
     descriptor(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc,
         const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
-    : hint_(x_desc, gradw_desc, grady_desc,
+    : hint_(x_desc, gradw_desc, tdesc_t(), grady_desc,
         strides, dilates, padding_l, padding_r) {
       utils::validate_dims(strides, dilates, padding_l, padding_r);
       mkldnn_convolution_desc_t data;

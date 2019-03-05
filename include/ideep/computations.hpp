@@ -1178,34 +1178,12 @@ struct convolution_transpose_forward : public computation,
               &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
               &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &padding_l[0],
               &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
-          "could not create a deconvolution forward descriptor(bias)");
+          "could not create a deconvolution forward descriptor");
 
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create_v2(
               &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
-          "could not create a deconvolution forward primitive descriptor(bias)");
-      reset(result);
-    }
-
-    descriptor(const tdesc_t& src_desc, const tdesc_t& weights_desc, const tdesc_t& dst_desc,
-        const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r, const attr_t& attr = attr_t(),
-        algorithm aalgorithm = algorithm::deconvolution_direct, prop_kind aprop_kind = prop_kind::forward,
-        padding_kind apadding_kind = padding_kind::zero) {
-      utils::validate_dims(strides, padding_l, padding_r);
-      mkldnn_deconvolution_desc_t data;
-      auto src_data = src_desc.format_any();
-      auto weights_data = weights_desc.format_any();
-      auto dst_data = dst_desc.format_any();
-      error::wrap_c_api(mkldnn_deconvolution_forward_desc_init(
-              &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm), &src_data,
-              &weights_data, nullptr, &dst_data, &strides[0], &padding_l[0], &padding_r[0],
-              mkldnn::convert_to_c(apadding_kind)),
-          "could not create a deconvolution forward descriptor(no bias)");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-              &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
-          "could not create a deconvolution forward primitive descriptor(no bias)");
+          "could not create a deconvolution forward primitive descriptor");
       reset(result);
     }
   };
@@ -1213,40 +1191,17 @@ struct convolution_transpose_forward : public computation,
  public:
   using attr_t = descriptor::attr_t;
 
-  template <typename T, typename... Ts, typename = typename std::enable_if<
-          std::is_same<T, tdesc_t>::value>::type>
-  void init(const tdesc_t& src_desc, const tdesc_t& weights_desc,
-      const tdesc_t& bias, const T& dst, Ts&&... args) {
-    descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor);
-  }
-
-  template <typename T, typename... Ts,
-           typename = typename std::enable_if<std::is_same<T, tdims_t>::value>::type>
-  void init(const tdesc_t& src_desc, const tdesc_t& weights_desc,
-      const tdesc_t& dst, const T something, Ts&&... args) {
-    descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor);
-  }
-
-  template <typename T, typename... Ts>
-  convolution_transpose_forward(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor& src, const tensor& weights, const tensor& dst) {
-    computation::execute(src, weights, dst);
-  }
-
-  void execute(const tensor& src, const tensor& weights, const tensor& bias, const tensor& dst) {
-    computation::execute(src, weights, bias, dst);
-  }
-
   template <typename... Ts>
+  convolution_transpose_forward(const tdesc_t& src_desc, Ts&&... args) {
+    descriptor forward_descriptor(src_desc, std::forward<Ts>(args)...);
+    computation::init(forward_descriptor);
+  }
+
+  template <bool with_bias, typename... Ts>
   static void compute_impl(const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& dst_dims, tensor& dst, Ts&&... args) {
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), bias.get_dims(),
+    utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), with_bias,
         dst_dims, args...);
 
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
@@ -1254,42 +1209,30 @@ struct convolution_transpose_forward : public computation,
 
     auto src_in = comp.transform_input_uncache(0, src);
     auto weights_in = comp.transform_input_uncache(1, weights.as_weights());
-    auto dst_desc = comp.expected_dst_descriptor();
-    dst.reinit(std::move(dst_desc));
-    comp.execute(src_in, weights_in, bias, dst);
+
+    dst.reinit(comp.expected_dst_descriptor());
+    if (with_bias) {
+      comp.execute(src_in, weights_in, bias, dst);
+    } else {
+      comp.execute(src_in, weights_in, dst);
+    }
   }
 
-  template <typename... Ts>
-  static void compute_impl(const tensor& src, const tensor& weights, const tdims_t& dst_dims,
-      tensor& dst, Ts&&... args) {
-    tdesc_t result_desc(dst_dims, src.get_data_type());
-    key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), dst_dims, args...);
-
-    fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
-        tdesc_t{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
-
-    auto src_in = comp.transform_input_uncache(0, src);
-    auto weights_in = comp.transform_input_uncache(1, weights.as_weights());
-
-    auto dst_desc = comp.expected_dst_descriptor();
-    dst.reinit(std::move(dst_desc));
-    comp.execute(src_in, weights_in, dst);
+  template<bool with_bias = true>
+  static void compute(const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
+      tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+      const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
+      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
+    compute_impl<with_bias>(src, weights, bias, result_dims, dst, strides, padding_l, padding_r,
+        attr, aalgorithm, aprop_kind, appading_kind);
   }
 
   static void compute(const tensor& src, const tensor& weights, const tdims_t& result_dims,
       tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
       const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
-    compute_impl(src, weights, result_dims, dst, strides, padding_l, padding_r, attr,
-        aalgorithm, aprop_kind, appading_kind);
-  }
-
-  static void compute(const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
-      tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-      const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
-      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
-    compute_impl(src, weights, bias, result_dims, dst, strides, padding_l, padding_r,
+    static tensor dummy_bias;
+    compute<false>(src, weights, dummy_bias,  result_dims, dst, strides, padding_l, padding_r,
         attr, aalgorithm, aprop_kind, appading_kind);
   }
 
@@ -1322,7 +1265,8 @@ struct convolution_transpose_forward : public computation,
     tdesc_t y_desc(y_dims, y_dtype, format::nchw);
     tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
-    convolution_transpose_forward comp(x_desc, weights_desc, y_desc, strides, padding_l, padding_r);
+    convolution_transpose_forward comp(x_desc, weights_desc, tdesc_t(), y_desc,
+        strides, padding_l, padding_r);
     return comp.dup_descriptor_of(query::weights_pd);
   }
 };
@@ -1333,7 +1277,7 @@ struct convolution_transpose_backward_data : public computation,
     descriptor(const tdesc_t& grady_desc, const tdesc_t& weights_desc, const tdesc_t& gradx_desc,
         const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
-        : hint_(gradx_desc, weights_desc, grady_desc, strides, padding_l, padding_r) {
+        : hint_(gradx_desc, weights_desc, tdesc_t(), grady_desc, strides, padding_l, padding_r) {
       utils::validate_dims(strides, padding_l, padding_r);
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
@@ -1358,25 +1302,14 @@ struct convolution_transpose_backward_data : public computation,
 
  public:
   template <typename... Ts>
-  void init(const tdesc_t& grady_desc, const tdesc_t& weights_desc,
-      const tdesc_t& gradx_desc, Ts&&... args) {
-    descriptor backward_data_descriptor(
-        grady_desc, weights_desc, gradx_desc, std::forward<Ts>(args)...);
+  convolution_transpose_backward_data(const tdesc_t& grady_desc, Ts&&... args) {
+    descriptor backward_data_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor);
   }
 
-  template <typename T, typename... Ts>
-  convolution_transpose_backward_data(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor& grady, const tensor& weights, const tensor& gradx) {
-    computation::execute(grady, weights, gradx);
-  }
-
   template <typename... Ts>
-  static void compute_impl(const tensor& grady, const tensor& weights,
-      const tdims_t& gradx_dims, tensor& gradx, Ts&&... args) {
+  static void compute_impl(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims,
+      tensor& gradx, Ts&&... args) {
     tdesc_t result_desc(gradx_dims, grady.get_data_type());
     tdesc_t weight_desc;
     tdims_t oihw_dims;
@@ -1389,12 +1322,14 @@ struct convolution_transpose_backward_data : public computation,
 
     key_t key;
     utils::create_key(key, grady.get_data_type(), grady.get_dims(),
-      is_iohw ? oihw_dims : weights.get_dims(), gradx_dims, args...);
+        is_iohw ? oihw_dims : weights.get_dims(), gradx_dims, args...);
+
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         is_iohw ? weight_desc : weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
     auto grady_in = comp.transform_input_uncache(0, grady);
     auto weights_in = comp.transform_input_uncache(1, weights);
+
     gradx.reinit(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -1407,8 +1342,7 @@ struct convolution_transpose_backward_data : public computation,
   }
 };
 
-struct convolution_transpose_backward_weights
-    : public computation,
+struct convolution_transpose_backward_weights : public computation,
       public utils::computation_cache<convolution_transpose_backward_weights> {
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t& x_desc, const tdesc_t& grady_desc, const tdesc_t& gradw_desc,
@@ -1434,103 +1368,63 @@ struct convolution_transpose_backward_weights
       reset(result);
     }
 
-    descriptor(const tdesc_t& x_desc, const tdesc_t& grady_desc, const tdesc_t& gradw_desc,
-        const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-        algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
-        : hint_(x_desc, gradw_desc, grady_desc, strides, padding_l, padding_r) {
-      utils::validate_dims(strides, padding_l, padding_r);
-      mkldnn_deconvolution_desc_t data;
-      auto src_any = x_desc.format_any();
-      auto diff_weights_any = gradw_desc.format_any();
-      auto diff_dst_any = grady_desc.format_any();
-      error::wrap_c_api(mkldnn_deconvolution_backward_weights_desc_init(
-              &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, nullptr, &diff_dst_any,
-              &strides[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
-          "could not create a deconvolution backward weights descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-              &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a deconvolution backward weights primitive descriptor");
-      reset(result);
-    }
-
    private:
     convolution_transpose_forward::descriptor hint_;
   };
 
  public:
   template <typename... Ts>
-  void init(const tdesc_t& x_desc, const tdesc_t& grady_desc,
-      const tdesc_t& gradw_desc, Ts&&... args) {
-    descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
+  convolution_transpose_backward_weights(const tdesc_t& x_desc, Ts&&... args) {
+    descriptor backward_weights_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor);
-  }
-
-  template <typename T, typename... Ts>
-  convolution_transpose_backward_weights(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void execute(const tensor& src, const tensor& grady, const tensor& gradw, const tensor& grad_bias) {
-    computation::execute(src, grady, gradw, grad_bias);
-  }
-
-  void execute(const tensor& src, const tensor& grady, const tensor& gradw) {
-    computation::execute(src, grady, gradw);
   }
 
   /*
    * This interface require MKL-DNN fixed
    * https://github.com/intel/mkl-dnn/commit/86f152b614c947b87633062a182c57775856a348
    */
-  template <typename... Ts>
+  template <bool with_gradb, typename... Ts>
   static void compute_impl(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, tensor& gbias, Ts&&... args) {
     tdesc_t gradw_desc(gradw_dims, src.get_data_type());
-    tdesc_t gradb_desc(tdims_t{grady.get_dim(1)}, src.get_data_type());
+    tdesc_t gradb_desc;
+    if (with_gradb) {
+      gradb_desc = {{grady.get_dim(1)}, src.get_data_type()};
+    }
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), grady.get_dims(), gradw_dims,
-        grady.get_dim(1), args...);
+    utils::create_key(key, src.get_data_type(), src.get_dims(), with_gradb, grady.get_dims(),
+        gradw_dims, grady.get_dim(1), args...);
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
     auto src_in = comp.transform_input_uncache(0, src);
     auto grady_in = comp.transform_input_uncache(1, grady);
     gradw.reinit(comp.expected_gradw_descriptor());
-    gbias.reinit(comp.expected_gradb_descriptor());
-    comp.execute(src_in, grady_in, gradw, gbias);
+
+    if (with_gradb) {
+      gbias.reinit(comp.expected_gradb_descriptor());
+      comp.execute(src_in, grady_in, gradw, gbias);
+    } else {
+      comp.execute(src_in, grady_in, gradw);
+    }
   }
 
-  template <typename... Ts>
-  static void compute_impl(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
-      tensor& gradw, Ts&&... args) {
-    tdesc_t gradw_desc(gradw_dims, src.get_data_type());
-
-    key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), grady.get_dims(), gradw_dims, args...);
-    fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
-        std::forward<Ts>(args)...);
-
-    auto src_in = comp.transform_input_uncache(0, src);
-    auto grady_in = comp.transform_input_uncache(1, grady);
-    gradw.reinit(comp.expected_gradw_descriptor());
-    comp.execute(src_in, grady_in, gradw);
+  template<bool with_gradb = true>
+  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
+      tensor& gradw, tensor& gradb, const tdims_t& strides, const tdims_t& padding_l,
+      const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
+      padding_kind apadding_kind = padding_kind::zero) {
+    compute_impl<with_gradb>(src, grady, gradw_dims, gradw, gradb, strides, padding_l, padding_r,
+        aalgorithm, apadding_kind);
   }
 
   static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, const tdims_t& strides, const tdims_t& padding_l,
       const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl(src, grady, gradw_dims, gradw, strides, padding_l, padding_r,
-        aalgorithm, apadding_kind);
-  }
-
-  static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
-      tensor& gradw, tensor& gradb, const tdims_t& strides, const tdims_t& padding_l,
-      const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
-      padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl(src, grady, gradw_dims, gradw, gradb, strides, padding_l, padding_r,
+    static tensor dummy_gradb;
+    compute<false>(src, grady, gradw_dims, gradw, dummy_gradb, strides, padding_l, padding_r,
         aalgorithm, apadding_kind);
   }
 };

@@ -513,7 +513,7 @@ public:
   }
 
   template<typename... Ts>
-  void init(const descriptor_group &adesc, const Ts&... args) {
+  void init(const descriptor_group &adesc) {
     inputs_num_ = adesc.num_of_inputs();
     outputs_num_ = adesc.num_of_outputs();
     init_internal(adesc);
@@ -769,7 +769,7 @@ struct convolution_forward: public computation,
   void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
       const tdesc_t &bias, const T &dst, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, src_desc, weights_desc, bias);
+    computation::init(forward_descriptor);
   }
 
   template<typename T, typename ...Ts,
@@ -777,7 +777,7 @@ struct convolution_forward: public computation,
   void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
       const tdesc_t &dst, const T something, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, src_desc, weights_desc);
+    computation::init(forward_descriptor);
   }
 
   void execute(const tensor& src, const tensor& weights, const tensor& dst) {
@@ -1100,7 +1100,7 @@ public:
   void init(const tdesc_t &grady_desc, const tdesc_t &weights_desc,
       const tdesc_t &gradx_desc, Ts&&... args) {
     descriptor backward_data_descriptor(grady_desc, weights_desc, gradx_desc, std::forward<Ts>(args)...);
-    computation::init(backward_data_descriptor, grady_desc, weights_desc);
+    computation::init(backward_data_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -1213,10 +1213,9 @@ struct convolution_backward_weights : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc,
-      const tdesc_t &gradw_desc, Ts&&... args) {
+  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
-    computation::init(backward_weights_descriptor, x_desc, grady_desc);
+    computation::init(backward_weights_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -1383,7 +1382,7 @@ struct convolution_transpose_forward : public computation,
   void init(const tdesc_t& src_desc, const tdesc_t& weights_desc,
       const tdesc_t& bias, const T& dst, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, bias, dst, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, src_desc, weights_desc, bias);
+    computation::init(forward_descriptor);
   }
 
   template <typename T, typename... Ts,
@@ -1391,7 +1390,7 @@ struct convolution_transpose_forward : public computation,
   void init(const tdesc_t& src_desc, const tdesc_t& weights_desc,
       const tdesc_t& dst, const T something, Ts&&... args) {
     descriptor forward_descriptor(src_desc, weights_desc, dst, something, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, src_desc, weights_desc);
+    computation::init(forward_descriptor);
   }
 
   template <typename T, typename... Ts>
@@ -1527,7 +1526,7 @@ struct convolution_transpose_backward_data : public computation,
       const tdesc_t& gradx_desc, Ts&&... args) {
     descriptor backward_data_descriptor(
         grady_desc, weights_desc, gradx_desc, std::forward<Ts>(args)...);
-    computation::init(backward_data_descriptor, grady_desc, weights_desc);
+    computation::init(backward_data_descriptor);
   }
 
   template <typename T, typename... Ts>
@@ -1628,7 +1627,7 @@ struct convolution_transpose_backward_weights
   void init(const tdesc_t& x_desc, const tdesc_t& grady_desc,
       const tdesc_t& gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
-    computation::init(backward_weights_descriptor, x_desc, grady_desc);
+    computation::init(backward_weights_descriptor);
   }
 
   template <typename T, typename... Ts>
@@ -1722,7 +1721,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, x_desc);
+    computation::init(forward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -1807,10 +1806,9 @@ struct lrn_backward : public computation,
 
 public:
   template<typename ...Ts>
-  void init(const tdesc_t &x_desc,
-      const tdesc_t &grady_desc, Ts&&... args) {
+  void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, Ts&&... args) {
     descriptor backward_data_descriptor(x_desc, grady_desc, std::forward<Ts>(args)...);
-    computation::init(backward_data_descriptor, x_desc, grady_desc);
+    computation::init(backward_data_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -1866,7 +1864,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, x_desc);
+    computation::init(forward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -1968,7 +1966,7 @@ public:
   void init(const tdesc_t &gradx_desc,
       const tdesc_t &grady_desc, Ts &&...args) {
     descriptor backward_descriptor(gradx_desc, grady_desc, std::forward<Ts>(args)...);
-    computation::init(backward_descriptor, grady_desc, gradx_desc);
+    computation::init(backward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -2028,7 +2026,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, x_desc);
+    computation::init(forward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -2104,7 +2102,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &grady_desc, const tdesc_t &x_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, x_desc, std::forward<Ts>(args)...);
-    computation::init(backward_descriptor, grady_desc, x_desc);
+    computation::init(backward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -2165,7 +2163,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
-    computation::init(forward_descriptor, x_desc);
+    computation::init(forward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -2217,7 +2215,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &grady_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
-    computation::init(backward_descriptor, grady_desc);
+    computation::init(backward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -2435,7 +2433,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, Ts&&... args) {
     descriptor softmax_descriptor(src_desc, std::forward<Ts>(args)...);
-    computation::init(softmax_descriptor, src_desc, dst_desc);
+    computation::init(softmax_descriptor);
   }
 
   void execute(const tensor& src, const tensor& dst) {
@@ -2614,7 +2612,7 @@ public:
       float epsilon, unsigned flags = batch_normalization_flag::use_scale_shift) {
     // IDEEP_ENFORCE(scale.ndims() == 1 && shift.ndims() == 1, "Incorrect dims");
     descriptor batch_norm_forward(src_desc, epsilon, flags, prop_kind::forward_training);
-    computation::init(batch_norm_forward, src_desc);
+    computation::init(batch_norm_forward);
 
     // We borrown scale and bias for the shape of mean and variance
     weights_.init(batch_norm_forward.expected_descriptor_of(query::weights_pd));
@@ -2869,13 +2867,13 @@ struct inner_product_forward: public computation,
  public:
   void init(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, dst_desc);
-    computation::init(forward_descriptor, src_desc, weights_desc);
+    computation::init(forward_descriptor);
   }
 
   void init(const tdesc_t &src_desc, const tdesc_t &weights_desc,
       const tdesc_t &bias_desc, const tdesc_t &dst_desc) {
     descriptor forward_descriptor(src_desc, weights_desc, bias_desc, dst_desc);
-    computation::init(forward_descriptor, src_desc, weights_desc, bias_desc);
+    computation::init(forward_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -2987,7 +2985,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc) {
     descriptor backward_data_descriptor(gradx_desc, weights_desc, grady_desc);
-    computation::init(backward_data_descriptor, grady_desc, weights_desc);
+    computation::init(backward_data_descriptor);
   }
 
   template<typename T, typename ...Ts>
@@ -3065,7 +3063,7 @@ public:
   template<typename ...Ts>
   void init(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, grady_desc, gradw_desc, std::forward<Ts>(args)...);
-    computation::init(backward_weights_descriptor, x_desc, grady_desc);
+    computation::init(backward_weights_descriptor);
   }
 
   template<typename T, typename ...Ts>

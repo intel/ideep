@@ -2095,24 +2095,6 @@ struct batch_norm_forward_base : public computation {
       reset(result);
     }
   };
-
-public:
-  template<typename... Ts>
-  void init(float epsilon, unsigned flags, prop_kind aprop_kind, const tdesc_t &src_desc, Ts&... rest) {
-    descriptor batch_norm_forward(src_desc, epsilon, flags, aprop_kind);
-    init(batch_norm_forward, src_desc, rest...);
-  }
-
-  /// Execute interface for (1, 0) (stats_is_src, use_scaleshift)
-  void execute(const tensor& src, const tensor& mean, const tensor& variance, const tensor& dst) {
-    computation::execute(src, mean, variance, dst);
-  }
-
-  /// Execute interface for (1, 1)
-  void execute(const tensor& src, const tensor& mean, const tensor& variance,
-      const tensor& weights, const tensor& dst) {
-    computation::execute(src, mean, variance, weights, dst);
-  }
 };
 
 struct batch_normalization_forward_inference : public batch_norm_forward_base,
@@ -2131,17 +2113,11 @@ public:
   }
 
 public:
-
-  void init(const tdesc_t& src_desc, float epsilon,
+  batch_normalization_forward_inference(const tdesc_t& src_desc, float epsilon,
       unsigned flag = batch_normalization_flag::use_global_stats | batch_normalization_flag::use_scale_shift) {
     descriptor batch_norm_forward(src_desc, epsilon, flag, prop_kind::forward_scoring);
     weights_.init(batch_norm_forward.expected_descriptor_of(query::weights_pd));
     computation::init(batch_norm_forward);
-  }
-
-  template<typename T, typename ...Ts>
-  batch_normalization_forward_inference(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   /// More functionality in this interface
@@ -2173,8 +2149,7 @@ public:
       reorder::compute(src, src_in, {0, src_scales});
     }
 
-    if (key.empty())
-      utils::create_key(key, src_in.get_data_type(), src_in.get_dims(),
+    check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
           src_in.get_internal_format(), 3, epsilon);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(),
@@ -2196,9 +2171,8 @@ public:
       reorder::compute(src, src_in, {0, src_scales});
     }
 
-    if (key.empty())
-      utils::create_key(key, src_in.get_data_type(), src_in.get_dims(),
-          src_in.get_internal_format(), 5, epsilon);
+    check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
+        src_in.get_internal_format(), 5, epsilon);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon);
 
@@ -2233,11 +2207,11 @@ struct batch_normalization_forward_training : public batch_norm_forward_base,
       "could not query batch normalization descriptor");
     return p_desc->batch_norm_epsilon;
   }
-public:
-  using batch_norm_forward_base::execute;
 
-  void init(const tdesc_t& src_desc, const tdesc_t& scale, const tdesc_t& shift, float momentum,
-      float epsilon, unsigned flags = batch_normalization_flag::use_scale_shift) {
+public:
+  batch_normalization_forward_training(const tdesc_t& src_desc, const tdesc_t& scale,
+      const tdesc_t& shift, float momentum, float epsilon,
+      unsigned flags = batch_normalization_flag::use_scale_shift) {
     // IDEEP_ENFORCE(scale.ndims() == 1 && shift.ndims() == 1, "Incorrect dims");
     descriptor batch_norm_forward(src_desc, epsilon, flags, prop_kind::forward_training);
     computation::init(batch_norm_forward);
@@ -2245,11 +2219,6 @@ public:
     // We borrown scale and bias for the shape of mean and variance
     weights_.init(batch_norm_forward.expected_descriptor_of(query::weights_pd));
     sum_.init({momentum, 1.f - momentum}, {scale, shift});
-  }
-
-  template<typename T, typename... Ts>
-  batch_normalization_forward_training (T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   /// Execute interface for (0, 0)
@@ -2372,17 +2341,12 @@ public:
     return static_cast<prop_kind>(p_desc->prop_kind);
   }
 
-  void init(const tdesc_t& gradx_desc, const tdesc_t& src_desc, float epsilon,
+  batch_normalization_backward(const tdesc_t& gradx_desc, const tdesc_t& src_desc, float epsilon,
       unsigned flags = batch_normalization_flag::use_scale_shift, prop_kind aprop_kind=prop_kind::backward) {
     descriptor batch_norm_backward(gradx_desc, src_desc, epsilon, flags, aprop_kind);
     computation::init(batch_norm_backward);
     weights_.init(batch_norm_backward.expected_descriptor_of(query::weights_pd));
     grad_scale_shift_.init(batch_norm_backward.expected_descriptor_of(query::weights_pd));
-  }
-
-  template<typename T, typename ...Ts>
-  batch_normalization_backward(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
   }
 
   void execute(const tensor& src, const tensor& mean, const tensor& variance,

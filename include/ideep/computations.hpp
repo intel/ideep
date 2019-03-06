@@ -260,6 +260,24 @@ protected:
 public:
   descriptor_group() = default;
 
+  template<typename T>
+  void create_primitive_desc(const T& primitive_desc) {
+    mkldnn_primitive_desc_t result;
+    error::wrap_c_api(mkldnn_primitive_desc_create(
+          &result, &primitive_desc, engine::cpu_engine().get(), nullptr),
+        "could not create a primitive descriptor");
+    reset(result);
+  }
+
+  template<typename T>
+  void create_primitive_desc_v2(const T& primitive_desc, const attr_t attr = attr_t()) {
+      mkldnn_primitive_desc_t result;
+      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+          &result, &primitive_desc, attr.get(), engine::cpu_engine().get(), nullptr),
+      "could not create a primitive descriptor");
+      reset(result);
+  }
+
   /// Query interface
   tdesc_t expected_descriptor_of(query q, int index = 0) const {
     const_mkldnn_primitive_desc_t const_cdesc =
@@ -333,6 +351,14 @@ protected:
     return expected_descriptor_of(query::diff_weights_pd, 1);
   }
 
+  void create_primitive(const descriptor_group &desc, mkldnn_primitive_at_t* inputs,
+      const_mkldnn_primitive_t* outputs) {
+    mkldnn_primitive_t result;
+    error::wrap_c_api(mkldnn_primitive_create(&result, desc.get(), inputs, outputs),
+        "could not create a reorder primitive");
+    reset(result);
+  }
+
   void execute(stream &parallel_control) {
     std::vector<mkldnn_primitive_t> execution_sequence;
     mkldnn_primitive_t c_api_error_primitive;
@@ -364,12 +390,9 @@ public:
     in_.init(src_desc, nullptr);
     out_.init(dst_desc, nullptr);
 
-    mkldnn_primitive_t result;
     mkldnn_primitive_at_t inputs[] = { {in_.get(), 0} };
     const_mkldnn_primitive_t outputs[] = { out_.get() };
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc.get(), inputs, outputs),
-        "could not create a reorder primitive");
-    reset(result);
+    create_primitive(desc, inputs, outputs);
   }
 
   void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
@@ -497,10 +520,7 @@ public:
       outputs[i] = inouts_[i + inputs_num_].get();
     }
 
-    mkldnn_primitive_t result;
-    error::wrap_c_api(mkldnn_primitive_create(&result, adesc.get(), inputs.get(), outputs.get()),
-        "could not create a computation primitive");
-    reset(result);
+    create_primitive(adesc, inputs.get(), outputs.get());
   }
 
   void init(const descriptor_group& adesc, const std::vector<tdesc_t> &args) {
@@ -715,12 +735,7 @@ struct convolution_forward: public computation,
             &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &dilates_in[0],
             &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a dilated convolution forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-        &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
-          "could not create a convolution forward primitive descriptor");
-      reset(result);
+      create_primitive_desc_v2(data, attr);
     }
   };
 
@@ -1014,12 +1029,7 @@ struct convolution_backward_data : public computation,
             &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
             mkldnn::convert_to_c(apadding_kind)),
           "could not create a convolution backward data descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a convolution backward data primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   private:
     convolution_forward::descriptor hint_;
@@ -1086,10 +1096,7 @@ struct convolution_backward_weights : public computation,
             mkldnn::convert_to_c(apadding_kind)),
           "could not create a convolution backward weights descriptor");
       mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a convolution backward weights primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
 
   private:
@@ -1179,12 +1186,7 @@ struct convolution_transpose_forward : public computation,
               &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &padding_l[0],
               &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-              &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
-          "could not create a deconvolution forward primitive descriptor");
-      reset(result);
+      create_primitive_desc_v2(data, attr);
     }
   };
 
@@ -1282,18 +1284,12 @@ struct convolution_transpose_backward_data : public computation,
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-
       mkldnn_deconvolution_desc_t data;
       error::wrap_c_api(mkldnn_deconvolution_backward_data_desc_init(
               &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any,
               &strides[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward data descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a deconvolution backward data primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
 
    private:
@@ -1361,11 +1357,7 @@ struct convolution_transpose_backward_weights : public computation,
               &diff_dst_any, &strides[0], &padding_l[0], &padding_r[0],
               mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward weights descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-              &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a deconvolution backward weights primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
 
    private:
@@ -1439,11 +1431,7 @@ struct lrn_forward : public computation,
       error::wrap_c_api(mkldnn_lrn_forward_desc_init(&data, mkldnn::convert_to_c(aprop_kind),
             convert_to_c(aalgorithm), src_data, local_size, alpha, beta, k),
           "could not create a lrn forward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a lrn forward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   };
 
@@ -1517,11 +1505,7 @@ struct lrn_backward : public computation,
             &data, convert_to_c(aalgorithm), gx_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(), local_size, alpha, beta, k),
           "could not create a lrn backward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a backward lrn primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
 
   private:
@@ -1572,11 +1556,7 @@ struct pooling_forward : public computation,
             &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm), src_data, &dst_data,
             &strides[0], &kernel[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not init a forward pooling descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a forward pooling primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   };
 public:
@@ -1637,24 +1617,7 @@ struct pooling_backward : public computation,
     descriptor(const tdesc_t &gradx_desc, const tdesc_t &grady_desc, const tdims_t& strides,
         const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero)
-      : hint_([&]() {
-              utils::validate_dims(strides, kernel, padding_l, padding_r);
-              auto gradx_data = gradx_desc.get_mkldnn_memory_desc_t();
-              auto grady_data = grady_desc.format_any();
-              mkldnn_pooling_desc_t data;
-              error::wrap_c_api(mkldnn_pooling_forward_desc_init(
-                    &data, mkldnn::convert_to_c(prop_kind::forward), convert_to_c(aalgorithm),
-                    gradx_data, &grady_data, &strides[0], &kernel[0], &padding_l[0], &padding_r[0],
-                    mkldnn::convert_to_c(apadding_kind)),
-                  "could not init a forward pooling descriptor");
-              mkldnn_primitive_desc_t result;
-              error::wrap_c_api(mkldnn_primitive_desc_create(
-                    &result, &data, engine::cpu_engine().get(), nullptr),
-                  "could not create a forward pooling primitive descriptor");
-              pooling_forward::descriptor hint;
-              hint.reset(result);
-              return hint;
-            } ()) {
+      : hint_(gradx_desc, grady_desc, strides, kernel, padding_l, padding_r, aalgorithm) {
       utils::validate_dims(strides, kernel, padding_l, padding_r);
       auto gradx_data = gradx_desc.format_any();
       mkldnn_pooling_desc_t data;
@@ -1662,11 +1625,7 @@ struct pooling_backward : public computation,
             &data, convert_to_c(aalgorithm), &gradx_data, grady_desc.get_mkldnn_memory_desc_t(),
             &strides[0], &kernel[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not init a backward pooling descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a backward pooling primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   private:
     pooling_forward::descriptor hint_;
@@ -1717,12 +1676,7 @@ struct eltwise_forward : public computation,
             &data, mkldnn::convert_to_c(aprop_kind), mkldnn::convert_to_c(alg_kind),
             x_desc.get_mkldnn_memory_desc_t(), alpha, beta),
           "could not create a eltwise forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a eltwise forward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   };
 
@@ -1780,11 +1734,7 @@ struct eltwise_backward : public computation,
             &data, mkldnn::convert_to_c(alg_kind), grady_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(), static_cast<float>(alpha), static_cast<float>(beta)),
           "could not create a eltwise backward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a eltwise backward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   private:
     eltwise_forward::descriptor hint_;
@@ -1835,11 +1785,7 @@ struct channel_shuffle_forward: public computation,
             &data, mkldnn::convert_to_c(aprop_kind),
             src_desc.get_mkldnn_memory_desc_t(), axis, group_size),
           "could not create a shuffle forward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a shuffle forward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   };
 public:
@@ -1879,11 +1825,7 @@ struct channel_shuffle_backward : public computation,
             &data, grady_desc.get_mkldnn_memory_desc_t(), static_cast<int>(axis),
             static_cast<int>(group_size)),
           "could not create a shuffle backward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a shuffle backward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   };
 public:
@@ -2076,11 +2018,7 @@ struct batch_norm_forward_base : public computation {
       error::wrap_c_api(mkldnn_batch_normalization_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), epsilon, flags),
           "could not create a batch normalization forward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a batch normalization forward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
 
     descriptor(const tdesc_t &src_desc, float epsilon, attr_t attr, unsigned flags, prop_kind aprop_kind) {
@@ -2088,11 +2026,7 @@ struct batch_norm_forward_base : public computation {
       error::wrap_c_api(mkldnn_batch_normalization_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), epsilon, flags),
           "could not create a batch normalization forward descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-          &result, &data, attr.get(), engine::cpu_engine().get(), nullptr),
-      "could not create a batch normalization forward primitive descriptor");
-      reset(result);
+      create_primitive_desc_v2(data, attr);
     }
   };
 };
@@ -2313,12 +2247,7 @@ struct batch_normalization_backward : public computation,
             &data, mkldnn::convert_to_c(aprop_kind), gradx_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(), static_cast<float>(epsilon), flags),
           "could not create a batch normalization backward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-          &result, &data, engine::cpu_engine().get(), hint_.get()),
-        "could not create a batch normalization backward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   private:
     batch_normalization_forward_training::descriptor hint_;
@@ -2425,16 +2354,10 @@ struct inner_product_forward: public computation,
       auto weights_data = weights_desc.format_any();
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
-
       error::wrap_c_api(mkldnn_inner_product_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), &src_data, &weights_data, &bias_data, &dst_data),
           "could not create a inner product forward descriptor");
-
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), nullptr),
-          "could not create a inner product forward primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   };
 
@@ -2527,11 +2450,7 @@ struct inner_product_backward_data: public computation,
       error::wrap_c_api(mkldnn_inner_product_backward_data_desc_init(
             &data, &diff_src_data, &weights_data, &diff_dst_data),
           "could not create a inner product backward data descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a inner product backward data primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
   private:
     inner_product_forward::descriptor hint_;
@@ -2580,11 +2499,7 @@ struct inner_product_backward_weights : public computation,
       error::wrap_c_api(mkldnn_inner_product_backward_weights_desc_init(
             &data, &src_data, &diff_weights_data, &diff_bias_data, &diff_dst_data),
           "could not create a inner product backward weights descriptor");
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create(
-            &result, &data, engine::cpu_engine().get(), hint_.get()),
-          "could not create a inner product backward weights primitive descriptor");
-      reset(result);
+      create_primitive_desc(data);
     }
 
   private:

@@ -261,20 +261,20 @@ public:
   descriptor_group() = default;
 
   template<typename T>
-  void create_primitive_desc(const T& primitive_desc) {
+  void create_primitive_desc(const T& desc) {
     mkldnn_primitive_desc_t result;
     error::wrap_c_api(mkldnn_primitive_desc_create(
-          &result, &primitive_desc, engine::cpu_engine().get(), nullptr),
+          &result, &desc, engine::cpu_engine().get(), nullptr),
         "could not create a primitive descriptor");
     reset(result);
   }
 
   template<typename T>
-  void create_primitive_desc_v2(const T& primitive_desc, const attr_t attr = attr_t()) {
+  void create_primitive_desc_v2(const T& desc, const attr_t attr = attr_t()) {
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-          &result, &primitive_desc, attr.get(), engine::cpu_engine().get(), nullptr),
-      "could not create a primitive descriptor");
+            &result, &desc, attr.get(), engine::cpu_engine().get(), nullptr),
+          "could not create a primitive descriptor");
       reset(result);
   }
 
@@ -355,7 +355,7 @@ protected:
       const_mkldnn_primitive_t* outputs) {
     mkldnn_primitive_t result;
     error::wrap_c_api(mkldnn_primitive_create(&result, desc.get(), inputs, outputs),
-        "could not create a reorder primitive");
+        "could not create a primitive");
     reset(result);
   }
 

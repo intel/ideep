@@ -211,6 +211,15 @@ static void bernoulli_generate(const long n, const double p, int* r) {
   }
 }
 
+static inline tensor::dims get_compatible_dilates(const tensor::dims& dilates) {
+    if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
+      auto dilates_in = dilates;
+      IDEEP_STD_EACH_SUB(dilates_in, 1);
+      return dilates_in;
+    }
+    return {0, 0};
+}
+
 static void inline validate_dims() {}
 
 template<typename... Ts>

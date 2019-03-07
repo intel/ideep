@@ -60,8 +60,7 @@ public:
       return true;
     }
 
-    void append(kind op_kind,
-        float scale, float alpha, float beta, algorithm alg) {
+    void append(kind op_kind, float scale, float alpha, float beta, algorithm alg) {
       switch(op_kind) {
         case kind::sum:
           error::wrap_c_api(mkldnn_post_ops_append_sum(get(), scale), "could not append sum");
@@ -282,7 +281,7 @@ public:
   tdesc_t expected_descriptor_of(query q, int index = 0) const {
     const_mkldnn_primitive_desc_t const_cdesc =
         mkldnn_primitive_desc_query_pd(get(), mkldnn::convert_to_c(q), index);
-    return param::descriptor(const_cdesc);
+    return tensor::descriptor(const_cdesc);
   }
 
   /// Query number of inputs
@@ -725,11 +724,7 @@ struct convolution_forward: public computation,
       auto bias_data = bias_desc.format_any();
       auto dst_data = attr.get_post_ops().has_op_kind(kind::sum) ?
         *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
-      tdims_t dilates_in {0, 0};
-      if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
-        dilates_in = dilates;
-        IDEEP_STD_EACH_SUB(dilates_in, 1);
-      }
+      auto dilates_in = utils::get_compatible_dilates(dilates);
       error::wrap_c_api(mkldnn_dilated_convolution_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
             &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &dilates_in[0],
@@ -955,12 +950,7 @@ struct convolution_forward: public computation,
     auto ndims = dims_in.size();
     auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
     auto g = grouped ? dims_in[0] : 1;
-
-    tdims_t dilates_in {0, 0};
-    if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
-      dilates_in = dilates;
-      IDEEP_STD_EACH_SUB(dilates_in, 1);
-    }
+    auto dilates_in = utils::get_compatible_dilates(dilates);
 
     IDEEP_ENFORCE(!(aalgorithm == algorithm::convolution_winograd && src_dims.empty()),
         "Incorrect src_dims");
@@ -1019,11 +1009,7 @@ struct convolution_backward_data : public computation,
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      tdims_t dilates_in {0, 0};
-      if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
-        dilates_in = dilates;
-        IDEEP_STD_EACH_SUB(dilates_in, 1);
-      }
+      auto dilates_in = utils::get_compatible_dilates(dilates);
       error::wrap_c_api(mkldnn_dilated_convolution_backward_data_desc_init(
             &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any,
             &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
@@ -1085,11 +1071,7 @@ struct convolution_backward_weights : public computation,
       auto diff_weights_any = gradw_desc.format_any();
       auto diff_bias_any = gradb_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      tdims_t dilates_in {0, 0};
-      if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
-        dilates_in = dilates;
-        IDEEP_STD_EACH_SUB(dilates_in, 1);
-      }
+      auto dilates_in = utils::get_compatible_dilates(dilates);
       error::wrap_c_api(mkldnn_dilated_convolution_backward_weights_desc_init(
             &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, &diff_bias_any,
             &diff_dst_any, &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],

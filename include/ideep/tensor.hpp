@@ -410,6 +410,35 @@ public:
     }
   };
 
+  class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
+  public:
+    attr_t() : c_wrapper([]() {
+      mkldnn_primitive_attr_t result;
+      error::wrap_c_api(mkldnn_primitive_attr_create(&result),
+          "could not create a primitive attr");
+      return result;
+    }()) {}
+
+    attr_t(int mask, scale_t &scales, round_mode mode = round_mode::round_nearest)
+      : c_wrapper([]() {
+      mkldnn_primitive_attr_t result;
+      error::wrap_c_api(mkldnn_primitive_attr_create(&result), "could not create a primitive attr");
+      return result; }()) {
+      set_output_scales(mask, scales);
+      set_int_output_round_mode(round_mode::round_nearest);
+    }
+
+    void set_int_output_round_mode(round_mode mode) {
+      error::wrap_c_api(mkldnn_primitive_attr_set_int_output_round_mode(
+            get(), mkldnn::convert_to_c(mode)), "could not set int output round mode");
+    }
+
+    void set_output_scales(int mask, const scale_t &scales) {
+      error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(
+            get(), (int)scales.size(), mask, &scales[0]), "could not set int output scales");
+    }
+  };
+
   /// View is for describing a subregion from a param
   struct view : public c_wrapper<mkldnn_primitive_desc_t> {
     /// Create view by specifying starting coordinate and size of each dimension
@@ -445,35 +474,6 @@ public:
   };
 
   struct reorder {
-    class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
-    public:
-      attr_t() : c_wrapper([]() {
-        mkldnn_primitive_attr_t result;
-        error::wrap_c_api(mkldnn_primitive_attr_create(&result),
-            "could not create a primitive attr");
-        return result;
-      }()) {}
-
-      attr_t(int mask, scale_t &scales, round_mode mode = round_mode::round_nearest)
-        : c_wrapper([]() {
-        mkldnn_primitive_attr_t result;
-        error::wrap_c_api(mkldnn_primitive_attr_create(&result), "could not create a primitive attr");
-        return result; }()) {
-        set_output_scales(mask, scales);
-        set_int_output_round_mode(round_mode::round_nearest);
-      }
-
-      void set_int_output_round_mode(round_mode mode) {
-        error::wrap_c_api(mkldnn_primitive_attr_set_int_output_round_mode(
-              get(), mkldnn::convert_to_c(mode)), "could not set int output round mode");
-      }
-
-      void set_output_scales(int mask, const scale_t &scales) {
-        error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(
-              get(), (int)scales.size(), mask, &scales[0]), "could not set int output scales");
-      }
-    };
-
     struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
       descriptor(const param::descriptor &input, const param::descriptor &output,
           const attr_t attr = attr_t()) {

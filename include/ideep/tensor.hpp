@@ -1119,14 +1119,19 @@ public:
     }
 
     IDEEP_ENFORCE(dst_scale.size() == src_scale.size(), "Invalid tensor scales");
-    IDEEP_ENFORCE(src.get_dims() == get_dims(), "Incorrect tesnor dims");
+    auto src_in = src;
+    if (src_in.is_iohw_public_layout()) {
+      iohw_definedby_blocked(src_in);
+    } else {
+      IDEEP_ENFORCE(src_in.get_dims() == get_dims(), "Incorrect tesnor dims");
+    }
 
     scale_t scales(dst_scale.size());
     for (int i = 0; i < dst_scale.size(); i++) {
       scales[i] = dst_scale[i] / src_scale[i];
     }
-    int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), src.is_grouped());
-    reorder::execute(src, *this, {mask, scales});
+    int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), src_in.is_grouped());
+    reorder::execute(src_in, *this, {mask, scales});
   }
 
   /// Fill the tensor with parameters

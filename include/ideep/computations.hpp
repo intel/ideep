@@ -435,14 +435,9 @@ public:
     if (input.is_empty() || output.is_empty())
       return;
 
-    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-    auto input_in = input;
-    if (input_in.is_iohw_public_layout()) {
-      tensor::iohw_definedby_blocked(input_in);
-    }
 
-    reorder op (input_in.get_descriptor(), output.get_descriptor(), attr);
-    op(input_in, output);
+    reorder op (input.get_descriptor(), output.get_descriptor(), attr);
+    op(input, output);
   }
 
 protected:

@@ -1181,6 +1181,17 @@ public:
     return ret;
   }
 
+  bool is_nchw_channel_blocking() const {
+    auto aformat = get_internal_format();
+    return aformat == static_cast<format>(mkldnn_nchw)
+      || aformat == static_cast<format>(mkldnn_nChw8c)
+      || aformat == static_cast<format>(mkldnn_nChw16c);
+  }
+
+  const int* get_block_dims() const {
+    return get_mkldnn_memory_desc_t()->layout_desc.blocking.block_dims;
+  }
+
   bool is_iohw_public_layout() const {
     return (get_public_format() == format::iohw && get_internal_format() != format::blocked);
   }

@@ -2325,16 +2325,18 @@ struct inner_product_forward: public computation,
   public utils::computation_cache<inner_product_forward> {
   struct descriptor: public descriptor_group {
     descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &bias_desc,
-        const tdesc_t &dst_desc, prop_kind aprop_kind = prop_kind::forward) {
+        const tdesc_t &dst_desc, const attr_t& attr = attr_t(),
+        prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_inner_product_desc_t data;
       auto src_data = src_desc.format_any();
       auto weights_data = weights_desc.format_any();
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
       error::wrap_c_api(mkldnn_inner_product_forward_desc_init(
-            &data, mkldnn::convert_to_c(aprop_kind), &src_data, &weights_data, &bias_data, &dst_data),
+            &data, mkldnn::convert_to_c(aprop_kind),
+            &src_data, &weights_data, &bias_data, &dst_data),
           "could not create a inner product forward descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc_v2(data, attr);
     }
   };
 
@@ -2345,73 +2347,204 @@ struct inner_product_forward: public computation,
     computation::init(forward_descriptor);
   }
 
-  template<bool with_bias = true>
-  static void compute(key_t &key, const tensor& src, const tensor& weights,
-      const tensor& bias, tensor& dst) {
-    auto weights_in = weights;
-    auto src_in = src.has_scale() ? src.to_public() : src;
-    tensor bias_in;
-    if (with_bias) {
-      bias_in = bias.has_scale() ? bias.to_public() : bias;
+  template <bool with_bias>
+  static void compute_impl(inner_product_forward &comp, const tensor& src,
+      const tensor& weights, const tensor& bias, tensor& dst) {
+    auto src_in = comp.transform_input_cache(0, src);
+    auto weights_in = comp.transform_input_cache(1, weights.as_weights());
+    if (comp.dst_exp_desc_) {
+      dst.reinit(*comp.dst_exp_desc_);
+    }
+    if (comp.dst_scales_) {
+      dst.set_scale(*comp.dst_scales_);
     }
 
-    if (src_in.ndims() != weights_in.ndims()) {
-      auto ndims = src_in.is_public_format() ? weights_in.ndims() : src_in.ndims();
-      if (ndims != src_in.ndims()) {
-        auto new_dims = weights_in.get_dims();
+    if (with_bias) {
+      auto bias_in = comp.transform_input_cache(2, bias);
+      comp.execute(src_in, weights_in, bias_in, dst);
+    } else {
+      comp.execute(src_in, weights_in, dst);
+    }
+
+    if (comp.dst_u8_desc_) {
+      dst.set_descriptor(*comp.dst_u8_desc_);
+    }
+  }
+
+  template <bool with_bias, typename ...Ts>
+  static inline void compute_impl(key_t &key, const tensor& src, const tensor& weights, const tensor& bias,
+      tensor& dst,  const scale_t& src_scales,
+      const scale_t& weights_scales, const scale_t& dst_scales, const attr_t& attr,
+      const lowp_kind alowp_kind, Ts&&... args) {
+    auto& post_ops = attr.get_post_ops();
+    tdesc_t src_desc, weights_desc, bias_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
+
+    scale_t dst_scales_in;
+    auto dst_data_type = tdtype_t::f32;
+    tensor::dims dst_dims;
+
+    auto weights_scales_in = weights.has_scale() ? weights.get_scale() : weights_scales;
+
+    if (!weights_scales_in.empty()) {
+      IDEEP_ENFORCE(alowp_kind == LOWP_U8S8 || alowp_kind == LOWP_S8S8, "Unsupported lowp kind");
+
+      auto src_scales_in = src.has_scale() ? src.get_scale() : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
+
+      src_desc = {src.get_dims(), alowp_kind == LOWP_U8S8 ? tdtype_t::u8 : tdtype_t::s8};
+      if (src.get_data_type() == tdtype_t::f32) {
+        src_attr = {0 , src_scales_in};
+      }
+
+      dst_dims = {src_desc.get_dim(0), weights.get_dim(0)};
+      int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
+
+      weights_desc = {weights.get_dims(), tdtype_t::s8};
+      if (weights.get_data_type() == tdtype_t::f32) {
+        weights_attr = {IDEEP_TENSOR_SCALE_MASK(scale_size, false), weights_scales_in};
+      }
+
+      // determine dst data type
+      if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
+        dst_data_type = tdtype_t::f32;
+      } else if (post_ops.non_negitive_output()){
+        dst_data_type = tdtype_t::u8;
+      } else {
+        dst_data_type = tdtype_t::s8;
+      }
+
+      // fill primitive attr
+      scale_t op_scales(scale_size), bias_scales(scale_size);
+      dst_scales_in = (dst_scales.empty() || dst_data_type == tdtype_t::f32) ? IDEEP_DEF_SCALE : dst_scales;
+      for (int i = 0; i < scale_size; i++) {
+        bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
+        op_scales[i] = dst_scales_in[0] / bias_scales[i];
+      }
+      op_attr.set_output_scales(IDEEP_OP_SCALE_MASK(scale_size), op_scales);
+      op_attr.set_int_output_round_mode(round_mode::round_nearest);
+
+      if (with_bias) {
+        bias_desc = {bias.get_dims(), tdtype_t::s32};
+        if (bias.get_data_type() == tdtype_t::f32) {
+          bias_attr = {IDEEP_TENSOR_SCALE_MASK(scale_size, false), bias_scales};
+        }
+      }
+    } else {
+      op_attr = attr;
+      src_desc = {src.get_dims(), tdtype_t::f32};
+      if (src.has_scale()) {
+        auto src_scale = src.get_scale();
+        src_scale[0] = 1.0f / src_scale[0];
+        src_attr = {0, src_scale};
+      }
+      dst_dims = {src_desc.get_dim(0), weights.get_dim(0)};
+      weights_desc = weights.get_descriptor();
+      IDEEP_ENFORCE(weights.get_data_type() == tdtype_t::f32, "Incorrect data type in weights");
+      if (with_bias) {
+        IDEEP_ENFORCE(bias.get_data_type() == tdtype_t::f32, "Incorrect data type in bias");
+        bias_desc = bias.get_descriptor();
+      }
+    }
+
+    auto dst_format = engine::default_format(dst_dims.size());
+    tdesc_t dst_desc_in(dst_dims, dst_data_type, dst_format);
+
+    check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
+        weights.get_data_type(), weights.get_dims(), weights.get_internal_format(), with_bias,
+        op_attr, src_scales, dst_scales, args...);
+
+    fetch_or_create_m(comp, key, src_desc, weights_desc, bias_desc, dst_desc_in, op_attr, std::forward<Ts>(args)...);
+
+    auto src_in = comp.transform_input_cache(0, src, src_attr);
+    auto weights_in = comp.transform_input_cache(1, weights.as_weights(), weights_attr);
+
+    auto dst_desc = comp.expected_dst_descriptor();
+    if (dst.get_descriptor() != dst_desc) {
+      comp.dst_exp_desc_.reset(new tdesc_t(dst_desc));
+      dst.reinit(dst_desc);
+    }
+
+    if (!dst_scales.empty() && dst_data_type != tdtype_t::f32) {
+      dst.set_scale(dst_scales_in);
+      comp.dst_scales_.reset(new scale_t(dst_scales_in));
+    }
+
+    if (with_bias) {
+      auto bias_in = comp.transform_input_cache(2, bias, bias_attr);
+      comp.execute(src_in, weights_in, bias_in, dst);
+    } else {
+      comp.execute(src_in, weights_in, dst);
+    }
+
+    if (post_ops.non_negitive_output() && dst.get_data_type() == tdtype_t::s8) {
+      tdesc_t dst_u8_desc { dst.get_dims(), tdtype_t::u8, dst.get_internal_format()};
+      dst.set_descriptor(dst_u8_desc);
+      comp.dst_u8_desc_ = std::make_shared<tdesc_t>(dst_u8_desc);
+    }
+
+    update(comp, it);
+  }
+
+  template<bool with_bias=true>
+  static inline void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias, tensor& dst,
+      const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
+      const attr_t& attr = attr_t(), const lowp_kind alowp_kind, prop_kind aprop_kind = prop_kind::forward) {
+    auto weights_in = weights;
+    auto src_in = src;
+    auto sdim_num = src.ndims();
+    auto wdim_num = weights.ndims();
+
+    if (sdim_num != wdim_num) {
+      auto ndims = src.is_public_format() ? wdim_num : sdim_num;
+      if (ndims != sdim_num) {
+        auto new_dims = weights.get_dims();
         new_dims[0] = src_in.get_dim(0);
         src_in.reshape(new_dims);
-      } else if (ndims != weights_in.ndims()) {
-        auto new_dims = src_in.get_dims();
+      } else if (ndims != wdim_num) {
+        auto new_dims = src.get_dims();
         new_dims[0] = weights_in.get_dim(0);
         weights_in.reshape(new_dims);
       }
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(), "Invalid dims in src or weights");
-    IDEEP_ENFORCE(!weights_in.has_scale() && weights_in.get_data_type() == tdtype_t::f32,
-          "INT8 mode is not supported");
 
-    auto src_desc = src_in.get_descriptor();
-    IDEEP_ENFORCE(src_in.get_data_type() == tdtype_t::f32, "Incorrect src data type");
-
-    tdims_t dst_dims = {src_desc.get_dim(0), weights_in.get_dim(0)};
-    tdesc_t dst_desc(dst_dims, src_desc.get_data_type());
-
-    check_or_create_k(key, src_desc.get_data_type(), src_desc.get_dims(), weights_in.get_dims(),
-        with_bias, dst_dims);
-
-    fetch_or_create_m(comp, key, src_desc, weights_in.get_descriptor(),
-        bias_in.get_descriptor(), dst_desc);
-
-    src_in = comp.transform_input_cache(0, src_in);
-    weights_in = comp.transform_input_cache(1, weights_in);
-    dst.reinit(comp.expected_dst_descriptor());
-
-    if (with_bias)
-      comp.execute(src_in, weights_in, bias_in, dst);
-    else
-      comp.execute(src_in, weights_in, dst);
+    auto it = key.empty() ? end() : find(key);
+    if (it != end()) {
+      compute_impl<with_bias>(fetch(it), src_in, weights_in, bias, dst);
+    } else {
+      compute_impl<with_bias>(key, src_in, weights_in, bias, dst, src_scales, weights_scales, dst_scales,
+          attr, alowp_kind, aprop_kind);
+    }
   }
 
-  static void compute(key_t &key, const tensor& src, const tensor& weights, tensor& dst) {
+  static void compute(key_t &key, const tensor &src, const tensor& weights, tensor& dst,
+      const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
+      const attr_t& attr = attr_t(), const lowp_kind alowp_kind = LOWP_U8S8, prop_kind aprop_kind = prop_kind::forward) {
     static tensor dummy_bias;
-    compute<false>(key, src, weights, dummy_bias, dst);
+    compute<false>(key, src, weights, dummy_bias, dst, src_scales, weights_scales, dst_scales, attr, alowp_kind, aprop_kind);
   }
 
-  static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims, tdtype_t dtype = tdtype_t::f32) {
+  static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims, tdtype_t dtype = tdtype_t::f32,
+      tdtype_t x_dtype = tdtype_t::f32) {
     auto x_dims = weights_dims;
     x_dims[0] = 1;
     auto y_dims = {x_dims[0], weights_dims[0]};
     auto ndims = weights_dims.size();
+    auto y_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::s32;
 
     IDEEP_ENFORCE(x_dims.size() == weights_dims.size(), "Invalid dims for data and weights");
-    tdesc_t x_desc(x_dims, dtype, ndims == 2 ? format::nc : format::nchw);
-    tdesc_t y_desc(y_dims, dtype, format::nc);
+    tdesc_t x_desc(x_dims, x_dtype, ndims == 2 ? format::nc : format::nchw);
+    tdesc_t y_desc(y_dims, y_dtype, format::nc);
     tdesc_t weights_desc(weights_dims, dtype, ndims == 2 ? format::oi : format::oihw);
 
     inner_product_forward comp(x_desc, weights_desc, tdesc_t(), y_desc);
     return comp.dup_descriptor_of(query::weights_pd);
   }
+
+private:
+  std::shared_ptr<tdesc_t> dst_exp_desc_;
+  std::shared_ptr<tdesc_t> dst_u8_desc_;
+  std::shared_ptr<scale_t> dst_scales_;
 };
 
 // TODO: parameter sequence adjust?

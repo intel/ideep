@@ -575,8 +575,6 @@ public:
   }
 
   void connect_handle_for(int index, const tensor& atensor) {
-    IDEEP_ENFORCE(inouts_[(unsigned)index].get_descriptor() == atensor.get_descriptor(),
-        "Incorrect tensor descriptor");
     inouts_[(unsigned)index].set_data_handle(atensor.get_data_handle<false>());
   }
 

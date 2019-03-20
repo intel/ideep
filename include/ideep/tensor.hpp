@@ -346,9 +346,11 @@ public:
       case mkldnn_gOhIw16o4i:
         ret = format::goihw;
         break;
-      default:
+      case mkldnn_format_undef:
         ret = format::format_undef;
         break;
+      default:
+        throw error(mkldnn_runtime_error, "unsupported mkldnn memory format!");
       }
       return ret;
     }

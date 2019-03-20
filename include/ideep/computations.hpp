@@ -2486,7 +2486,7 @@ struct inner_product_forward: public computation,
   template<bool with_bias=true>
   static inline void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
-      const attr_t& attr = attr_t(), const lowp_kind alowp_kind, prop_kind aprop_kind = prop_kind::forward) {
+      const attr_t& attr = attr_t(), const lowp_kind alowp_kind = LOWP_U8S8, prop_kind aprop_kind = prop_kind::forward) {
     auto weights_in = weights;
     auto src_in = src;
     auto sdim_num = src.ndims();

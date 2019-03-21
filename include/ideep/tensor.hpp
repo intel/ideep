@@ -325,6 +325,7 @@ public:
       case mkldnn_OhIw16o4i:
       case mkldnn_OIhw4i16o4i:
       case mkldnn_IOhw16o16i:
+      case mkldnn_OIhw4i16o4i_s8s8:
         ret = format::oihw;
         break;
       case mkldnn_goihw:
@@ -346,10 +347,12 @@ public:
       case mkldnn_gOhIw16o4i:
         ret = format::goihw;
         break;
+      case mkldnn_blocked:
       case mkldnn_format_undef:
         ret = format::format_undef;
         break;
       default:
+        // std::cout<<"Unsupported MKL-DNN memory format: "<<mformat<<std::endl;
         throw error(mkldnn_runtime_error, "unsupported mkldnn memory format!");
       }
       return ret;

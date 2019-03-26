@@ -626,7 +626,6 @@ public:
         adesc.get_size()), alloc::template free<computation_t>);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
-    capacity_ = adesc.get_size();
   }
 
   /// The template initialize param with a descriptor. Specifiy extra buffer.
@@ -643,7 +642,6 @@ public:
     buffer_.reset();
     set_data_handle(ahandle);
     public_format_ = adesc.public_format_;
-    capacity_ = 0;
   }
 
   /// The template initialize param with a descriptor, allocate and manage
@@ -657,7 +655,7 @@ public:
   /// Function that refill tensor with new description or buffer
   template<class alloc = utils::allocator, class computation_t = computation>
   void reinit(const descriptor &adesc) {
-    auto curr_size = get_capacity();
+    auto curr_size = get_size();
     auto new_size = adesc.get_size();
 
     if (curr_size >= new_size && buffer_.get() == get_data_handle()) {
@@ -722,7 +720,6 @@ public:
     public_format_ = p.public_format_;
     buffer_ = p.buffer_;
     scale_ = p.scale_;
-    capacity_ = p.capacity_;
   }
 
   /// Move constructor
@@ -730,7 +727,6 @@ public:
     public_format_ = movable.public_format_;
     buffer_ = std::move(movable.buffer_);
     scale_ = std::move(movable.scale_);
-    capacity_ = movable.capacity_;
   }
 
   /// Assignment operator
@@ -739,7 +735,6 @@ public:
     public_format_ = p.public_format_;
     buffer_ = p.buffer_;
     scale_ = p.scale_;
-    capacity_ = p.capacity_;
     return *this;
   }
 
@@ -749,7 +744,6 @@ public:
     public_format_ = movable.public_format_;
     buffer_ = std::move(movable.buffer_);
     scale_ = std::move(movable.scale_);
-    capacity_ = movable.capacity_;
     return *this;
   }
 
@@ -769,7 +763,7 @@ public:
   template<class alloc = utils::allocator, class computation_t = computation>
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
-    reinit<alloc, computation_t>(adesc);
+    init<alloc, computation_t>(adesc);
   }
 
   /// Returns pointer to structure of primitive descriptor.
@@ -813,11 +807,9 @@ public:
     // Keep the original management
     auto buf = std::move(buffer_);
     auto scale = std::move(scale_);
-    auto capacity = capacity_;
     init(new_desc, get_data_handle());
     buffer_ = std::move(buf);
     scale_ = std::move(scale);
-    capacity_ = capacity;
     public_format_ = new_desc.public_format_;
   }
 
@@ -868,11 +860,6 @@ public:
   /// Return whether the tensor is empty
   inline bool is_empty() const {
     return ndims() == 0 && get_data_handle() == 0;
-  }
-
-  /// Returns the largest number of bytes being allocated for the memory
-  inline size_t get_capacity() const {
-    return capacity_;
   }
 
   /// Return buffer size required by the param
@@ -1086,7 +1073,6 @@ protected:
   format public_format_;
   std::shared_ptr<char> buffer_;
   std::shared_ptr<scale_t> scale_;
-  size_t capacity_;
 
   // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
   void iohw_definedby_blocked() {

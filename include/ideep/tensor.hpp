@@ -348,6 +348,7 @@ public:
         ret = format::goihw;
         break;
       case mkldnn_blocked:
+      case mkldnn_wino_fmt:
       case mkldnn_format_undef:
         ret = format::format_undef;
         break;

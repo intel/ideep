@@ -901,19 +901,13 @@ struct convolution_forward: public computation,
     auto weights_in = weights;
     weights_in.make_group(group);
 
-    // FIXME: workaroud winograd format issue in inference
-    auto apkind = aprop_kind;
-    if (aalgorithm == algorithm::convolution_winograd && aprop_kind == prop_kind::forward_inference) {
-      apkind = prop_kind::forward;
-    }
-
     auto it = key.empty() ? end() : find(key);
     if (it != end()) {
       compute_impl<with_bias>(fetch(it), src, weights_in, bias, dst);
     } else {
       compute_impl<with_bias>(key, src, weights_in, bias, result_dims, dst, strides, dilates,
           padding_l, padding_r, src_scales, weights_scales, dst_scales, attr, alowp_kind,
-          aalgorithm, apkind, appading_kind);
+          aalgorithm, aprop_kind, appading_kind);
     }
   }
 
@@ -973,14 +967,8 @@ struct convolution_forward: public computation,
     tdesc_t y_desc(y_dims, y_dtype, format::nchw);
     tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
-    // FIXME: workaroud winograd format issue in inference
-    auto apkind = aprop_kind;
-    if (aalgorithm == algorithm::convolution_winograd && aprop_kind == prop_kind::forward_inference) {
-      apkind = prop_kind::forward;
-    }
-
     convolution_forward comp(x_desc, weights_desc, tdesc_t(), y_desc, strides, dilates, padding_l, padding_r,
-        attr_t(), aalgorithm, apkind);
+        attr_t(), aalgorithm, aprop_kind);
     return comp.dup_descriptor_of(query::weights_pd);
   }
 

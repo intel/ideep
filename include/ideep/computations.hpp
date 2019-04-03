@@ -260,19 +260,19 @@ public:
   descriptor_group() = default;
 
   template<typename T>
-  void create_primitive_desc(const T& desc) {
+  void create_primitive_desc(const T& desc, const_mkldnn_primitive_desc_t hint = nullptr) {
     mkldnn_primitive_desc_t result;
     error::wrap_c_api(mkldnn_primitive_desc_create(
-          &result, &desc, engine::cpu_engine().get(), nullptr),
+          &result, &desc, engine::cpu_engine().get(), hint),
         "could not create a primitive descriptor");
     reset(result);
   }
 
   template<typename T>
-  void create_primitive_desc_v2(const T& desc, const attr_t attr = attr_t()) {
+  void create_primitive_desc_v2(const T& desc, const attr_t attr = attr_t(), const_mkldnn_primitive_desc_t hint = nullptr) {
       mkldnn_primitive_desc_t result;
       error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-            &result, &desc, attr.get(), engine::cpu_engine().get(), nullptr),
+            &result, &desc, attr.get(), engine::cpu_engine().get(), hint),
           "could not create a primitive descriptor");
       reset(result);
   }
@@ -996,7 +996,7 @@ struct convolution_backward_data : public computation,
             &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
             mkldnn::convert_to_c(apadding_kind)),
           "could not create a convolution backward data descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
   private:
     convolution_forward::descriptor hint_;
@@ -1059,7 +1059,7 @@ struct convolution_backward_weights : public computation,
             mkldnn::convert_to_c(apadding_kind)),
           "could not create a convolution backward weights descriptor");
       mkldnn_primitive_desc_t result;
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
 
   private:
@@ -1252,7 +1252,7 @@ struct convolution_transpose_backward_data : public computation,
               &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any,
               &strides[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward data descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
 
    private:
@@ -1320,7 +1320,7 @@ struct convolution_transpose_backward_weights : public computation,
               &diff_dst_any, &strides[0], &padding_l[0], &padding_r[0],
               mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward weights descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
 
    private:
@@ -1468,7 +1468,7 @@ struct lrn_backward : public computation,
             &data, convert_to_c(aalgorithm), gx_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(), local_size, alpha, beta, k),
           "could not create a lrn backward descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
 
   private:
@@ -1588,7 +1588,7 @@ struct pooling_backward : public computation,
             &data, convert_to_c(aalgorithm), &gradx_data, grady_desc.get_mkldnn_memory_desc_t(),
             &strides[0], &kernel[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not init a backward pooling descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
   private:
     pooling_forward::descriptor hint_;
@@ -1697,7 +1697,7 @@ struct eltwise_backward : public computation,
             &data, mkldnn::convert_to_c(alg_kind), grady_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(), static_cast<float>(alpha), static_cast<float>(beta)),
           "could not create a eltwise backward descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
   private:
     eltwise_forward::descriptor hint_;
@@ -2210,7 +2210,7 @@ struct batch_normalization_backward : public computation,
             &data, mkldnn::convert_to_c(aprop_kind), gradx_desc.get_mkldnn_memory_desc_t(),
             x_desc.get_mkldnn_memory_desc_t(), static_cast<float>(epsilon), flags),
           "could not create a batch normalization backward descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
   private:
     batch_normalization_forward_training::descriptor hint_;
@@ -2546,7 +2546,7 @@ struct inner_product_backward_data: public computation,
       error::wrap_c_api(mkldnn_inner_product_backward_data_desc_init(
             &data, &diff_src_data, &weights_data, &diff_dst_data),
           "could not create a inner product backward data descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
   private:
     inner_product_forward::descriptor hint_;
@@ -2595,7 +2595,7 @@ struct inner_product_backward_weights : public computation,
       error::wrap_c_api(mkldnn_inner_product_backward_weights_desc_init(
             &data, &src_data, &diff_weights_data, &diff_bias_data, &diff_dst_data),
           "could not create a inner product backward weights descriptor");
-      create_primitive_desc(data);
+      create_primitive_desc(data, hint_.get());
     }
 
   private:

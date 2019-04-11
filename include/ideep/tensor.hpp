@@ -143,10 +143,6 @@ public:
     descriptor(dims adims, data_type adata_type)
       : descriptor(adims, adata_type,
           engine::default_format((int)adims.size())) {
-
-      // TODO: Do we need this checking?
-      if (adims.size() == 4 || adims.size() == 2)
-        public_format_ = format::format_undef;
     }
 
     /// Initiate a descriptor from primitive_desc_t struct

@@ -347,6 +347,10 @@ public:
       case mkldnn_gOhIw16o4i:
         ret = format::goihw;
         break;
+      case mkldnn_ntc:
+      case mkldnn_tnc:
+        ret = format::tnc;
+        break;
       case mkldnn_blocked:
       case mkldnn_wino_fmt:
       case mkldnn_format_undef:
@@ -378,6 +382,7 @@ public:
         case format::nc:
         case format::io:
         case format::oi:
+        case format::tnc:
         case format::nchw:
         case format::nhwc:
         case format::chwn:
@@ -822,7 +827,7 @@ public:
 
   /// Need reorder if current param used by non MKL-DNN routines.
   inline bool need_reorder() const {
-    return get_internal_format() != public_format_ || get_data_type() != data_type::f32;
+    return (!is_public_format() || get_data_type() != data_type::f32);
   }
 
   inline int canonical_axis_index(int axis_index) const {

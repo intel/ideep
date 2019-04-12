@@ -151,7 +151,7 @@ struct engine: public mkldnn::engine {
     case 2:
       return format::nc;
     case 3:
-      return format::blocked;
+      return format::tnc;
     case 4:
       return format::nchw;
     case 5:

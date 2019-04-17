@@ -510,6 +510,9 @@ public:
       error::wrap_c_api(mkldnn_stream_submit(stream::default_stream().get(),
             execution_sequence.size(), &execution_sequence[0], &c_api_error_primitive),
           "could not execute reorder");
+      // Caution: if not deriving from c_wrapper,
+      // the mkldnn_primitive_destroy must be called mannually.
+      mkldnn_primitive_destroy(result);
     }
   };
 

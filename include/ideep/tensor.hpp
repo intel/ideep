@@ -517,6 +517,7 @@ public:
   };
 
   /// The template initialize param with a descriptor.
+  template<class alloc = utils::allocator>
   void init(const descriptor &adesc) {
     mkldnn_primitive_t result;
     error::wrap_c_api(mkldnn_primitive_create(&result, adesc.get(), nullptr, nullptr),
@@ -525,7 +526,7 @@ public:
     reset(result);
     // TODO: lazy buffer allocation
     scale_.reset();
-    buffer_.reset(utils::allocator::malloc(adesc.get_size()), utils::allocator::free);
+    buffer_.reset(alloc::malloc(adesc.get_size()), alloc::free);
     set_data_handle(buffer_.get());
     public_format_ = adesc.public_format_;
     capacity_ = adesc.get_size();
@@ -546,6 +547,7 @@ public:
   }
 
   /// Function that refill tensor with new description or buffer
+  template<class alloc = utils::allocator>
   void reinit(const descriptor &adesc) {
     auto curr_size = get_capacity();
     auto new_size = adesc.get_size();
@@ -558,12 +560,13 @@ public:
       set_descriptor(adesc);
     } else {
       // re-allocate new room
-      init(adesc);
+      init<alloc>(adesc);
     }
   }
 
+  template<class alloc = utils::allocator>
   void reinit_like(const param &aparam) {
-    reinit(aparam.get_descriptor());
+    reinit<alloc>(aparam.get_descriptor());
   }
 
   /// Empty construction
@@ -571,7 +574,8 @@ public:
     init(descriptor(), nullptr);
   }
 
-  /// Constructs a param and allocating internal buffer.
+  //XXX: obseleted! DO NOT use it again.
+  // Only for compatibility usage. Will be removed soon.
   param(const descriptor &adesc) {
     init(adesc);
   }
@@ -632,9 +636,10 @@ public:
   /// Recreate a param with completely different content from old one
   /// but reuse the param shell. Notice that after resize, its format
   /// is undefined
+  template<class alloc = utils::allocator>
   void resize(dims adims, data_type adata_type) {
     descriptor adesc(adims, adata_type);
-    reinit(adesc);
+    reinit<alloc>(adesc);
   }
 
   /// Returns pointer to structure of primitive descriptor.
@@ -901,9 +906,10 @@ public:
   using param::param;
 
   /// Pack an extra tensor into current one, allocate buffer using specified allocator.
+  template<class alloc = utils::allocator>
   void init_extra(const descriptor &workspace) {
     auto twin = new tensor();
-    twin->init(workspace);
+    twin->init<alloc>(workspace);
     twin_.reset(twin);
   }
 
@@ -920,6 +926,8 @@ public:
 
   tensor() : param() {}
 
+  //XXX: obseleted! DO NOT use it again.
+  // Only for compatibility usage. Will be removed soon.
   tensor(const descriptor &major) : param(major) {}
 
   tensor(const descriptor &major, void *h_major) : param(major, h_major) {}
@@ -927,24 +935,10 @@ public:
   tensor(const descriptor &major, void *h_major, const scale_t &scale)
     : param(major, h_major, scale) {}
 
-  tensor(const descriptor &major, const descriptor &workspace) : param(major) {
-    init_extra(workspace);
-  }
-
   tensor(const descriptor &major, void *h_major, const descriptor &workspace, void *h_workspace,
       const scale_t &scale)
     : tensor(major, h_major, scale) {
     init_extra(workspace, h_workspace);
-  }
-
-  tensor(const descriptor &major, void *h_major, const descriptor &workspace)
-    : tensor(major, h_major) {
-    init_extra(workspace);
-  }
-
-  tensor(const descriptor &major, void *h_major, const descriptor &workspace, const scale_t &scale)
-    : tensor(major, h_major, scale) {
-    init_extra(workspace);
   }
 
   tensor(const descriptor &major, void *h_major, const descriptor &workspace, void *h_workspace)
@@ -976,8 +970,9 @@ public:
     return *this;
   }
 
+  template<class alloc = utils::allocator>
   void init(const descriptor &adesc) {
-    param::init(adesc);
+    param::init<alloc>(adesc);
     twin_.reset();
   }
 
@@ -986,13 +981,15 @@ public:
     twin_.reset();
   }
 
+  template<class alloc = utils::allocator>
   void reinit(const descriptor &adesc) {
-    param::reinit(adesc);
+    param::reinit<alloc>(adesc);
     twin_.reset();
   }
 
+  template<class alloc = utils::allocator>
   void reinit_like(const param &aparam) {
-    param::reinit(aparam.get_descriptor());
+    param::reinit<alloc>(aparam.get_descriptor());
     twin_.reset();
   }
 
@@ -1020,7 +1017,6 @@ public:
 
   /// Returns a handle of the data contained in the param. On
   /// the CPU engine, this is a pointer to the allocated memory.
-  template<bool data_materialized = true>
   inline void *get_data_handle() const {
     void *handle;
     error::wrap_c_api(mkldnn_memory_get_data_handle(get(), &handle), "could not get native handle");
@@ -1028,13 +1024,14 @@ public:
   }
 
   /// Reshape a param, reorder might happen if its format is internal
+  template<class alloc = utils::allocator>
   tensor& reshape(dims new_dims) {
     if (!get_descriptor().is_shape_compatible(new_dims)) {
       throw error(mkldnn_runtime_error, "reshape to incompatible shape");
     } else if (new_dims != get_dims()) {
       if (!is_public_format()) {
         tensor p;
-        p.init({get_dims(), get_data_type()});
+        p.init<alloc>({get_dims(), get_data_type()});
         reorder::execute(*this, p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
@@ -1046,6 +1043,7 @@ public:
     return *this;
   }
 
+  template<class alloc = utils::allocator>
   void transpose_from(const tensor& src, const std::vector<int>& axes) {
     IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims tensor");
     IDEEP_ENFORCE(static_cast<int>(axes.size()) == src.ndims(),
@@ -1069,7 +1067,7 @@ public:
     tensor tmp;
     const float* Xdata;
     if (!src.is_public_format()){
-      tmp = src.to_public();
+      tmp = src.to_public<alloc>();
       Xdata = static_cast<float*>(tmp.get_data_handle());
     } else {
       Xdata = static_cast<float*>(src.get_data_handle());
@@ -1143,12 +1141,27 @@ public:
     reorder::execute(src_in, *this, {mask, scales});
   }
 
+  //XXX: obseleted! DO NOT use it again.
+  // Only for compatibility usage. Will be removed soon.
+  // Pls use feed_from, instead.
+  inline void reorder_from(const tensor &src) {
+    feed_from(src);
+  }
+
   /// Fill the tensor with parameters
   inline void feed_from(const dims adims, data_type adata_type, const void *array) {
     feed_from({{adims, adata_type, engine::default_format(adims.size())}, const_cast<void *>(array)});
   }
 
+  //XXX: obseleted! DO NOT use it again.
+  // Only for compatibility usage. Will be removed soon.
+  // Pls use feed_from, instead.
+  inline void reorder_from(const dims adims, data_type adata_type, const void *array) {
+    feed_from(adims, adata_type, array);
+  }
+
   /// Convert the tensor to public format and data type
+  template<class alloc = utils::allocator>
   inline tensor to_public(void *array = nullptr) const {
     tensor ret;
     auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
@@ -1159,13 +1172,13 @@ public:
     if (public_format_ == format::iohw) {
       iohw_dims = get_public_format_dims();
       if (array == nullptr)
-        ret.init({iohw_dims, data_type::f32, format::oihw});
+        ret.init<alloc>({iohw_dims, data_type::f32, format::oihw});
       else
         ret.init({iohw_dims, data_type::f32, format::oihw}, array);
       iohw_definedby_blocked(ret);
     } else {
       if (array == nullptr)
-        ret.init({get_dims(), data_type::f32, dst_format});
+        ret.init<alloc>({get_dims(), data_type::f32, dst_format});
       else
         ret.init({get_dims(), data_type::f32, dst_format}, array);
     }
@@ -1188,6 +1201,14 @@ public:
     }
 
     return ret;
+  }
+
+  //XXX: obseleted! DO NOT use it again.
+  // Only for compatibility usage. Will be removed soon.
+  // Pls use to_public, instead.
+  template<class alloc = utils::allocator>
+  inline tensor reorder_to(void *array = nullptr) const {
+    return to_public<alloc>(array);
   }
 
   bool is_nchw_channel_blocking() const {

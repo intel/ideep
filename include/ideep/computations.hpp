@@ -909,13 +909,25 @@ struct convolution_forward: public computation,
     auto weights_in = weights;
     weights_in.make_group(group);
 
+    // FIXME: workaroud winograd format issue in inference
+    // If prop_kind == forward_inference, the mkldnn_wino_fmt for weights is required by winograd primitive.
+    // Then, in the cases of variable input shape, the detials of mkldnn_wino_fmt will be changed.
+    // And, extra weihgts reorder is inevitable each time, leading to bad performance.
+    // Here, we set the prop_kind to forward, in order to reorder and cache weights as blocked format,
+    // instead of mkldnn_wino_fmt.
+    auto apkind = aprop_kind;
+    if (aalgorithm == algorithm::convolution_winograd
+        && aprop_kind == prop_kind::forward_inference) {
+      apkind = prop_kind::forward;
+    }
+
     auto it = key.empty() ? end() : find(key);
     if (it != end()) {
       compute_impl<alloc, with_bias>(fetch(it), src, weights_in, bias, dst);
     } else {
       compute_impl<alloc, with_bias>(key, src, weights_in, bias, result_dims, dst, strides, dilates,
           padding_l, padding_r, src_scales, weights_scales, dst_scales, attr, alowp_kind,
-          aalgorithm, aprop_kind, appading_kind);
+          aalgorithm, apkind, appading_kind);
     }
   }
 
@@ -1004,8 +1016,20 @@ struct convolution_forward: public computation,
     tdesc_t y_desc(y_dims, y_dtype, format::nchw);
     tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
+    // FIXME: workaroud winograd format issue in inference
+    // If prop_kind == forward_inference, the mkldnn_wino_fmt for weights is required by winograd primitive.
+    // Then, in the cases of variable input shape, the detials of mkldnn_wino_fmt will be changed.
+    // And, extra weihgts reorder is inevitable each time, leading to bad performance.
+    // Here, we set the prop_kind to forward, in order to reorder and cache weights as blocked format,
+    // instead of mkldnn_wino_fmt.
+    auto apkind = aprop_kind;
+    if (aalgorithm == algorithm::convolution_winograd
+        && aprop_kind == prop_kind::forward_inference) {
+      apkind = prop_kind::forward;
+    }
+
     convolution_forward comp(x_desc, weights_desc, tdesc_t(), y_desc, strides, dilates, padding_l, padding_r,
-        attr_t(), aalgorithm, aprop_kind);
+        attr_t(), aalgorithm, apkind);
     return comp.dup_descriptor_of(query::weights_pd);
   }
 

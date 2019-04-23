@@ -1218,6 +1218,11 @@ public:
       || aformat == static_cast<format>(mkldnn_nChw16c);
   }
 
+  bool is_nhwc_format() const {
+    auto aformat = get_internal_format();
+    return aformat == static_cast<format>(mkldnn_nhwc);
+  }
+
   const int* get_block_dims() const {
     return get_mkldnn_memory_desc_t()->layout_desc.blocking.block_dims;
   }

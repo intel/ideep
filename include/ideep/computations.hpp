@@ -435,7 +435,6 @@ public:
     if (input.is_empty() || output.is_empty())
       return;
 
-
     reorder op (input.get_descriptor(), output.get_descriptor(), attr);
     op(input, output);
   }
@@ -2126,10 +2125,10 @@ public:
     }
 
     check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
-          src_in.get_internal_format(), 3, epsilon);
+          src_in.get_internal_format(), epsilon, 3);
 
-    fetch_or_create_m(comp, key, src_in.get_descriptor(),
-        batch_normalization_flag::use_scale_shift, epsilon);
+    fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon,
+        batch_normalization_flag::use_scale_shift);
 
     if (dst != src)
       dst.reinit<alloc>(comp.expected_dst_descriptor());
@@ -2149,7 +2148,7 @@ public:
     }
 
     check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
-        src_in.get_internal_format(), 5, epsilon);
+        src_in.get_internal_format(), epsilon, 5);
 
     fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon);
 

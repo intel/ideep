@@ -886,7 +886,9 @@ public:
   }
 
   inline bool is_weights() const {
-    return get_internal_format() > format::oi;
+    int fmt = get_internal_format();
+    return (fmt >= format::oi && fmt < mkldnn_ntc) ||
+           (fmt > mkldnn_ldsnc && fmt < mkldnn_nCw8c) || fmt > mkldnn_nCdhw16c;
   }
 
   inline bool is_grouped() const {

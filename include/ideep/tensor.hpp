@@ -10,7 +10,6 @@
 #include "allocators.hpp"
 
 namespace ideep {
-struct computation;
 
 /// Param class handles operands to computations' internal, it wrappers MKL-DNN
 /// memory primitive and provides utilities to manipulate underlying object.
@@ -75,7 +74,7 @@ public:
   public:
     /// Initiate a param descriptor, specifying blocking details.
     descriptor(const dims adims, data_type adata_type, const dims stride,
-        const dims block_dims, const dims stride_inner = dims(12, 1))
+        const dims block_dims = dims(12, 1), const dims stride_inner = dims(12, 1))
       : c_wrapper([&adims, adata_type, &block_dims, &stride, &stride_inner] {
       mkldnn_memory_desc_t data;
       fill_param(data, adims, adata_type, format::blocked);
@@ -95,17 +94,10 @@ public:
 
         // XXX: out of range enum might result unspecified behavior
         mkldnn_memory_desc_t data;
-        if (adims.size() == 3) {
-          fill_param(data, adims, adata_type, aformat);
-          dims strides(3);
-          set_default_strides(strides, adims);
-          fill_blocking(data, adims, dims(3, 1), strides, dims(3, 1));
-        } else {
-          error::wrap_c_api(mkldnn_memory_desc_init(
-                &data, (int)adims.size(), adims.size() == 0 ? nullptr : &adims[0],
-                convert_to_c(adata_type), convert_to_c(aformat)),
-              "could not initialize a memory descriptor");
-        }
+        error::wrap_c_api(mkldnn_memory_desc_init(
+              &data, (int)adims.size(), adims.size() == 0 ? nullptr : &adims[0],
+              convert_to_c(adata_type), convert_to_c(aformat)),
+            "could not initialize a memory descriptor");
 
         mkldnn_primitive_desc_t result;
         error::wrap_c_api(mkldnn_memory_primitive_desc_create(
@@ -235,12 +227,18 @@ public:
       switch(get_internal_format()) {
       case format::nc:
         return format_to(format::oi);
+      case format::ncw:
+        return format_to(format::oiw);
       case format::nchw:
         return format_to(format::oihw);
       case format::nhwc:
         return format_to(format::ihwo);
       case format::chwn:
         return format_to(format::hwio);
+      case format::ncdhw:
+        return format_to(format::oidhw);
+      case format::ndhwc:
+        return format_to(format::dhwio);
       default:
         return *this;
       }
@@ -295,6 +293,10 @@ public:
       case mkldnn_nc:
         ret = format::nc;
         break;
+      case mkldnn_ncw:
+      case mkldnn_nwc:
+        ret = format::ncw;
+        break;
       case mkldnn_nhwc:
         ret = format::nhwc;
         break;
@@ -327,6 +329,10 @@ public:
       case mkldnn_IOhw16o16i:
       case mkldnn_OIhw4i16o4i_s8s8:
         ret = format::oihw;
+        break;
+      case mkldnn_oidhw:
+      case mkldnn_dhwio:
+        ret = format::oidhw;
         break;
       case mkldnn_goihw:
       case mkldnn_hwigo:
@@ -382,6 +388,10 @@ public:
         case format::nc:
         case format::io:
         case format::oi:
+        case format::ncw:
+        case format::nwc:
+        case format::oiw:
+        case format::wio:
         case format::tnc:
         case format::nchw:
         case format::nhwc:
@@ -389,6 +399,10 @@ public:
         case format::oihw:
         case format::ihwo:
         case format::hwio:
+        case format::ncdhw:
+        case format::ndhwc:
+        case format::oidhw:
+        case format::dhwio:
         case format::goihw:
           return aformat;
         default:
@@ -404,6 +418,9 @@ public:
         case format::nc:
           if (aformat == oi) return true;
           break;
+        case format::ncw:
+          if (aformat == oiw) return true;
+          break;
         case format::nchw:
           if (aformat == oihw) return true;
           break;
@@ -412,6 +429,9 @@ public:
           break;
         case format::chwn:
           if (aformat == hwio) return true;
+          break;
+        case format::ncdhw:
+          if (aformat == oidhw) return true;
           break;
         default:
           break;
@@ -728,6 +748,18 @@ public:
   /// Return number of dimensions
   inline int ndims() const {
     return get_mkldnn_memory_desc_t()->ndims;
+  }
+
+  inline dims get_block_dims() const {
+    const mkldnn_memory_desc_t *mdesc = get_mkldnn_memory_desc_t();
+    const auto block_dims = mdesc->layout_desc.blocking.block_dims;
+    return dims (block_dims, &block_dims[mdesc->ndims]);
+  }
+
+  inline dims get_block_stride() const {
+    const mkldnn_memory_desc_t *mdesc = get_mkldnn_memory_desc_t();
+    const auto block_stride = mdesc->layout_desc.blocking.strides[0];
+    return dims (block_stride, &block_stride[mdesc->ndims]);
   }
 
   /// Return whether the tensor is empty
@@ -1049,68 +1081,61 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  void transpose_from(const tensor& src, const std::vector<int>& axes) {
-    IDEEP_ENFORCE(src.ndims() == 4, "Only support 4 dims tensor");
-    IDEEP_ENFORCE(static_cast<int>(axes.size()) == src.ndims(),
-        "Axes should be size like source tensor.");
-    auto axes_sorted = axes;
-    std::sort(axes_sorted.begin(), axes_sorted.end());
-    for (auto i = 0; i < axes_sorted.size(); ++i) {
-      IDEEP_ENFORCE(static_cast<float>(axes_sorted[i]) == i,
-          "Axes should be a permutation of 0 to ndim.");
+  inline tensor permute(const std::vector<int>& permute_axes = {}) const {
+    if (ndims() <= 1) {
+      return to_public_format<alloc>();
     }
 
-    const auto src_dims = src.get_dims();
-    std::vector<int> Y_dims(src.ndims());
-    for (int i = 0; i < src.ndims(); ++i) {
-      Y_dims[i] = src_dims[axes[i]];
-    }
-    if (Y_dims != this->get_dims()) {
-      this->set_descriptor(src.get_descriptor().reshape(Y_dims));
-    }
-
-    tensor tmp;
-    const float* Xdata;
-    if (!src.is_public_format()){
-      tmp = src.to_public<alloc>();
-      Xdata = static_cast<float*>(tmp.get_data_handle());
+    auto axes = permute_axes;
+    if (axes.empty()) {
+      axes.resize(ndims());
+      std::iota(axes.rbegin(), axes.rend(), 0);
     } else {
-      Xdata = static_cast<float*>(src.get_data_handle());
-    }
-
-    auto* Ydata = static_cast<float*>(this->get_data_handle());
-    if ((axes[0] == axes_sorted[1])
-        && (axes[1] == axes_sorted[0])
-        && (axes[2] == axes_sorted[2])
-        && (axes[3] == axes_sorted[3])) {
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2) schedule(static)
-#endif
-      for (int i = 0; i < src_dims[0]; i++) {
-        for (int j = 0; j < src_dims[1]; j++) {
-          auto Y_off = (j * src_dims[0] + i) * (src_dims[2] * src_dims[3]);
-          auto X_off = (i * src_dims[1] + j) * (src_dims[2] * src_dims[3]);
-          std::memcpy(&Ydata[Y_off], &Xdata[X_off],
-              src_dims[2] * src_dims[3] * sizeof(float));
-        }
+      IDEEP_ENFORCE(static_cast<int>(axes.size()) == ndims(),
+          "Axes should be size like source tensor.");
+      auto axes_sorted = axes;
+      std::sort(axes_sorted.begin(), axes_sorted.end());
+      for (auto i = 0; i < axes_sorted.size(); ++i) {
+        IDEEP_ENFORCE(static_cast<float>(axes_sorted[i]) == i,
+            "Axes should be a permutation of 0 to ndim.");
       }
-    } else {
-      int dim[4];
-#ifdef _OPENMP
-#pragma omp parallel for private(dim) collapse(4) schedule(static)
-#endif
-      for (int i = 0; i < src_dims[0]; i++)
-        for (int o = 0; o < src_dims[1]; o++)
-          for (int h = 0; h < src_dims[2]; h++)
-            for (int w = 0; w < src_dims[3]; w++) {
-              dim[0] = i; dim[1] = o; dim[2] = h; dim[3] = w;
-              auto Y_off = ((dim[axes[0]] * Y_dims[1] + dim[axes[1]])
-                  * Y_dims[2] + dim[axes[2]]) * Y_dims[3] + dim[axes[3]];
-              auto X_off = ((dim[0] * src_dims[1] + dim[1])
-                  * src_dims[2] + dim[2]) * src_dims[3] + dim[3];
-              Ydata[Y_off] = Xdata[X_off];
-            }
+      if (axes_sorted == axes) {
+        return to_public_format<alloc>();
+      }
     }
+
+    auto src = *this;
+    if (!is_public_format()) {
+      src = to_public_format<alloc>();
+    }
+
+    auto src_dims = src.get_dims();
+    dims dst_dims(src_dims.size());
+    for (int i = 0; i < src_dims.size(); i++) {
+      dst_dims[i] = src_dims[axes[i]];
+    }
+
+    tensor dst;
+    dst.init<alloc>({dst_dims, src.get_data_type(), src.get_public_format()});
+    auto dst_stride = dst.get_block_stride();
+    dims stride (dst_stride.size(), 1);
+    for (int i = stride.size() - 2; i >= 0; i--) {
+      stride[axes[i]] = dst_stride[i];
+    }
+
+    tensor mask_dst;
+    mask_dst.init({src.get_dims(), src.get_data_type(), stride}, dst.get_data_handle());
+    reorder().execute(src, mask_dst);
+    if (src.has_scale()) {
+      dst.set_scale(src.get_scale());
+    }
+
+    return dst;
+  }
+
+  template<class alloc = utils::allocator>
+  void transpose_from(const tensor& src, const std::vector<int>& axes = {}) {
+    *this = src.permute<alloc>(axes);
   }
 
   /// Fill the tensor with a src tensor
@@ -1163,6 +1188,35 @@ public:
   // Pls use feed_from, instead.
   inline void reorder_from(const dims adims, data_type adata_type, const void *array) {
     feed_from(adims, adata_type, array);
+  }
+
+  template<class alloc = utils::allocator>
+  inline tensor to_public_format() const {
+    tensor ret;
+    auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
+      ? engine::default_format(ndims()) : public_format_;
+
+    dims iohw_dims;
+    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+    if (public_format_ == format::iohw) {
+      iohw_dims = get_public_format_dims();
+      ret.init<alloc>({iohw_dims, get_data_type(), format::oihw});
+      iohw_definedby_blocked(ret);
+    } else {
+      ret.init<alloc>({get_dims(), get_data_type(), dst_format});
+    }
+
+    reorder().execute(*this, ret);
+    if (has_scale()) {
+      ret.set_scale(get_scale());
+    }
+
+    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
+    if (!iohw_dims.empty()) {
+      ret.set_descriptor({iohw_dims, get_data_type(), dst_format});
+    }
+
+    return ret;
   }
 
   /// Convert the tensor to public format and data type
@@ -1226,10 +1280,6 @@ public:
   bool is_nhwc_format() const {
     auto aformat = get_internal_format();
     return aformat == static_cast<format>(mkldnn_nhwc);
-  }
-
-  const int* get_block_dims() const {
-    return get_mkldnn_memory_desc_t()->layout_desc.blocking.block_dims;
   }
 
   bool is_iohw_public_layout() const {

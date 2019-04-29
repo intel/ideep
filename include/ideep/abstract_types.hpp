@@ -131,6 +131,10 @@ enum format {
   nc = mkldnn_nc,
   io = mkldnn_io,
   oi = mkldnn_oi,
+  ncw = mkldnn_ncw,
+  nwc = mkldnn_nwc,
+  oiw = mkldnn_oiw,
+  wio = mkldnn_wio,
   nchw = mkldnn_nchw,
   nhwc = mkldnn_nhwc,
   chwn = mkldnn_chwn,
@@ -140,6 +144,7 @@ enum format {
   ihwo = mkldnn_ihwo,
   hwio = mkldnn_hwio,
   oidhw = mkldnn_oidhw,
+  dhwio = mkldnn_dhwio,
   goihw = mkldnn_goihw,
   hwigo = mkldnn_hwigo,
   ntc = mkldnn_ntc,
@@ -171,7 +176,7 @@ struct engine: public mkldnn::engine {
     case 2:
       return format::nc;
     case 3:
-      return format::blocked;
+      return format::ncw;
     case 4:
       return format::nchw;
     case 5:

@@ -171,11 +171,6 @@ public:
       return static_cast<data_type>(internal->data_type);
     }
 
-    template<typename T>
-    inline static param::data_type type_to_id() {
-      return data_type::data_undef;
-    }
-
     /// Returns C API mkldnn_memory_desc_t structure which had same
     /// dimension and data type but without format constrain.
     mkldnn_memory_desc_t format_any() const {

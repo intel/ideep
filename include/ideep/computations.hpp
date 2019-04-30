@@ -5355,8 +5355,13 @@ struct inner_product_forward: public computation,
             const tensor::descriptor &dst_desc,
             prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_inner_product_desc_t data;
+      mkldnn_memory_desc_t weights_data;
       mkldnn_memory_desc_t src_data = src_desc.format_any();
-      mkldnn_memory_desc_t weights_data = weights_desc.format_any();
+      if (weights_desc.get_data_type() == tensor::data_type::s8 ||
+          weights_desc.get_data_type() == tensor::data_type::u8)
+        weights_data = weights_desc.format_any();
+      else
+        weights_data = *weights_desc.get_mkldnn_memory_desc_t();
       mkldnn_memory_desc_t bias_data = bias_desc.format_any();
       mkldnn_memory_desc_t dst_data = dst_desc.format_any();
 
@@ -5442,7 +5447,7 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(key_t &key, const tensor& src, const tensor& weights,
       const tensor& bias, tensor& dst) {
-    auto weights_in = weights;
+    auto weights_in = weights.as_weights();
     auto _src = src.has_scale() ? src.to_public() : src;
     auto src_in = _src;
     auto bias_in = bias.has_scale() ? bias.to_public() : bias;
@@ -5457,6 +5462,7 @@ struct inner_product_forward: public computation,
         auto new_dims = src_in.get_dims();
         new_dims[0] = weights_in.get_dim(0);
         weights_in.reshape(new_dims);
+        weights_in = weights_in.as_weights();
       }
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
@@ -5524,7 +5530,7 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(key_t & key, const tensor& src,
       const tensor& weights, tensor& dst) {
-    auto weights_in = weights;
+    auto weights_in = weights.as_weights();
     auto _src = src.has_scale() ? src.to_public() : src;
     auto src_in = _src;
 
@@ -5538,6 +5544,7 @@ struct inner_product_forward: public computation,
         auto new_dims = src_in.get_dims();
         new_dims[0] = weights_in.get_dim(0);
         weights_in.reshape(new_dims);
+        weights_in = weights_in.as_weights();
       }
     }
     IDEEP_ENFORCE(src_in.ndims() == weights_in.ndims(),
@@ -5629,12 +5636,12 @@ struct inner_product_backward_data: public computation,
         const tensor::descriptor &grady_desc)
       : hint_(gradx_desc, weights_desc, grady_desc) {
       auto diff_src_data = gradx_desc.format_any();
-      auto weights_data = weights_desc.format_any();
+      auto weights_data = weights_desc.get_mkldnn_memory_desc_t();
       auto diff_dst_data = grady_desc.format_any();
       mkldnn_inner_product_desc_t data;
       error::wrap_c_api(
           mkldnn_inner_product_backward_data_desc_init(&data,
-            &diff_src_data, &weights_data,
+            &diff_src_data, weights_data,
             &diff_dst_data),
           "could not create a inner product backward data descriptor");
       mkldnn_primitive_desc_t result;
@@ -5686,11 +5693,12 @@ public:
   template<class alloc = utils::allocator, bool web_opt = false>
   static void compute(const tensor& grady, const tensor& weights,
       const tensor::dims& gradx_dims, tensor& gradx) {
-    auto weights_in = weights;
+    auto weights_in = weights.as_weights();
     if (gradx_dims.size() != weights_in.ndims()) {
       auto new_dims = gradx_dims;
       new_dims[0] = weights_in.get_dim(0);
       weights_in.reshape(new_dims);
+      weights_in = weights_in.as_weights();
     }
     IDEEP_ENFORCE(gradx_dims.size() == weights_in.ndims(),
         "Invalid dims in src or weights");

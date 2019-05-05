@@ -972,6 +972,34 @@ struct convolution_forward: public computation,
         aalgorithm, aprop_kind, appading_kind, alowp_kind);
   }
 
+  // FIXME: This is a temp API only to fix compatibility issue.
+  // Will be removed after corrected the invocation in pytorch
+  template<class alloc = utils::allocator, bool with_bias = true>
+  static void compute(const tensor &src, const tensor& weights, const tensor& bias,
+      const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, int group, const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
+      padding_kind appading_kind = padding_kind::zero) {
+    key_t key;
+    static scale_t dummy_scales;
+    compute<alloc, with_bias>(key, src, weights, bias, result_dims, dst, strides, dilates,
+        padding_l, padding_r, group, dummy_scales, dummy_scales, dummy_scales, attr,
+        aalgorithm, aprop_kind, appading_kind);
+  }
+
+  // FIXME: This is a temp API only to fix compatibility issue.
+  // Will be removed after corrected the invocation in pytorch
+  template<class alloc = utils::allocator>
+  static void compute(const tensor &src, const tensor& weights,
+      const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
+      const tdims_t& padding_l, const tdims_t& padding_r, int group, const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
+      padding_kind appading_kind = padding_kind::zero) {
+    static tensor dummy_bias;
+    compute<alloc, false>(src, weights, dummy_bias, result_dims, dst, strides, dilates,
+        padding_l, padding_r, group, attr, aalgorithm, aprop_kind, appading_kind);
+  }
+
   static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims,
       tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1},
       const tdims_t& padding_l = {0, 0}, const tdims_t& padding_r = {0, 0},
@@ -1515,11 +1543,12 @@ public:
     comp.execute(src_in, dst);
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor& src, tensor& dst, int local_size, float alpha, float beta,
       float k = 1.0, algorithm aalgorithm = algorithm::lrn_across_channels,
       prop_kind aprop_kind = prop_kind::forward_training) {
     key_t key;
-    compute(key, src, dst, local_size, alpha, beta, k, aalgorithm, aprop_kind);
+    compute<alloc>(key, src, dst, local_size, alpha, beta, k, aalgorithm, aprop_kind);
   }
 };
 
@@ -1633,11 +1662,12 @@ public:
     comp.execute(src, dst);
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tdims_t& dst_dims, tensor& dst, const tdims_t& strides,
       const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r, algorithm aalgorithm,
       prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
     key_t key;
-    compute(key, src, dst_dims, dst, strides, kernel, padding_l, padding_r,
+    compute<alloc>(key, src, dst_dims, dst, strides, kernel, padding_l, padding_r,
         aalgorithm, aprop_kind, apadding_kind);
   }
 };
@@ -1749,10 +1779,11 @@ public:
       dst.set_descriptor({dst.get_dims(), tdtype_t::u8, dst.get_internal_format()});
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor& src, tensor& dst, algorithm aalgorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward, float alpha = 0.0, float beta = 0.0) {
     key_t key;
-    compute(key, src, dst, aalgorithm, aprop_kind, alpha, beta);
+    compute<alloc>(key, src, dst, aalgorithm, aprop_kind, alpha, beta);
   }
 };
 
@@ -2158,16 +2189,18 @@ public:
     comp.execute(src_in, mean, variance, scale, shift, dst);
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
     key_t key;
-    compute(key, src, scale, shift, dst, epsilon);
+    compute<alloc>(key, src, scale, shift, dst, epsilon);
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& scale, const tensor& shift, tensor& dst, float epsilon) {
     key_t key;
-    compute(key, src, mean, variance, scale, shift, dst, epsilon);
+    compute<alloc>(key, src, mean, variance, scale, shift, dst, epsilon);
   }
 
 private:
@@ -2565,7 +2598,7 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator, bool with_bias=true>
   static inline void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
-      const attr_t& attr = attr_t(), const lowp_kind alowp_kind = LOWP_U8S8, prop_kind aprop_kind = prop_kind::forward) {
+      const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     auto weights_in = weights.as_weights();
     auto src_in = src;
     auto sdim_num = src.ndims();
@@ -2598,25 +2631,25 @@ struct inner_product_forward: public computation,
   template<class alloc = utils::allocator>
   static void compute(key_t &key, const tensor &src, const tensor& weights, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
-      const attr_t& attr = attr_t(), const lowp_kind alowp_kind = LOWP_U8S8, prop_kind aprop_kind = prop_kind::forward) {
+      const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     static tensor dummy_bias;
-    compute<alloc, false>(key, src, weights, dummy_bias, dst, src_scales, weights_scales, dst_scales, attr, alowp_kind, aprop_kind);
+    compute<alloc, false>(key, src, weights, dummy_bias, dst, src_scales, weights_scales, dst_scales, attr, aprop_kind, alowp_kind);
   }
 
   template<class alloc = utils::allocator, bool with_bias=true>
   static inline void compute(const tensor &src, const tensor& weights, const tensor& bias, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
-      const attr_t& attr = attr_t(), const lowp_kind alowp_kind = LOWP_U8S8, prop_kind aprop_kind = prop_kind::forward) {
+      const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     key_t key;
-    compute<alloc, with_bias>(key, src, weights, bias, dst, src_scales, weights_scales, dst_scales, attr, alowp_kind, aprop_kind);
+    compute<alloc, with_bias>(key, src, weights, bias, dst, src_scales, weights_scales, dst_scales, attr, aprop_kind, alowp_kind);
   }
 
   template<class alloc = utils::allocator>
   static void compute(const tensor &src, const tensor& weights, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
-      const attr_t& attr = attr_t(), const lowp_kind alowp_kind = LOWP_U8S8, prop_kind aprop_kind = prop_kind::forward) {
+      const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     static tensor dummy_bias;
-    compute<alloc, false>(src, weights, dummy_bias, dst, src_scales, weights_scales, dst_scales, attr, alowp_kind, aprop_kind);
+    compute<alloc, false>(src, weights, dummy_bias, dst, src_scales, weights_scales, dst_scales, attr, aprop_kind, alowp_kind);
   }
 
   static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims, tdtype_t dtype = tdtype_t::f32,
@@ -2782,23 +2815,24 @@ public:
     }
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor &src, float ratio,
       tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
     case tdtype_t::f32:
-      compute_impl<float>(src, ratio, dst, mask);
+      compute_impl<float, alloc>(src, ratio, dst, mask);
       break;
     case tdtype_t::s32:
-      compute_impl<int32_t>(src, ratio, dst, mask);
+      compute_impl<int32_t, alloc>(src, ratio, dst, mask);
       break;
     case tdtype_t::s16:
-      compute_impl<int16_t>(src, ratio, dst, mask);
+      compute_impl<int16_t, alloc>(src, ratio, dst, mask);
       break;
     case tdtype_t::s8:
-      compute_impl<int8_t>(src, ratio, dst, mask);
+      compute_impl<int8_t, alloc>(src, ratio, dst, mask);
       break;
     case tdtype_t::u8:
-      compute_impl<uint8_t>(src, ratio, dst, mask);
+      compute_impl<uint8_t, alloc>(src, ratio, dst, mask);
       break;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
@@ -2824,22 +2858,23 @@ public:
     }
   }
 
+  template<class alloc = utils::allocator>
   static void compute(const tensor &mask, const tensor &gy, tensor& gx) {
     switch(gy.get_data_type()) {
     case tdtype_t::f32:
-      compute_impl<float>(mask, gy, gx);
+      compute_impl<float, alloc>(mask, gy, gx);
       break;
     case tdtype_t::s32:
-      compute_impl<int32_t>(mask, gy, gx);
+      compute_impl<int32_t, alloc>(mask, gy, gx);
       break;
     case tdtype_t::s16:
-      compute_impl<int16_t>(mask, gy, gx);
+      compute_impl<int16_t, alloc>(mask, gy, gx);
       break;
     case tdtype_t::s8:
-      compute_impl<int8_t>(mask, gy, gx);
+      compute_impl<int8_t, alloc>(mask, gy, gx);
       break;
     case tdtype_t::u8:
-      compute_impl<uint8_t>(mask, gy, gx);
+      compute_impl<uint8_t, alloc>(mask, gy, gx);
       break;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");

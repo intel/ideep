@@ -881,9 +881,10 @@ public:
   }
 
   inline bool is_weights() const {
-    int fmt = get_internal_format();
-    return (fmt >= format::oi && fmt < mkldnn_ntc) ||
-           (fmt > mkldnn_ldsnc && fmt < mkldnn_nCw8c) || fmt > mkldnn_nCdhw16c;
+    auto fmt = convert_to_c(get_internal_format());
+    return (fmt >= mkldnn_oi && fmt < mkldnn_ntc)
+      || (fmt > mkldnn_ldsnc && fmt < mkldnn_nCw8c)
+      || fmt > mkldnn_nCdhw16c;
   }
 
   inline bool is_grouped() const {

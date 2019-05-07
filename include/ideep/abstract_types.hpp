@@ -1,11 +1,11 @@
-#ifndef _ABSTRACT_TYPES_HPP_
-#define _ABSTRACT_TYPES_HPP_
+#ifndef IDEEP_ABSTRACT_TYPES_HPP
+#define IDEEP_ABSTRACT_TYPES_HPP
 
 #include <string>
 #include <cstring>
 #include <map>
 #include <vector>
-#include <stdlib.h>
+#include <cstdlib>
 #include <mkldnn.h>
 #include <mkldnn.hpp>
 

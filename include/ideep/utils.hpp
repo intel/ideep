@@ -1,11 +1,11 @@
-#ifndef _UTILS_CPP
-#define _UTILS_CPP
+#ifndef IDEEP_UTILS_CPP
+#define IDEEP_UTILS_CPP
 
 #include <string>
 #include <cstring>
 #include <memory>
 #include <algorithm>
-#include <limits.h>
+#include <climits>
 #include <random>
 #include <numeric>
 #include <atomic>
@@ -14,6 +14,8 @@
 #include <iterator>
 #include <mkl_vsl.h>
 #include <mkl_vml_functions.h>
+#include <mkldnn.h>
+#include <mkldnn.hpp>
 #ifdef _OPENMP
 #include <omp.h>
 #else
@@ -149,21 +151,6 @@ inline void to_bytes(bytestring& bytes, const std::vector<T> arg) {
   }
 }
 
-inline void to_bytes(bytestring& bytes, const tensor arg) {
-  auto* arg_desc = arg.get_mkldnn_memory_desc_t();
-  for (int i = 0; i < arg_desc->ndims; i++) {
-    to_bytes(bytes, static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[0][i]));
-    to_bytes(bytes, static_cast<uint64_t>(arg_desc->layout_desc.blocking.strides[1][i]));
-    to_bytes(bytes, arg_desc->layout_desc.blocking.block_dims[i]);
-    to_bytes(bytes, arg_desc->layout_desc.blocking.padding_dims[i]);
-    to_bytes(bytes, arg_desc->layout_desc.blocking.offset_padding_to_data[i]);
-    to_bytes(bytes, arg_desc->dims[i]);
-  }
-  to_bytes(bytes, static_cast<uint64_t>(arg_desc->layout_desc.blocking.offset_padding));
-  to_bytes(bytes, arg_desc->data_type);
-  to_bytes(bytes, arg_desc->format);
-}
-
 template <typename T, typename = typename std::enable_if<std::is_enum<T>::value>::type>
 inline void to_bytes(bytestring& bytes, T arg) {
   to_bytes(bytes, static_cast<int>(arg));
@@ -211,7 +198,7 @@ static void bernoulli_generate(const long n, const double p, int* r) {
   }
 }
 
-static inline tensor::dims get_compatible_dilates(const tensor::dims& dilates) {
+static inline mkldnn::memory::dims get_compatible_dilates(const mkldnn::memory::dims& dilates) {
     if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
       auto dilates_in = dilates;
       IDEEP_STD_EACH_SUB(dilates_in, 1);
@@ -223,7 +210,7 @@ static inline tensor::dims get_compatible_dilates(const tensor::dims& dilates) {
 static void inline validate_dims() {}
 
 template<typename... Ts>
-static void inline validate_dims(const tensor::dims& dims, Ts&... rest) {
+static void inline validate_dims(const mkldnn::memory::dims& dims, Ts&... rest) {
 #ifndef NDEBUG
   if (dims.size() > TENSOR_MAX_DIMS) {
     error::wrap_c_api(mkldnn_invalid_arguments, "Invalid dimesions");

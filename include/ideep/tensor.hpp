@@ -1,5 +1,5 @@
-#ifndef _TENSOR_HPP_
-#define _TENSOR_HPP_
+#ifndef IDEEP_TENSOR_HPP
+#define IDEEP_TENSOR_HPP
 
 #include <algorithm>
 #include <numeric>
@@ -7,9 +7,12 @@
 #include <cmath>
 
 #include "abstract_types.hpp"
+#include "utils.hpp"
 #include "allocators.hpp"
+#include "primitives.hpp"
 
 namespace ideep {
+
 
 /// Param class handles operands to computations' internal, it wrappers MKL-DNN
 /// memory primitive and provides utilities to manipulate underlying object.
@@ -20,6 +23,7 @@ public:
   using dims = mkldnn::memory::dims;
   using dim_t = dims::value_type;
   using data_type = mkldnn::memory::data_type;
+  using attr_t = descriptor_group::attr_t;
 
   /// Param descriptor class wrappers MKL-DNN memory primitive descriptor
   /// and provides utilities to manipulate underlying object
@@ -33,6 +37,15 @@ public:
     }
     inline static mkldnn_memory_format_t convert_to_c(format aformat) {
       return static_cast<mkldnn_memory_format_t>(aformat);
+    }
+    inline static std::vector<const_mkldnn_primitive_desc_t> convert_to_c(
+        const std::vector<descriptor> &inputs) {
+      std::vector<const_mkldnn_primitive_desc_t> c_api_inputs;
+      c_api_inputs.reserve(inputs.size());
+
+      auto convert_to_c = [](const descriptor &d) { return d.get(); };
+      std::transform(inputs.begin(), inputs.end(), std::back_inserter(c_api_inputs), convert_to_c);
+      return c_api_inputs;
     }
 
     static inline void fill_param(mkldnn_memory_desc_t &md,
@@ -139,6 +152,21 @@ public:
       c_wrapper::operator=(adesc);
       public_format_ = adesc.public_format_;
       return *this;
+    }
+
+    inline void to_bytes(utils::bytestring& bytes) {
+      auto* desc = get_mkldnn_memory_desc_t();
+      for (int i = 0; i < desc->ndims; i++) {
+        utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.strides[0][i]));
+        utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.strides[1][i]));
+        utils::to_bytes(bytes, desc->layout_desc.blocking.block_dims[i]);
+        utils::to_bytes(bytes, desc->layout_desc.blocking.padding_dims[i]);
+        utils::to_bytes(bytes, desc->layout_desc.blocking.offset_padding_to_data[i]);
+        utils::to_bytes(bytes, desc->dims[i]);
+      }
+      utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.offset_padding));
+      utils::to_bytes(bytes, desc->data_type);
+      utils::to_bytes(bytes, desc->format);
     }
 
     /// Returns the number of bytes required to allocate the memory
@@ -436,35 +464,6 @@ public:
     }
   };
 
-  class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
-  public:
-    attr_t() : c_wrapper([]() {
-      mkldnn_primitive_attr_t result;
-      error::wrap_c_api(mkldnn_primitive_attr_create(&result),
-          "could not create a primitive attr");
-      return result;
-    }()) {}
-
-    attr_t(int mask, scale_t &scales, round_mode mode = round_mode::round_nearest)
-      : c_wrapper([]() {
-      mkldnn_primitive_attr_t result;
-      error::wrap_c_api(mkldnn_primitive_attr_create(&result), "could not create a primitive attr");
-      return result; }()) {
-      set_output_scales(mask, scales);
-      set_int_output_round_mode(round_mode::round_nearest);
-    }
-
-    void set_int_output_round_mode(round_mode mode) {
-      error::wrap_c_api(mkldnn_primitive_attr_set_int_output_round_mode(
-            get(), mkldnn::convert_to_c(mode)), "could not set int output round mode");
-    }
-
-    void set_output_scales(int mask, const scale_t &scales) {
-      error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(
-            get(), (int)scales.size(), mask, &scales[0]), "could not set int output scales");
-    }
-  };
-
   /// View is for describing a subregion from a param
   struct view : public c_wrapper<mkldnn_primitive_desc_t> {
     /// Create view by specifying starting coordinate and size of each dimension
@@ -499,42 +498,6 @@ public:
     }
   };
 
-  struct reorder {
-    struct descriptor : public c_wrapper<mkldnn_primitive_desc_t> {
-      descriptor(const param::descriptor &input, const param::descriptor &output,
-          const attr_t attr = attr_t()) {
-        IDEEP_ENFORCE(!(input.get_data_type() == data_type::s8
-              && output.get_data_type() == data_type::u8),
-            "Not support the reorder of s8 to u8 to avoid overflow.");
-        mkldnn_primitive_desc_t result;
-        error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
-              &result, input.get(), output.get(), attr.get()),
-            "could not create a reorder primitive descriptor");
-        reset(result);
-      }
-    };
-
-    static void execute(const param& input, const param& output, const attr_t attr = attr_t()) {
-      auto input_d = input.get_descriptor();
-      auto output_d = output.get_descriptor();
-      auto reorder_d = descriptor(input_d, output_d, attr);
-
-      mkldnn_primitive_t result;
-      mkldnn_primitive_at_t inputs[] = { {input.get(), 0} };
-      const_mkldnn_primitive_t outputs[] = { output.get() };
-      error::wrap_c_api(mkldnn_primitive_create(&result, reorder_d.get(), inputs, outputs),
-          "could not create a reorder primitive");
-
-      std::vector<mkldnn_primitive_t> execution_sequence = {result};
-      mkldnn_primitive_t c_api_error_primitive;
-      error::wrap_c_api(mkldnn_stream_submit(stream::default_stream().get(),
-            execution_sequence.size(), &execution_sequence[0], &c_api_error_primitive),
-          "could not execute reorder");
-      // Caution: if not deriving from c_wrapper,
-      // the mkldnn_primitive_destroy must be called mannually.
-      mkldnn_primitive_destroy(result);
-    }
-  };
 
   /// The template initialize param with a descriptor.
   template<class alloc = utils::allocator>
@@ -651,6 +614,10 @@ public:
   bool operator ==(const param& p) {
     return get_descriptor() == p.get_descriptor() &&
         get_data_handle() == p.get_data_handle() ? true : false;
+  }
+
+  inline void to_bytes(utils::bytestring& bytes) {
+    get_descriptor().to_bytes(bytes);
   }
 
   /// Recreate a param with completely different content from old one
@@ -940,6 +907,70 @@ class IDEEP_EXPORT tensor : public param {
 public:
   using param::param;
 
+  struct reorder: public primitive_group {
+    struct reorder_desc : public descriptor_group {
+      reorder_desc(const c_wrapper<mkldnn_primitive_desc_t> &input,
+          const c_wrapper<mkldnn_primitive_desc_t> &output, const attr_t& attr = attr_t()) {
+        mkldnn_primitive_desc_t result;
+        error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
+              &result, input.get(), output.get(), attr.get()),
+            "could not create a reorder primitive reorder descriptor");
+        reset(result);
+      }
+    };
+
+  public:
+    void init(reorder_desc &desc, const descriptor &src_desc, const descriptor &dst_desc) {
+      in_.init(src_desc, nullptr);
+      out_.init(dst_desc, nullptr);
+
+      mkldnn_primitive_at_t inputs[] = { {in_.get(), 0} };
+      const_mkldnn_primitive_t outputs[] = { out_.get() };
+      create_primitive(desc, inputs, outputs);
+    }
+
+    reorder(const descriptor& src_desc, const descriptor& dst_desc, const attr_t& attr = attr_t()) {
+      reorder_desc desc(src_desc, dst_desc, attr);
+      init(desc, src_desc, dst_desc);
+    }
+
+    reorder(const view& aview, const descriptor& src_desc, const descriptor& dst_desc, const attr_t& attr = attr_t()) {
+      reorder_desc desc(aview, dst_desc, attr);
+      init(desc, src_desc, dst_desc);
+    }
+
+    reorder(const descriptor& src_desc, const view& aview, const descriptor& dst_desc, const attr_t& attr = attr_t()) {
+      reorder_desc desc(src_desc, aview, attr);
+      init(desc, src_desc, dst_desc);
+    }
+
+    void operator() (const tensor &input, const tensor &output) {
+      IDEEP_ENFORCE(!(input.get_data_type() == data_type::s8
+            && output.get_data_type() == data_type::u8),
+          "Not support the reorder of s8 to u8 to avoid overflow.");
+      IDEEP_ENFORCE(input.get_descriptor() == in_.get_descriptor()
+          && output.get_descriptor() == out_.get_descriptor(),
+          "Unmatch tensor reorder descriptor in reorder");
+
+      in_.set_data_handle(input.get_data_handle());
+      out_.set_data_handle(output.get_data_handle());
+
+      stream parallel_control = stream::default_stream();
+      primitive_group::execute(parallel_control);
+    }
+
+    static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
+      if (input.is_empty() || output.is_empty())
+        return;
+
+      reorder op (input.get_descriptor(), output.get_descriptor(), attr);
+      op(input, output);
+    }
+
+  protected:
+    param in_, out_;
+  };
+
   /// Pack an extra tensor into current one, allocate buffer using specified allocator.
   template<class alloc = utils::allocator>
   void init_extra(const descriptor &workspace) {
@@ -1067,7 +1098,7 @@ public:
       if (!is_public_format()) {
         tensor p;
         p.init<alloc>({get_dims(), get_data_type()});
-        reorder::execute(*this, p);
+        reorder::compute(*this, p);
         set_data_handle(p.get_data_handle());
         set_tensor_buffer(p.get_tensor_buffer());
       }
@@ -1123,7 +1154,7 @@ public:
 
     tensor mask_dst;
     mask_dst.init({src.get_dims(), src.get_data_type(), stride}, dst.get_data_handle());
-    reorder().execute(src, mask_dst);
+    reorder::compute(src, mask_dst);
     if (src.has_scale()) {
       dst.set_scale(src.get_scale());
     }
@@ -1166,7 +1197,7 @@ public:
       scales[i] = dst_scale[i] / src_scale[i];
     }
     int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), src_in.is_grouped());
-    reorder::execute(src_in, *this, {mask, scales});
+    reorder::compute(src_in, *this, {mask, scales});
   }
 
   //XXX: obseleted! DO NOT use it again.
@@ -1204,7 +1235,7 @@ public:
       ret.init<alloc>({get_dims(), get_data_type(), dst_format});
     }
 
-    reorder().execute(*this, ret);
+    reorder::compute(*this, ret);
     if (has_scale()) {
       ret.set_scale(get_scale());
     }
@@ -1241,7 +1272,7 @@ public:
     }
 
     if (!has_scale()) {
-      reorder::execute(*this, ret);
+      reorder::compute(*this, ret);
     } else {
       auto &src_scale = get_scale();
       scale_t scales(src_scale.size());
@@ -1249,7 +1280,7 @@ public:
         scales[i] = 1.0f / src_scale[i];
       }
       int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), is_grouped());
-      reorder::execute(*this, ret, {mask, scales});
+      reorder::compute(*this, ret, {mask, scales});
     }
 
     // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.

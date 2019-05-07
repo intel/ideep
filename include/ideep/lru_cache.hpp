@@ -1,10 +1,9 @@
-#ifndef _LRU_CACHE_CPP
-#define _LRU_CACHE_CPP
+#ifndef IDEEP_LRU_CACHE_CPP
+#define IDEEP_LRU_CACHE_CPP
 
 #include <list>
 #include <unordered_map>
 #include "abstract_types.hpp"
-#include "tensor.hpp"
 #include "utils.hpp"
 
 namespace ideep {

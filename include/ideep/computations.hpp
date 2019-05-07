@@ -1,449 +1,30 @@
-#ifndef IDEEP_HPP
-#define IDEEP_HPP
+#ifndef IDEEP_COMPUTATIONS_HPP
+#define IDEEP_COMPUTATIONS_HPP
 
 #include "abstract_types.hpp"
 #include "tensor.hpp"
 #include "lru_cache.hpp"
 #include "utils.hpp"
+#include "primitives.hpp"
 
 namespace ideep {
 
 using tdims_t = tensor::dims;
-using tview_t = tensor::view;
 using tdesc_t = tensor::descriptor;
 using tdtype_t = tensor::data_type;
+using treorder_t = tensor::reorder;
 
-/// A group of primitive descriptors, pack related reorder descriptors
-/// with computational descriptor.
-class descriptor_group: public c_wrapper<mkldnn_primitive_desc_t> {
-  friend class primitive_group;
+// FIXME: This is a temp API only to fix compatibility issue.
+// Will be removed after corrected the invocation in pytorch
+struct reorder {
 public:
-  /// Post ops for fusion operations
-  class post_ops : public c_wrapper<mkldnn_post_ops_t> {
-  public:
-    post_ops() : c_wrapper([]() {
-      mkldnn_post_ops_t result;
-      error::wrap_c_api(mkldnn_post_ops_create(&result), "could not create post operation sequence");
-      return result;
-    }()) {}
-
-    int num_ops() const {
-      return mkldnn_post_ops_len(get());
-    }
-
-    kind op_kind(int index) const {
-      IDEEP_ENFORCE(index < num_ops(), "post_ops index is out of range");
-      return static_cast<kind>(mkldnn_post_ops_get_kind(get(), index));
-    }
-
-    bool has_op_kind(kind op_kind) const {
-      for (int i = 0; i < num_ops(); i++) {
-        if (op_kind == this->op_kind(i)) {
-          return true;
-        }
-      }
-      return false;
-    }
-
-    bool non_negitive_output() const {
-      auto last = num_ops() - 1;
-      if (last < 0) {
-        return false;
-      }
-
-      auto params = get_params(last);
-      if (std::get<0>(params) != kind::eltwise
-          || std::get<1>(params) <= 0.f || std::get<2>(params) != 0.f
-          || std::get<3>(params) != 0.f || std::get<4>(params) != algorithm::eltwise_relu)
-        return false;
-
-      return true;
-    }
-
-    void append(kind op_kind, float scale, float alpha, float beta, algorithm alg) {
-      switch(op_kind) {
-        case kind::sum:
-          error::wrap_c_api(mkldnn_post_ops_append_sum(get(), scale), "could not append sum");
-          break;
-        case kind::eltwise:
-          error::wrap_c_api(mkldnn_post_ops_append_eltwise(
-                get(), scale, convert_to_c(alg), alpha, beta), "could not append eltwise");
-          break;
-        default:
-          error::wrap_c_api(mkldnn_invalid_arguments, "Unsupport op kind");
-      }
-    }
-
-    std::tuple<kind, float, float, float, algorithm> get_params(int index) const {
-      mkldnn_alg_kind_t c_alg = mkldnn_eltwise_relu;
-      float scale = 1.0, alpha = 1.0, beta = 0.0;
-
-      auto akind = op_kind(index);
-      switch(akind) {
-        case kind::sum:
-          error::wrap_c_api(mkldnn_post_ops_get_params_sum(get(), index, &scale),
-              "could not get sum params");
-          break;
-        case kind::eltwise:
-          error::wrap_c_api(mkldnn_post_ops_get_params_eltwise(
-                get(), index, &scale, &c_alg, &alpha, &beta),
-              "could not get eltwise params");
-          break;
-        default:
-          error::wrap_c_api(mkldnn_invalid_arguments, "could not get params");
-          break;
-      }
-
-      return std::make_tuple(akind, scale, alpha, beta, static_cast<algorithm>(c_alg));
-    }
-
-    void to_bytes(utils::bytestring& bytes) const {
-
-      for (int i = 0; i < num_ops(); i ++) {
-        kind akind;
-        algorithm alg;
-        float scale = 1.0, alpha = 1.0, beta = 0.0;
-        std::tie(akind, scale, alpha, beta, alg) = get_params(i);
-
-        switch(akind) {
-          case kind::sum:
-            utils::to_bytes(bytes, akind);
-            bytes.append(1, '.');
-            utils::to_bytes(bytes, scale);
-            break;
-          case kind::eltwise:
-            utils::to_bytes(bytes, akind);
-            bytes.append(1, '.');
-            utils::to_bytes(bytes, scale);
-            bytes.append(1, '.');
-            utils::to_bytes(bytes, alpha);
-            bytes.append(1, '.');
-            utils::to_bytes(bytes, beta);
-            bytes.append(1, '.');
-            utils::to_bytes(bytes, alg);
-          default:
-            break;
-        }
-      }
-    }
-
-  public:
-    // Helper factory
-    static post_ops sum(float scale = 1.0) {
-      post_ops ret;
-      ret.append(kind::sum, scale, 1.0, 0.0, algorithm::eltwise_relu);
-      return ret;
-    }
-
-    static post_ops relu(float scale = 1.f, float alpha = 0.f, float beta = 0.f) {
-      post_ops ret;
-      ret.append(kind::eltwise, scale, alpha, beta, algorithm::eltwise_relu);
-      return ret;
-    }
-
-    static post_ops residual(
-        float sum_scale = 1.0, float relu_scale = 1.0, float alpha = 0.f, float beta = 0.f) {
-      post_ops ret;
-      ret.append(kind::sum, sum_scale, 1.0, 0.0, algorithm::eltwise_relu);
-      ret.append(kind::eltwise, relu_scale, alpha, beta, algorithm::eltwise_relu);
-      return ret;
-    }
-  };
-
-  /// Attribute class for extra information into computations, including
-  /// post operations, rounding mode, etc.
-  class attr_t : public c_wrapper<mkldnn_primitive_attr_t> {
-  public:
-    attr_t() : c_wrapper([]() {
-      mkldnn_primitive_attr_t result;
-      error::wrap_c_api(mkldnn_primitive_attr_create(&result), "could not create a primitive attr");
-      return result;
-    }()) {}
-
-    attr_t(int mask, scale_t &scales, round_mode mode = round_mode::round_nearest)
-      : c_wrapper([]() {
-      mkldnn_primitive_attr_t result;
-      error::wrap_c_api(mkldnn_primitive_attr_create(&result), "could not create a primitive attr");
-      return result; }()) {
-      set_output_scales(mask, scales);
-      set_int_output_round_mode(round_mode::round_nearest);
-    }
-
-    round_mode get_int_output_round_mode() const {
-      mkldnn_round_mode_t result;
-      error::wrap_c_api(mkldnn_primitive_attr_get_int_output_round_mode(get(), &result),
-          "could not get int output round mode");
-      return round_mode(result);
-    }
-
-    void set_int_output_round_mode(round_mode mode) {
-      error::wrap_c_api(mkldnn_primitive_attr_set_int_output_round_mode(
-            get(), mkldnn::convert_to_c(mode)),
-          "could not set int output round mode");
-    }
-
-    std::pair<scale_t, int> get_output_scales() const {
-      int count, c_mask;
-      const float *c_scales;
-      error::wrap_c_api(mkldnn_primitive_attr_get_output_scales(get(), &count, &c_mask, &c_scales),
-          "could not get int output scales");
-      return std::make_pair(scale_t(c_scales, c_scales + count), c_mask);
-    }
-
-    void set_output_scales(int mask, const scale_t &scales) {
-      error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(
-            get(), (int)scales.size(), mask, &scales[0]),
-          "could not set int output scales");
-    }
-
-    const post_ops get_post_ops() const {
-      const_mkldnn_post_ops_t c_result;
-      error::wrap_c_api(mkldnn_primitive_attr_get_post_ops(get(), &c_result),
-          "could not get post operatoion sequence");
-      post_ops result;
-      result.reset(const_cast<mkldnn_post_ops_t>(c_result), true);
-      return result;
-    }
-
-    void set_post_ops(post_ops ops) {
-      error::wrap_c_api(mkldnn_primitive_attr_set_post_ops(get(), ops.get()),
-          "could not set post operation sequence");
-    }
-
-    void to_bytes(utils::bytestring& bytes) const {
-      get_post_ops().to_bytes(bytes);
-      auto scales = get_output_scales();
-      utils::to_bytes(bytes, scales.first);
-      utils::to_bytes(bytes, scales.second);
-    }
-
-  public:
-    // Helper factory
-    static inline attr_t fuse_sum(float scale = 1.0) {
-      attr_t attr;
-      attr.set_post_ops(post_ops::sum(scale));
-      return attr;
-    }
-
-    static inline attr_t fuse_relu(float scale = 1.0, float alpha = 0.f, float beta = 0.f) {
-      attr_t attr;
-      attr.set_post_ops(post_ops::relu(scale, alpha, beta));
-      return attr;
-    }
-
-    static inline attr_t residual(float sum_scale = 1.0, float relu_scale = 1.0,
-        float alpha = 0.f, float beta = 0.f) {
-      attr_t attr;
-      attr.set_post_ops(post_ops::residual(sum_scale, relu_scale, alpha, beta));
-      return attr;
-    }
-
-    static inline attr_t attr_post_ops(post_ops post) {
-      attr_t attr;
-      attr.set_post_ops(post);
-      return attr;
-    }
-  };
-
-protected:
-  std::vector<const_mkldnn_primitive_desc_t> cpp_to_c(
-      const std::vector<tdesc_t> &inputs) {
-    std::vector<const_mkldnn_primitive_desc_t> c_api_inputs;
-    c_api_inputs.reserve(inputs.size());
-
-    auto convert_to_c = [](const tdesc_t &d) { return d.get(); };
-    std::transform(inputs.begin(), inputs.end(), std::back_inserter(c_api_inputs), convert_to_c);
-    return c_api_inputs;
-  }
-
-public:
-  descriptor_group() = default;
-
-  template<typename T>
-  void create_primitive_desc(const T& desc, const_mkldnn_primitive_desc_t hint = nullptr) {
-    mkldnn_primitive_desc_t result;
-    error::wrap_c_api(mkldnn_primitive_desc_create(
-          &result, &desc, engine::cpu_engine().get(), hint),
-        "could not create a primitive descriptor");
-    reset(result);
-  }
-
-  template<typename T>
-  void create_primitive_desc_v2(const T& desc, const attr_t attr = attr_t(), const_mkldnn_primitive_desc_t hint = nullptr) {
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-            &result, &desc, attr.get(), engine::cpu_engine().get(), hint),
-          "could not create a primitive descriptor");
-      reset(result);
-  }
-
-  /// Query interface
-  tdesc_t expected_descriptor_of(query q, int index = 0) const {
-    const_mkldnn_primitive_desc_t const_cdesc =
-        mkldnn_primitive_desc_query_pd(get(), mkldnn::convert_to_c(q), index);
-    return tensor::descriptor(const_cdesc);
-  }
-
-  /// Query number of inputs
-  int num_of_inputs() const {
-      return mkldnn_primitive_desc_query_s32(get(),
-         mkldnn::convert_to_c(mkldnn::num_of_inputs_s32), 0);
-  }
-
-  /// Query number of outputs
-  int num_of_outputs() const {
-      return mkldnn_primitive_desc_query_s32(get(),
-         mkldnn::convert_to_c(mkldnn::num_of_outputs_s32), 0);
-  }
-};
-
-/// A group of primitives, pack related reorder with computation.
-/// It serves as a base class of computation
-class primitive_group: public c_wrapper<mkldnn_primitive_t> {
-public:
-  primitive_group() = default;
-
-  /// Returns the internal structure of primitive descriptor.
-  const_mkldnn_primitive_desc_t get_mkldnn_primitive_desc_t() const {
-    const_mkldnn_primitive_desc_t cdesc;
-    error::wrap_c_api(mkldnn_primitive_get_primitive_desc(get(), &cdesc),
-        "could not get primitive descriptor from a memory primitive");
-    return cdesc;
-  }
-
-  /// Query interface
-  tdesc_t expected_descriptor_of(query q, int index = 0) const {
-    const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
-        get_mkldnn_primitive_desc_t(), mkldnn::convert_to_c(q), index);
-    return tdesc_t(const_cdesc);
-  }
-
-  /// Query interface
-  tdesc_t dup_descriptor_of(query q, int index = 0) const {
-    mkldnn_primitive_desc_t cdesc;
-    const_mkldnn_primitive_desc_t const_cdesc = mkldnn_primitive_desc_query_pd(
-        get_mkldnn_primitive_desc_t(), mkldnn::convert_to_c(q), index);
-    error::wrap_c_api(mkldnn_primitive_desc_clone(&cdesc, const_cdesc),
-        "could not clone a src primititve descriptor");
-    return tdesc_t(cdesc);
-  }
-
-protected:
-  /// Specific query interface, not valid for all computations.
-  tdesc_t expected_dst_descriptor() const {
-    return expected_descriptor_of(query::dst_pd, 0);
-  }
-
-  tdesc_t expected_workspace_descriptor() const {
-    return expected_descriptor_of(query::workspace_pd, 0);
-  }
-
-  tdesc_t expected_gradx_descriptor() const {
-    return expected_descriptor_of(query::diff_src_pd, 0);
-  }
-
-  tdesc_t expected_gradw_descriptor() const {
-    return expected_descriptor_of(query::diff_weights_pd, 0);
-  }
-
-  tdesc_t expected_gradb_descriptor() const {
-    return expected_descriptor_of(query::diff_weights_pd, 1);
-  }
-
-  void create_primitive(const descriptor_group &desc, mkldnn_primitive_at_t* inputs,
-      const_mkldnn_primitive_t* outputs) {
-    mkldnn_primitive_t result;
-    error::wrap_c_api(mkldnn_primitive_create(&result, desc.get(), inputs, outputs),
-        "could not create a primitive");
-    reset(result);
-  }
-
-  void execute(stream &parallel_control) {
-    std::vector<mkldnn_primitive_t> execution_sequence;
-    mkldnn_primitive_t c_api_error_primitive;
-
-    execution_sequence.push_back(get());
-    error::wrap_c_api(mkldnn_stream_submit(
-          parallel_control.get(), execution_sequence.size(),
-          &execution_sequence[0], &c_api_error_primitive),
-        "could not execute the computation");
-  }
-};
-
-struct reorder: public primitive_group {
-  struct descriptor : public descriptor_group {
-    descriptor(const c_wrapper<mkldnn_primitive_desc_t> &input,
-        const c_wrapper<mkldnn_primitive_desc_t> &output, const attr_t& attr = attr_t()) {
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_reorder_primitive_desc_create_v2(
-            &result, input.get(), output.get(), attr.get()),
-          "could not create a reorder primitive descriptor");
-      reset(result);
-    }
-  };
-
-public:
-  using attr_t = descriptor::attr_t;
-
-  void init(descriptor &desc, const tdesc_t &src_desc, const tdesc_t &dst_desc) {
-    in_.init(src_desc, nullptr);
-    out_.init(dst_desc, nullptr);
-
-    mkldnn_primitive_at_t inputs[] = { {in_.get(), 0} };
-    const_mkldnn_primitive_t outputs[] = { out_.get() };
-    create_primitive(desc, inputs, outputs);
-  }
-
-  void init(const tdesc_t& src_desc, const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
-    descriptor desc(src_desc, dst_desc, attr);
-    init(desc, src_desc, dst_desc);
-  }
-
-  void init(const tview_t& view, const tdesc_t& src_desc,
-      const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
-    descriptor desc(view, dst_desc, attr);
-    init(desc, src_desc, dst_desc);
-  }
-
-  void init(const tdesc_t& src_desc, const tview_t& view,
-      const tdesc_t& dst_desc, const attr_t& attr = attr_t()) {
-    descriptor desc(src_desc, view, attr);
-    init(desc, src_desc, dst_desc);
-  }
-
-  template<typename T, typename... Ts>
-  reorder(T arg, Ts&&... args) {
-    init(arg, std::forward<Ts>(args)...);
-  }
-
-  void operator() (const tensor &input, const tensor &output) {
-    IDEEP_ENFORCE(!(input.get_data_type() == tdtype_t::s8
-          && output.get_data_type() == tdtype_t::u8),
-        "Not support the reorder of s8 to u8 to avoid overflow.");
-    IDEEP_ENFORCE(input.get_descriptor() == in_.get_descriptor()
-        && output.get_descriptor() == out_.get_descriptor(),
-        "Unmatch tensor descriptor in reorder");
-
-    in_.set_data_handle(input.get_data_handle());
-    out_.set_data_handle(output.get_data_handle());
-
-    stream parallel_control = stream::default_stream();
-    primitive_group::execute(parallel_control);
-  }
-
+  using attr_t = descriptor_group::attr_t;
   static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
-    if (input.is_empty() || output.is_empty())
-      return;
-
-    reorder op (input.get_descriptor(), output.get_descriptor(), attr);
-    op(input, output);
+    treorder_t::compute(input, output, attr);
   }
-
-protected:
-  tensor in_, out_;
 };
 
-struct direct_copy : public reorder {
+struct direct_copy {
 public:
   template<class alloc = utils::allocator>
   static void compute(const tensor& input, tensor& output) {
@@ -452,14 +33,14 @@ public:
     }
 
     output.reinit<alloc>(input.get_descriptor());
-    reorder::compute(input, output);
+    treorder_t::compute(input, output);
     if (input.has_scale()) {
       output.set_scale(input.get_scale());
     }
   }
 };
 
-struct spliter : public reorder {
+struct spliter {
 public:
   template<class alloc = utils::allocator>
   static std::vector<tensor> compute(const tensor& input,
@@ -474,7 +55,7 @@ public:
       auto view = input.create_view(output_dims, offset_dims);
       tensor output;
       output.init<alloc>(view.expected_dst_descriptor());
-      reorder reorder_(view, input.get_descriptor(), output.get_descriptor());
+      treorder_t reorder_(view, input.get_descriptor(), output.get_descriptor());
       reorder_(input, output);
       if (input.has_scale()) output.set_scale(input.get_scale());
 
@@ -557,10 +138,10 @@ public:
 
     tensor in_ten;
     in_ten.init<alloc>(dst_desc);
-    reorder reorder_ (src_desc, dst_desc, attr);
+    treorder_t reorder_ (src_desc, dst_desc, attr);
     reorder_(input, in_ten);
     ins_buf_[index] = std::make_shared<tensor>(in_ten);
-    reorders_[index] = std::make_shared<reorder>(reorder_);
+    reorders_[index] = std::make_shared<treorder_t>(reorder_);
     return in_ten;
   }
 
@@ -575,7 +156,7 @@ public:
 
     tensor in_ten;
     in_ten.init<alloc>(dst_desc);
-    reorder reorder_ (src_desc, dst_desc, attr);
+    treorder_t reorder_ (src_desc, dst_desc, attr);
     reorder_(input, in_ten);
     return in_ten;
   }
@@ -627,7 +208,7 @@ private:
   int inputs_num_;
   int outputs_num_;
   s_vector<tensor> inouts_;
-  s_vector<shared_ptr<reorder>> reorders_;
+  s_vector<shared_ptr<treorder_t>> reorders_;
   s_vector<shared_ptr<tensor>> ins_buf_;
 };
 
@@ -636,7 +217,7 @@ struct sum : public computation,
   struct descriptor : public descriptor_group {
     descriptor(const scale_t &scales, const std::vector<tdesc_t> &inputs) {
       mkldnn_primitive_desc_t result;
-      auto c_api_inputs = cpp_to_c(inputs);
+      auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
             &result, nullptr, (int)c_api_inputs.size(), &scales[0], &c_api_inputs[0]),
           "could not create a sum primitive descriptor");
@@ -645,7 +226,7 @@ struct sum : public computation,
 
     descriptor(const scale_t &scales, const std::vector<tdesc_t> &inputs, const tdesc_t& output_desc) {
       mkldnn_primitive_desc_t result;
-      auto c_api_inputs = cpp_to_c(inputs);
+      auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
               &result, output_desc.get_mkldnn_memory_desc_t(),
               (int)c_api_inputs.size(), &scales[0], &c_api_inputs[0]),
@@ -689,7 +270,7 @@ public:
         IDEEP_ENFORCE(in.get_scale().size() == 1, "Incorrect scale size");
         auto scale = IDEEP_DEF_SCALE;
         scale[0] /= in.get_scale()[0];
-        reorder::compute(in, _in, {0, scale});
+        treorder_t::compute(in, _in, {0, scale});
       }
       inputs_in.push_back(_in);
       inputs_desc.push_back(_in.get_descriptor());
@@ -1713,7 +1294,7 @@ public:
     auto grady_in = grady;
     if (grady.get_internal_format() != x.get_internal_format()) {
       grady_in.init<alloc>({grady.get_dims(), grady.get_data_type(), x.get_internal_format()});
-      reorder::compute(grady, grady_in);
+      treorder_t::compute(grady, grady_in);
     }
 
     key_t key;
@@ -1759,7 +1340,7 @@ public:
       IDEEP_ENFORCE(src.get_scale().size() == 1, "Incorrect scale size");
       auto scale = IDEEP_DEF_SCALE;
       scale[0] /= src.get_scale()[0];
-      reorder::compute(src, src_in, {0, scale});
+      treorder_t::compute(src, src_in, {0, scale});
     }
 
     check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(), src_in.get_internal_format(),
@@ -1820,7 +1401,7 @@ public:
     tensor grady_in = grady;
     if (grady.get_internal_format() != src.get_internal_format()) {
       grady_in.init<alloc>(src.get_descriptor());
-      reorder::compute(grady, grady_in);
+      treorder_t::compute(grady, grady_in);
       if (grady == gradx) {
         gradx.set_descriptor(grady_in.get_descriptor());
       }
@@ -1922,7 +1503,7 @@ struct concat : public computation,
   struct descriptor : public descriptor_group {
     descriptor(int concat_dimension, const std::vector<tdesc_t> &inputs) {
       mkldnn_primitive_desc_t result;
-      auto c_api_inputs = cpp_to_c(inputs);
+      auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
             &result, nullptr, (int)c_api_inputs.size(), concat_dimension, &c_api_inputs[0]),
           "could not create a concat primitive descriptor");
@@ -1931,7 +1512,7 @@ struct concat : public computation,
 
     descriptor(int concat_dimension, const std::vector<tdesc_t> &inputs, const tdesc_t out_desc) {
       mkldnn_primitive_desc_t result;
-      auto c_api_inputs = cpp_to_c(inputs);
+      auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
             &result, out_desc.get_mkldnn_memory_desc_t(), (int)c_api_inputs.size(),
             concat_dimension, &c_api_inputs[0]),
@@ -1969,7 +1550,7 @@ public:
       auto src_in = inputs[i];
       if (inputs_format[i] != inputs_format[0]) {
         src_in.init<alloc>({inputs_dims[i], inputs_dt[i], inputs_format[0]});
-        reorder::compute(inputs[i], src_in);
+        treorder_t::compute(inputs[i], src_in);
       }
       inputs_in.push_back(src_in);
       tdesc[i] = src_in.get_descriptor();
@@ -2049,7 +1630,7 @@ public:
               scales[0] = min_scale[0] / input_scale;
               tensor input_fp = inputs[i];
               input_fp.reinit<alloc>({inputs[i].get_dims(), dst_data_type, inputs[i].get_internal_format()});
-              reorder reorder_(inputs[i].get_descriptor(), input_fp.get_descriptor(), attr_t(0, scales));
+              treorder_t reorder_(inputs[i].get_descriptor(), input_fp.get_descriptor(), attr_t(0, scales));
               reorder_(inputs[i], input_fp);
               inputs[i] = input_fp;
             }
@@ -2067,11 +1648,11 @@ public:
         in_dims.insert(in_dims.begin() + axis, 1);
         tdesc_t in_desc(inputs[i].get_descriptor().reshape(in_dims));
         auto view = dst.create_view(in_dims, offset_dims);
-        reorder reorder_(in_desc, view, dst.get_descriptor(), attr_t(0, scales));
+        treorder_t reorder_(in_desc, view, dst.get_descriptor(), attr_t(0, scales));
         reorder_({in_desc, inputs[i].get_data_handle()}, dst);
       } else {
         auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
-        reorder reorder_(inputs[i].get_descriptor(), view, dst.get_descriptor(), attr_t(0, scales));
+        treorder_t reorder_(inputs[i].get_descriptor(), view, dst.get_descriptor(), attr_t(0, scales));
         reorder_(inputs[i], dst);
       }
       offset_dims[axis] += axis_info[i];
@@ -2152,7 +1733,7 @@ public:
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
-      reorder::compute(src, src_in, {0, src_scales});
+      treorder_t::compute(src, src_in, {0, src_scales});
     }
 
     check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
@@ -2175,7 +1756,7 @@ public:
       IDEEP_ENFORCE(src.has_scale(), "Can not find scales");
       auto src_scales = IDEEP_DEF_SCALE;
       src_scales[0] /= src.get_scale()[0];
-      reorder::compute(src, src_in, {0, src_scales});
+      treorder_t::compute(src, src_in, {0, src_scales});
     }
 
     check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),

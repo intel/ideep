@@ -24,7 +24,7 @@
 #ifndef _IDEEP_HPP
 #define _IDEEP_HPP
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <algorithm>
 #include <memory>
 #include <map>

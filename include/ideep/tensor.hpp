@@ -7,6 +7,7 @@
 #include <cmath>
 
 #include "abstract_types.hpp"
+#include "lru_cache.hpp"
 #include "utils.hpp"
 #include "allocators.hpp"
 #include "primitives.hpp"
@@ -23,7 +24,6 @@ public:
   using dims = mkldnn::memory::dims;
   using dim_t = dims::value_type;
   using data_type = mkldnn::memory::data_type;
-  using attr_t = descriptor_group::attr_t;
 
   /// Param descriptor class wrappers MKL-DNN memory primitive descriptor
   /// and provides utilities to manipulate underlying object
@@ -154,19 +154,24 @@ public:
       return *this;
     }
 
-    inline void to_bytes(utils::bytestring& bytes) {
+    inline void to_bytes(utils::bytestring& bytes) const {
       auto* desc = get_mkldnn_memory_desc_t();
-      for (int i = 0; i < desc->ndims; i++) {
-        utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.strides[0][i]));
-        utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.strides[1][i]));
-        utils::to_bytes(bytes, desc->layout_desc.blocking.block_dims[i]);
-        utils::to_bytes(bytes, desc->layout_desc.blocking.padding_dims[i]);
-        utils::to_bytes(bytes, desc->layout_desc.blocking.offset_padding_to_data[i]);
-        utils::to_bytes(bytes, desc->dims[i]);
-      }
-      utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.offset_padding));
       utils::to_bytes(bytes, desc->data_type);
       utils::to_bytes(bytes, desc->format);
+      for (int i = 0; i < desc->ndims; i++) {
+        utils::to_bytes(bytes, desc->dims[i]);
+      }
+
+      if (desc->format == format::blocked) {
+        for (int i = 0; i < desc->ndims; i++) {
+          utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.strides[0][i]));
+          utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.strides[1][i]));
+          utils::to_bytes(bytes, desc->layout_desc.blocking.block_dims[i]);
+          utils::to_bytes(bytes, desc->layout_desc.blocking.padding_dims[i]);
+          utils::to_bytes(bytes, desc->layout_desc.blocking.offset_padding_to_data[i]);
+        }
+        utils::to_bytes(bytes, static_cast<uint64_t>(desc->layout_desc.blocking.offset_padding));
+      }
     }
 
     /// Returns the number of bytes required to allocate the memory
@@ -498,7 +503,6 @@ public:
     }
   };
 
-
   /// The template initialize param with a descriptor.
   template<class alloc = utils::allocator>
   void init(const descriptor &adesc) {
@@ -616,7 +620,7 @@ public:
         get_data_handle() == p.get_data_handle() ? true : false;
   }
 
-  inline void to_bytes(utils::bytestring& bytes) {
+  inline void to_bytes(utils::bytestring& bytes) const {
     get_descriptor().to_bytes(bytes);
   }
 
@@ -726,7 +730,7 @@ public:
 
   /// Return whether the tensor is empty
   inline bool is_empty() const {
-    return ndims() == 0 && get_data_handle() == 0;
+    return ndims() == 0 && get_data_handle() == nullptr;
   }
 
   /// Returns the largest number of bytes being allocated for the memory
@@ -906,8 +910,10 @@ protected:
 class IDEEP_EXPORT tensor : public param {
 public:
   using param::param;
+  using attr_t = descriptor_group::attr_t;
 
-  struct reorder: public primitive_group {
+  struct reorder: public primitive_group,
+      public utils::computation_cache<reorder> {
     struct reorder_desc : public descriptor_group {
       reorder_desc(const c_wrapper<mkldnn_primitive_desc_t> &input,
           const c_wrapper<mkldnn_primitive_desc_t> &output, const attr_t& attr = attr_t()) {
@@ -920,6 +926,8 @@ public:
     };
 
   public:
+    reorder() = default;
+
     void init(reorder_desc &desc, const descriptor &src_desc, const descriptor &dst_desc) {
       in_.init(src_desc, nullptr);
       out_.init(dst_desc, nullptr);
@@ -945,11 +953,9 @@ public:
     }
 
     void operator() (const tensor &input, const tensor &output) {
-      IDEEP_ENFORCE(!(input.get_data_type() == data_type::s8
-            && output.get_data_type() == data_type::u8),
+      IDEEP_ENFORCE(!(input.get_data_type() == data_type::s8 && output.get_data_type() == data_type::u8),
           "Not support the reorder of s8 to u8 to avoid overflow.");
-      IDEEP_ENFORCE(input.get_descriptor() == in_.get_descriptor()
-          && output.get_descriptor() == out_.get_descriptor(),
+      IDEEP_ENFORCE(input.get_descriptor() == in_.get_descriptor() && output.get_descriptor() == out_.get_descriptor(),
           "Unmatch tensor reorder descriptor in reorder");
 
       in_.set_data_handle(input.get_data_handle());
@@ -959,12 +965,35 @@ public:
       primitive_group::execute(parallel_control);
     }
 
-    static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
-      if (input.is_empty() || output.is_empty())
-        return;
+    static void compute(const dims& volume, const dims& offset, const tensor& input,
+        tensor& output, const attr_t& attr = attr_t()) {
+      if (input.is_empty() || output.is_empty()) { return; }
 
-      reorder op (input.get_descriptor(), output.get_descriptor(), attr);
-      op(input, output);
+      key_t key;
+      check_or_create_k(key, volume, offset, input, output, attr);
+      auto view = input.create_view(volume, offset);
+      fetch_or_create_m(comp, key, view, input.get_descriptor(), output.get_descriptor(), attr);
+      comp(input, output);
+    }
+
+    static void compute(const tensor& input, const dims& volume, const dims& offset,
+        tensor& output, const attr_t& attr = attr_t()) {
+      if (input.is_empty() || output.is_empty()) { return; }
+
+      key_t key;
+      check_or_create_k(key, input, volume, offset, output, attr);
+      auto view = output.create_view(volume, offset);
+      fetch_or_create_m(comp, key, input.get_descriptor(), view, output.get_descriptor(), attr);
+      comp(input, output);
+    }
+
+    static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
+      if (input.is_empty() || output.is_empty()) { return; }
+
+      key_t key;
+      check_or_create_k(key, input, output, attr);
+      fetch_or_create_m(comp, key, input.get_descriptor(), output.get_descriptor(), attr);
+      comp(input, output);
     }
 
   protected:

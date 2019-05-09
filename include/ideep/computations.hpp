@@ -13,50 +13,77 @@ using tdims_t = tensor::dims;
 using tdesc_t = tensor::descriptor;
 using tdtype_t = tensor::data_type;
 using treorder_t = tensor::reorder;
+using attr_t = descriptor_group::attr_t;
 
 // FIXME: This is a temp API only to fix compatibility issue.
 // Will be removed after corrected the invocation in pytorch
 struct reorder {
 public:
-  using attr_t = descriptor_group::attr_t;
   static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
     treorder_t::compute(input, output, attr);
   }
 };
 
-struct direct_copy {
+struct direct_copy : public utils::computation_cache<direct_copy> {
 public:
+  direct_copy(tdesc_t desc) {
+    treorder_t::reorder_desc rdesc(desc, desc);
+    reorder_.init(rdesc, desc, desc);
+  }
+
   template<class alloc = utils::allocator>
   static void compute(const tensor& input, tensor& output) {
     if (input.is_empty() || input == output) {
       return;
     }
 
+    tdesc_t input_desc = input.get_descriptor();
     output.reinit<alloc>(input.get_descriptor());
-    treorder_t::compute(input, output);
+
+    key_t key;
+    check_or_create_k(key, input.get_data_type(), input.get_dims(), input.get_internal_format());
+    fetch_or_create_m(comp, key, input_desc);
+
+    comp.reorder_(input, output);
     if (input.has_scale()) {
       output.set_scale(input.get_scale());
     }
   }
+private:
+    treorder_t reorder_;
 };
 
-struct spliter {
+struct spliter : public utils::computation_cache<spliter> {
 public:
+  template<class ...T>
+  using s_vector = utils::s_vector<T...>;
+
+  spliter(int32_t inputs_num) { reorders_.assign(inputs_num, nullptr); }
+
   template<class alloc = utils::allocator>
-  static std::vector<tensor> compute(const tensor& input,
-      std::vector<int32_t>& axis_info, int axis, bool add_axis) {
+  static std::vector<tensor> compute(const tensor& input, std::vector<int32_t>& axis_info, int axis, bool add_axis) {
     std::vector<tensor> outputs;
     tdims_t output_dims(input.get_dims());
     tdims_t offset_dims(output_dims.size(), 0);
     IDEEP_ENFORCE(axis < input.ndims(), "invalid axis in split");
+
+    key_t key;
+    check_or_create_k(key, input.get_data_type(), input.get_dims(), input.get_internal_format(),
+        axis_info, axis, add_axis);
+    fetch_or_create_m(comp, key, axis_info.size());
 
     for (unsigned i = 0; i < axis_info.size(); ++i) {
       output_dims[axis] = axis_info[i];
       auto view = input.create_view(output_dims, offset_dims);
       tensor output;
       output.init<alloc>(view.expected_dst_descriptor());
-      treorder_t reorder_(view, input.get_descriptor(), output.get_descriptor());
-      reorder_(input, output);
+      if (comp.reorders_[i]) {
+        comp.reorders_[i]->operator()(input, output);
+      } else {
+        treorder_t reorder_(view, input.get_descriptor(), output.get_descriptor());
+        reorder_(input, output);
+        comp.reorders_[i] = std::make_shared<treorder_t>(reorder_);
+      }
       if (input.has_scale()) output.set_scale(input.get_scale());
 
       if (add_axis) {
@@ -71,6 +98,8 @@ public:
 
     return outputs;
   }
+private:
+  s_vector<std::shared_ptr<treorder_t>> reorders_;
 };
 
 /// Computation class, abstruct of computation
@@ -78,7 +107,6 @@ struct computation : public primitive_group {
 public:
   template<class ...T>
   using s_vector = utils::s_vector<T...>;
-  using attr_t = descriptor_group::attr_t;
 
   computation() = default;
 
@@ -243,19 +271,17 @@ public:
     computation::init(forward_descriptor, inputs);
   }
 
-  void init(const scale_t &scales, const std::vector<tdesc_t> &inputs,
-      const tdesc_t& output) {
+  void init(const scale_t &scales, const std::vector<tdesc_t> &inputs, const tdesc_t& output) {
     descriptor forward_descriptor(scales, inputs, output);
     computation::init(forward_descriptor, inputs);
   }
 
-  sum(const scale_t &scales, const std::vector<tdesc_t> &inputs_desc,
-      const tdesc_t& output_desc) {
-    init(scales, inputs_desc, output_desc);
-  }
-
-  sum(const scale_t& scales, const std::vector<tdesc_t>& inputs_desc) {
-    init(scales, inputs_desc);
+  sum(const scale_t &scales, const std::vector<tdesc_t> &inputs_desc, const tdesc_t& output_desc, bool inplace = false) {
+    if (inplace) {
+      init(scales, inputs_desc, output_desc);
+    } else {
+      init(scales, inputs_desc);
+    }
   }
 
   template<class alloc = utils::allocator>
@@ -276,14 +302,23 @@ public:
       inputs_desc.push_back(_in.get_descriptor());
     }
 
-    if (output != inputs_in[0]) {
-      sum comp(scales, inputs_desc);
-      output.reinit<alloc>(comp.expected_dst_descriptor());
-      comp.execute(inputs_in, output);
-    } else {
-      sum comp(scales, inputs_desc, output.get_descriptor());
-      comp.execute(inputs_in, output);
+    std::vector<tdtype_t> inputs_dt;
+    std::vector<tdims_t> inputs_dims;
+    std::vector<format> inputs_format;
+    for (tensor elems : inputs_in) {
+      inputs_dt.push_back(elems.get_data_type());
+      inputs_dims.push_back(elems.get_dims());
+      inputs_format.push_back(elems.get_internal_format());
     }
+
+    key_t key;
+    bool inplace = (output == inputs_in[0]);
+    check_or_create_k(key, inputs_dt, inputs_dims, inputs_format, scales, inplace);
+    fetch_or_create_m(comp, key, scales, inputs_desc, output.get_descriptor(), inplace);
+
+    if (!inplace)
+      output.reinit<alloc>(comp.expected_dst_descriptor());
+    comp.execute(inputs_in, output);
   }
 };
 
@@ -316,7 +351,6 @@ struct convolution_forward: public computation,
   };
 
  public:
-  using attr_t = descriptor::attr_t;
 
   template<typename ...Ts>
   convolution_forward(const tdesc_t& src_desc, Ts&&... args) {
@@ -825,7 +859,6 @@ struct convolution_transpose_forward : public computation,
   };
 
  public:
-  using attr_t = descriptor::attr_t;
 
   template <typename... Ts>
   convolution_transpose_forward(const tdesc_t& src_desc, Ts&&... args) {
@@ -1521,7 +1554,6 @@ struct concat : public computation,
     }
   };
 public:
-  using attr_t = descriptor::attr_t;
 
   concat(int concat_dimension, const std::vector<tdesc_t> &inputs) {
     descriptor forward_descriptor (concat_dimension, inputs);
@@ -1630,8 +1662,7 @@ public:
               scales[0] = min_scale[0] / input_scale;
               tensor input_fp = inputs[i];
               input_fp.reinit<alloc>({inputs[i].get_dims(), dst_data_type, inputs[i].get_internal_format()});
-              treorder_t reorder_(inputs[i].get_descriptor(), input_fp.get_descriptor(), attr_t(0, scales));
-              reorder_(inputs[i], input_fp);
+              treorder_t::compute(inputs[i], input_fp, {0, scales});
               inputs[i] = input_fp;
             }
           }
@@ -1647,13 +1678,9 @@ public:
         tdims_t in_dims(inputs[i].get_dims());
         in_dims.insert(in_dims.begin() + axis, 1);
         tdesc_t in_desc(inputs[i].get_descriptor().reshape(in_dims));
-        auto view = dst.create_view(in_dims, offset_dims);
-        treorder_t reorder_(in_desc, view, dst.get_descriptor(), attr_t(0, scales));
-        reorder_({in_desc, inputs[i].get_data_handle()}, dst);
+        treorder_t::compute({in_desc, inputs[i].get_data_handle()}, in_dims, offset_dims, dst, {0, scales});
       } else {
-        auto view = dst.create_view(inputs[i].get_dims(), offset_dims);
-        treorder_t reorder_(inputs[i].get_descriptor(), view, dst.get_descriptor(), attr_t(0, scales));
-        reorder_(inputs[i], dst);
+        treorder_t::compute(inputs[i], inputs[i].get_dims(), offset_dims, dst, {0, scales});
       }
       offset_dims[axis] += axis_info[i];
     }

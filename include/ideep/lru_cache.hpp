@@ -24,8 +24,8 @@ public:
   // Only class possible, we can't use typedef or using. Or can we?
   class node_t : public std::pair<map_it, value_t> {
   public:
-    node_t (const std::pair<map_it, value_t> &l) : std::pair<map_it, value_t>(l) {}
-    node_t (std::pair<map_it, value_t> &&l) : std::pair<map_it, value_t>(std::move(l)) {}
+    node_t (const std::pair<map_it, value_t>& l) : std::pair<map_it, value_t>(l) {}
+    node_t (std::pair<map_it, value_t>&& l) : std::pair<map_it, value_t>(std::move(l)) {}
   };
 
   typedef typename std::list<node_t>::size_type size_type;
@@ -71,7 +71,7 @@ public:
     return vlist_.end();
   }
 
-  iterator find(const key_t &key) {
+  iterator find(const key_t& key) {
     auto it = map_.find(key);
     if (it == map_.end()) {
       return end();
@@ -82,7 +82,7 @@ public:
   }
 
   // Is this feasible?
-  const_iterator find(const key_t &key) const {
+  const_iterator find(const key_t& key) const {
     const auto it = map_.find(key);
     if (it == map_.end()) {
       return end();
@@ -129,7 +129,7 @@ public:
   }
 
   // Warning: carefully check iterator validity
-  void swap(lru_cache & other) {
+  void swap(lru_cache& other) {
     std::swap(vlist_, other.vlist_);
     std::swap(map_, other.map_);
     std::swap(capacity_, other.capacity_);
@@ -157,7 +157,7 @@ protected:
     return it->second;
   }
 
-  static inline void update(value_t &val, iterator it) {
+  static inline void update(value_t& val, iterator it) {
     it->second = val;
   }
 
@@ -179,7 +179,7 @@ public:
 
   static inline void release(const key_t& key, value_t&& computation) {}
 
-  static inline lru_cache<key_t, value_t> &t_store() {
+  static inline lru_cache<key_t, value_t>& t_store() {
     static thread_local lru_cache<key_t, value_t> t_store_(capacity);
     return t_store_;
   }

@@ -176,13 +176,13 @@ public:
 
     std::pair<scale_t, int> get_output_scales() const {
       int count, c_mask;
-      const float *c_scales;
+      const float* c_scales;
       error::wrap_c_api(mkldnn_primitive_attr_get_output_scales(get(), &count, &c_mask, &c_scales),
           "could not get int output scales");
       return std::make_pair(scale_t(c_scales, c_scales + count), c_mask);
     }
 
-    void set_output_scales(int mask, const scale_t &scales) {
+    void set_output_scales(int mask, const scale_t& scales) {
       error::wrap_c_api(mkldnn_primitive_attr_set_output_scales(
             get(), (int)scales.size(), mask, &scales[0]),
           "could not set int output scales");
@@ -327,7 +327,7 @@ protected:
     return expected_descriptor_of(query::diff_weights_pd, 1);
   }
 
-  void create_primitive(const descriptor_group &desc, mkldnn_primitive_at_t* inputs,
+  void create_primitive(const descriptor_group& desc, mkldnn_primitive_at_t* inputs,
       const_mkldnn_primitive_t* outputs) {
     mkldnn_primitive_t result;
     error::wrap_c_api(mkldnn_primitive_create(&result, desc.get(), inputs, outputs),
@@ -335,7 +335,7 @@ protected:
     reset(result);
   }
 
-  void execute(stream &parallel_control) {
+  void execute(stream& parallel_control) {
     std::vector<mkldnn_primitive_t> execution_sequence;
     mkldnn_primitive_t c_api_error_primitive;
 

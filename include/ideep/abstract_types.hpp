@@ -44,12 +44,12 @@ namespace ideep {
 
 struct error: public std::exception {
     mkldnn_status_t status;
-    const char *message;
+    const char* message;
 
     error(mkldnn_status_t astatus, const char* amessage)
         : status(astatus), message(amessage) {}
 
-    static void wrap_c_api(mkldnn_status_t status, const char * message) {
+    static void wrap_c_api(mkldnn_status_t status, const char* message) {
       if (status != mkldnn_success) {
         throw error(status, message);
       }
@@ -143,11 +143,11 @@ enum format {
 /// cpu execution engine only.
 struct engine: public mkldnn::engine {
   explicit engine(const mkldnn_engine_t& aengine) = delete;
-  engine(engine const &) = delete;
-  void operator =(engine const &) = delete;
+  engine(engine const&) = delete;
+  void operator =(engine const&) = delete;
 
   /// Singleton CPU engine for all primitives
-  static IDEEP_EXPORT engine &cpu_engine();
+  static IDEEP_EXPORT engine& cpu_engine();
 
   inline static format default_format(int ndims) {
     switch(ndims) {
@@ -175,7 +175,7 @@ private:
 /// A default stream
 struct stream: public mkldnn::stream {
   using mkldnn::stream::stream;
-  static stream &default_stream() {
+  static stream& default_stream() {
     static thread_local stream s(mkldnn::stream::kind::eager);
     return s;
   }

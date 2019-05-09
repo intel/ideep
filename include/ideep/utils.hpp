@@ -41,7 +41,7 @@ public:
     Alloc dup_alloc(alloc);
 
     storage_.reset(new (dup_alloc.allocate(count)) T [count] (),
-       [dup_alloc, count](T *p) mutable {
+       [dup_alloc, count](T* p) mutable {
       for (int i =0; i < count; i ++)
         p[i].~T();
       dup_alloc.deallocate(p, count);
@@ -59,10 +59,10 @@ public:
   s_vector(const s_vector& other)
     : n_elems_(other.n_elems_), storage_(other.storage_) {}
 
-  s_vector(s_vector &&other) noexcept
+  s_vector(s_vector&& other) noexcept
     : n_elems_(other.n_elems_), storage_(std::move(other.storage_)) {}
 
-  s_vector& operator=(const s_vector &other) {
+  s_vector& operator=(const s_vector& other) {
     storage_ = other.storage_;
     n_elems_ = other.n_elems_;
     return *this;
@@ -90,7 +90,7 @@ public:
     Alloc dup_alloc(alloc);
 
     storage_.reset(new (dup_alloc.allocate(count)) T [count] (),
-       [dup_alloc, count](T *p) mutable {
+       [dup_alloc, count](T* p) mutable {
       for (int i =0; i < count; i ++)
         p[i].~T();
       dup_alloc.deallocate(p, count);
@@ -111,7 +111,7 @@ protected:
 using bytestring = std::string;
 
 inline void to_bytes(bytestring& bytes, const int arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
+  auto as_cstring = reinterpret_cast<const char*>(&arg);
 #ifndef __AVX__
   if (arg == 0) return;
   auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
@@ -129,12 +129,12 @@ inline void to_bytes(bytestring& bytes, const bool arg) {
 }
 
 inline void to_bytes(bytestring& bytes, const float arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
+  auto as_cstring = reinterpret_cast<const char*>(&arg);
   bytes.append(as_cstring, sizeof(float));
 }
 
 inline void to_bytes(bytestring& str, const uint64_t arg) {
-  auto as_cstring = reinterpret_cast<const char *>(&arg);
+  auto as_cstring = reinterpret_cast<const char*>(&arg);
   str.append(as_cstring, sizeof(uint64_t));
 }
 
@@ -185,7 +185,7 @@ static void bernoulli_generate(const long n, const double p, int* r) {
   {
     const int ithr = omp_get_thread_num();
     const long avg_amount = (n + nthr - 1) / nthr;
-    const long my_offset = ithr * avg_amount;
+    const long my_offset = ithr* avg_amount;
     const long my_amount = std::min(my_offset + avg_amount, n) - my_offset;
 
     if (my_amount > 0) {

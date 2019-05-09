@@ -110,7 +110,7 @@ public:
 
   computation() = default;
 
-  inline void init_internal(const descriptor_group &adesc) {
+  inline void init_internal(const descriptor_group& adesc) {
     inouts_ = s_vector<tensor>((unsigned)(inputs_num_ + outputs_num_));
 
     std::unique_ptr<mkldnn_primitive_at_t []> inputs(new mkldnn_primitive_at_t [inputs_num_]);
@@ -128,7 +128,7 @@ public:
     create_primitive(adesc, inputs.get(), outputs.get());
   }
 
-  void init(const descriptor_group& adesc, const std::vector<tdesc_t> &args) {
+  void init(const descriptor_group& adesc, const std::vector<tdesc_t>& args) {
     IDEEP_ENFORCE(adesc.num_of_inputs() == (int)args.size(), "Unmatch the number of inputs");
     inputs_num_ = (int)args.size();
     outputs_num_ = adesc.num_of_outputs();
@@ -138,7 +138,7 @@ public:
   }
 
   template<typename... Ts>
-  void init(const descriptor_group &adesc) {
+  void init(const descriptor_group& adesc) {
     inputs_num_ = adesc.num_of_inputs();
     outputs_num_ = adesc.num_of_outputs();
     init_internal(adesc);
@@ -243,7 +243,7 @@ private:
 struct sum : public computation,
   public utils::computation_cache<sum> {
   struct descriptor : public descriptor_group {
-    descriptor(const scale_t &scales, const std::vector<tdesc_t> &inputs) {
+    descriptor(const scale_t& scales, const std::vector<tdesc_t>& inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
@@ -252,12 +252,11 @@ struct sum : public computation,
       reset(result);
     }
 
-    descriptor(const scale_t &scales, const std::vector<tdesc_t> &inputs, const tdesc_t& output_desc) {
+    descriptor(const scale_t& scales, const std::vector<tdesc_t>& inputs, const tdesc_t& output_desc) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_sum_primitive_desc_create(
-              &result, output_desc.get_mkldnn_memory_desc_t(),
-              (int)c_api_inputs.size(), &scales[0], &c_api_inputs[0]),
+              &result, output_desc.get_mkldnn_memory_desc_t(), (int)c_api_inputs.size(), &scales[0], &c_api_inputs[0]),
           "could not create a sum primitive descriptor");
       reset(result);
     }
@@ -266,17 +265,17 @@ struct sum : public computation,
 public:
   sum() = default;
 
-  void init(const scale_t &scales, const std::vector<tdesc_t> &inputs) {
+  void init(const scale_t& scales, const std::vector<tdesc_t>& inputs) {
     descriptor forward_descriptor(scales, inputs);
     computation::init(forward_descriptor, inputs);
   }
 
-  void init(const scale_t &scales, const std::vector<tdesc_t> &inputs, const tdesc_t& output) {
+  void init(const scale_t& scales, const std::vector<tdesc_t>& inputs, const tdesc_t& output) {
     descriptor forward_descriptor(scales, inputs, output);
     computation::init(forward_descriptor, inputs);
   }
 
-  sum(const scale_t &scales, const std::vector<tdesc_t> &inputs_desc, const tdesc_t& output_desc, bool inplace = false) {
+  sum(const scale_t& scales, const std::vector<tdesc_t>& inputs_desc, const tdesc_t& output_desc, bool inplace = false) {
     if (inplace) {
       init(scales, inputs_desc, output_desc);
     } else {
@@ -285,7 +284,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const scale_t &scales, const std::vector<tensor>& inputs, tensor& output) {
+  static void compute(const scale_t& scales, const std::vector<tensor>& inputs, tensor& output) {
     std::vector<tensor> inputs_in;
     std::vector<tdesc_t> inputs_desc;
     for (auto in : inputs) {
@@ -328,8 +327,8 @@ struct convolution_forward: public computation,
   public utils::computation_cache<convolution_forward> {
   /// Descriptor class for describing convolution forward process
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &bias_desc,
-        const tdesc_t &dst_desc, const tdims_t& strides, const tdims_t& dilates,
+    descriptor(const tdesc_t& src_desc, const tdesc_t& weights_desc, const tdesc_t& bias_desc,
+        const tdesc_t& dst_desc, const tdims_t& strides, const tdims_t& dilates,
         const tdims_t& padding_l, const tdims_t& padding_r, const attr_t& attr = attr_t(),
         algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
         padding_kind apadding_kind = padding_kind::zero) {
@@ -359,7 +358,7 @@ struct convolution_forward: public computation,
   }
 
   template <class alloc, bool with_bias>
-  static void compute_impl(convolution_forward &comp, const tensor& src,
+  static void compute_impl(convolution_forward& comp, const tensor& src,
       const tensor& weights, const tensor& bias, tensor& dst) {
     auto src_in = comp.transform_input_cache<alloc>(0, src);
     auto weights_in = comp.transform_input_cache<alloc>(1, weights.as_weights());
@@ -384,7 +383,7 @@ struct convolution_forward: public computation,
   }
 
   template <class alloc, bool with_bias, typename ...Ts>
-  static void compute_impl(key_t &key, const tensor& src, const tensor& weights, const tensor& bias,
+  static void compute_impl(key_t& key, const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& dst_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, const scale_t& src_scales,
       const scale_t& weights_scales, const scale_t& dst_scales, const attr_t& attr,
@@ -513,7 +512,7 @@ struct convolution_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool with_bias = true>
-  static void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias,
+  static void compute(key_t& key, const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
@@ -530,8 +529,7 @@ struct convolution_forward: public computation,
     // Here, we set the prop_kind to forward, in order to reorder and cache weights as blocked format,
     // instead of mkldnn_wino_fmt.
     auto apkind = aprop_kind;
-    if (aalgorithm == algorithm::convolution_winograd
-        && aprop_kind == prop_kind::forward_inference) {
+    if (aalgorithm == algorithm::convolution_winograd && aprop_kind == prop_kind::forward_inference) {
       apkind = prop_kind::forward;
     }
 
@@ -546,7 +544,7 @@ struct convolution_forward: public computation,
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor &src, const tensor& weights,
+  static void compute(key_t& key, const tensor& src, const tensor& weights,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
@@ -560,7 +558,7 @@ struct convolution_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool with_bias = true>
-  static void compute(const tensor &src, const tensor& weights, const tensor& bias,
+  static void compute(const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
@@ -574,7 +572,7 @@ struct convolution_forward: public computation,
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor &src, const tensor& weights,
+  static void compute(const tensor& src, const tensor& weights,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(),
@@ -590,7 +588,7 @@ struct convolution_forward: public computation,
   // FIXME: This is a temp API only to fix compatibility issue.
   // Will be removed after corrected the invocation in pytorch
   template<class alloc = utils::allocator, bool with_bias = true>
-  static void compute(const tensor &src, const tensor& weights, const tensor& bias,
+  static void compute(const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group, const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
@@ -605,7 +603,7 @@ struct convolution_forward: public computation,
   // FIXME: This is a temp API only to fix compatibility issue.
   // Will be removed after corrected the invocation in pytorch
   template<class alloc = utils::allocator>
-  static void compute(const tensor &src, const tensor& weights,
+  static void compute(const tensor& src, const tensor& weights,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
       const tdims_t& padding_l, const tdims_t& padding_r, int group, const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct, prop_kind aprop_kind = prop_kind::forward,
@@ -665,8 +663,7 @@ struct convolution_forward: public computation,
     // Here, we set the prop_kind to forward, in order to reorder and cache weights as blocked format,
     // instead of mkldnn_wino_fmt.
     auto apkind = aprop_kind;
-    if (aalgorithm == algorithm::convolution_winograd
-        && aprop_kind == prop_kind::forward_inference) {
+    if (aalgorithm == algorithm::convolution_winograd && aprop_kind == prop_kind::forward_inference) {
       apkind = prop_kind::forward;
     }
 
@@ -684,7 +681,7 @@ private:
 struct convolution_backward_data : public computation,
   public utils::computation_cache<convolution_backward_data> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &grady_desc, const tdesc_t &weights_desc, const tdesc_t &gradx_desc,
+    descriptor(const tdesc_t& grady_desc, const tdesc_t& weights_desc, const tdesc_t& gradx_desc,
         const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct, padding_kind apadding_kind = padding_kind::zero)
       : hint_(gradx_desc, weights_desc, tdesc_t(), grady_desc, strides, dilates, padding_l, padding_r)  {
@@ -707,7 +704,7 @@ struct convolution_backward_data : public computation,
 
 public:
   template<typename ...Ts>
-  convolution_backward_data(const tdesc_t &grady_desc, Ts&&... args) {
+  convolution_backward_data(const tdesc_t& grady_desc, Ts&&... args) {
     descriptor backward_data_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor);
   }
@@ -744,8 +741,8 @@ public:
 struct convolution_backward_weights : public computation,
   public utils::computation_cache<convolution_backward_weights> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &x_desc, const tdesc_t &grady_desc, const tdesc_t &gradw_desc,
-        const tdesc_t &gradb_desc, const tdims_t& strides, const tdims_t& dilates,
+    descriptor(const tdesc_t& x_desc, const tdesc_t& grady_desc, const tdesc_t& gradw_desc,
+        const tdesc_t& gradb_desc, const tdims_t& strides, const tdims_t& dilates,
         const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::convolution_direct,
         padding_kind apadding_kind = padding_kind::zero)
@@ -772,7 +769,7 @@ struct convolution_backward_weights : public computation,
 
 public:
   template<typename ...Ts>
-  convolution_backward_weights (const tdesc_t &x_desc, Ts&&... args) {
+  convolution_backward_weights (const tdesc_t& x_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor);
   }
@@ -1094,7 +1091,7 @@ struct convolution_transpose_backward_weights : public computation,
 struct lrn_forward : public computation,
   public utils::computation_cache<lrn_forward> {
   struct descriptor : public descriptor_group {
-    descriptor (const tdesc_t &x_desc, int local_size, float alpha, float beta, float k = 1.0,
+    descriptor (const tdesc_t& x_desc, int local_size, float alpha, float beta, float k = 1.0,
         algorithm aalgorithm = algorithm::lrn_across_channels, prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_lrn_desc_t data;
       auto src_data = x_desc.get_mkldnn_memory_desc_t();
@@ -1107,16 +1104,16 @@ struct lrn_forward : public computation,
 
 public:
   template<typename ...Ts>
-  lrn_forward(const tdesc_t &x_desc, Ts&&... args) {
+  lrn_forward(const tdesc_t& x_desc, Ts&&... args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
 
-  void execute(const tensor &src, const tensor& dst, const tensor& workspace) {
+  void execute(const tensor& src, const tensor& dst, const tensor& workspace) {
     computation::execute(src, dst, workspace);
   }
 
-  void execute(const tensor &src, tensor& dst) {
+  void execute(const tensor& src, tensor& dst) {
     if (dst.has_extra())
       computation::execute(src, dst, *dst.get_extra());
     else
@@ -1124,7 +1121,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor& src, tensor& dst, int local_size, float alpha,
+  static void compute(key_t& key, const tensor& src, tensor& dst, int local_size, float alpha,
       float beta, float k = 1.0, algorithm aalgorithm = algorithm::lrn_across_channels,
       prop_kind aprop_kind = prop_kind::forward_training) {
 
@@ -1169,7 +1166,7 @@ public:
 struct lrn_backward : public computation,
   public utils::computation_cache<lrn_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &x_desc, const tdesc_t &gx_desc, int local_size, float alpha,
+    descriptor(const tdesc_t& x_desc, const tdesc_t& gx_desc, int local_size, float alpha,
         float beta, float k = 1.0, algorithm aalgorithm = algorithm::lrn_across_channels)
       : hint_(x_desc, local_size, alpha, beta, k, aalgorithm) {
       mkldnn_lrn_desc_t data;
@@ -1186,7 +1183,7 @@ struct lrn_backward : public computation,
 
 public:
   template<typename ...Ts>
-  lrn_backward(const tdesc_t &x_desc, Ts&&... args) {
+  lrn_backward(const tdesc_t& x_desc, Ts&&... args) {
     descriptor backward_data_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor);
   }
@@ -1218,7 +1215,7 @@ struct pooling_forward : public computation,
   public utils::computation_cache<pooling_forward> {
   struct descriptor : descriptor_group {
     descriptor() = default;
-    descriptor(const tdesc_t &x_desc, const tdesc_t &y_desc, const tdims_t& strides,
+    descriptor(const tdesc_t& x_desc, const tdesc_t& y_desc, const tdims_t& strides,
         const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r, algorithm aalgorithm,
         prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims(strides, kernel, padding_l, padding_r);
@@ -1234,16 +1231,16 @@ struct pooling_forward : public computation,
   };
 public:
   template<typename ...Ts>
-  pooling_forward(const tdesc_t &x_desc, Ts &&...args) {
+  pooling_forward(const tdesc_t& x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
 
-  void execute(const tensor &src, const tensor &dst, const tensor &workspace) {
+  void execute(const tensor& src, const tensor& dst, const tensor& workspace) {
     computation::execute(src, dst, workspace);
   }
 
-  void execute(const tensor &src, tensor &dst) {
+  void execute(const tensor& src, tensor& dst) {
     if (dst.has_extra())
       computation::execute(src, dst, *dst.get_extra());
     else
@@ -1251,7 +1248,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor& src, const tdims_t& dst_dims, tensor& dst,
+  static void compute(key_t& key, const tensor& src, const tdims_t& dst_dims, tensor& dst,
       const tdims_t& strides, const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
       algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
     check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
@@ -1261,8 +1258,7 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(), dst_desc, strides, kernel, padding_l,
         padding_r, aalgorithm, aprop_kind, apadding_kind);
 
-    bool with_workspace = true && aprop_kind == prop_kind::forward_training
-        && aalgorithm == mkldnn::pooling_max;
+    bool with_workspace = true && aprop_kind == prop_kind::forward_training && aalgorithm == mkldnn::pooling_max;
 
     if (dst != src) {
       dst.reinit<alloc>(comp.expected_dst_descriptor());
@@ -1289,7 +1285,7 @@ public:
 struct pooling_backward : public computation,
   public utils::computation_cache<pooling_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &gradx_desc, const tdesc_t &grady_desc, const tdims_t& strides,
+    descriptor(const tdesc_t& gradx_desc, const tdesc_t& grady_desc, const tdims_t& strides,
         const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm, padding_kind apadding_kind = padding_kind::zero)
       : hint_(gradx_desc, grady_desc, strides, kernel, padding_l, padding_r, aalgorithm) {
@@ -1308,7 +1304,7 @@ struct pooling_backward : public computation,
 
 public:
   template<typename ...Ts>
-  pooling_backward(const tdesc_t &gradx_desc, Ts &&...args) {
+  pooling_backward(const tdesc_t& gradx_desc, Ts &&...args) {
     descriptor backward_descriptor(gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor);
   }
@@ -1345,7 +1341,7 @@ public:
 struct eltwise_forward : public computation,
   public utils::computation_cache<eltwise_forward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &x_desc, float alpha = 0.0, float beta = 0.0,
+    descriptor(const tdesc_t& x_desc, float alpha = 0.0, float beta = 0.0,
         algorithm alg_kind = algorithm::eltwise_relu, prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_eltwise_desc_t data;
       error::wrap_c_api(mkldnn_eltwise_forward_desc_init(
@@ -1358,13 +1354,13 @@ struct eltwise_forward : public computation,
 
 public:
   template<typename ...Ts>
-  eltwise_forward(const tdesc_t &x_desc, Ts &&...args) {
+  eltwise_forward(const tdesc_t& x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor& src, tensor& dst, algorithm aalgorithm = algorithm::eltwise_relu,
+  static void compute(key_t& key, const tensor& src, tensor& dst, algorithm aalgorithm = algorithm::eltwise_relu,
       prop_kind aprop_kind = prop_kind::forward, float alpha = 0.0, float beta = 0.0) {
     auto src_in = src;
     if (aalgorithm != algorithm::eltwise_relu && src.get_data_type() != tdtype_t::f32) {
@@ -1388,8 +1384,7 @@ public:
     }
 
     comp.execute(src_in, dst);
-    if (dst.has_scale() && aalgorithm == algorithm::eltwise_relu
-        && dst.get_data_type() == tdtype_t::s8)
+    if (dst.has_scale() && aalgorithm == algorithm::eltwise_relu && dst.get_data_type() == tdtype_t::s8)
       dst.set_descriptor({dst.get_dims(), tdtype_t::u8, dst.get_internal_format()});
   }
 
@@ -1404,7 +1399,7 @@ public:
 struct eltwise_backward : public computation,
   public utils::computation_cache<eltwise_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &grady_desc, const tdesc_t &x_desc, float alpha = 0.0,
+    descriptor(const tdesc_t& grady_desc, const tdesc_t& x_desc, float alpha = 0.0,
         float beta = 0.0, algorithm alg_kind = algorithm::eltwise_relu)
       : hint_(x_desc, alg_kind) {
       mkldnn_eltwise_desc_t data;
@@ -1420,7 +1415,7 @@ struct eltwise_backward : public computation,
 
 public:
   template<typename ...Ts>
-  eltwise_backward(const tdesc_t &grady_desc, Ts &&...args) {
+  eltwise_backward(const tdesc_t& grady_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor);
   }
@@ -1457,19 +1452,18 @@ public:
 struct channel_shuffle_forward: public computation,
   public utils::computation_cache<channel_shuffle_forward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &src_desc, const int group_size, const int axis = 1,
+    descriptor(const tdesc_t& src_desc, const int group_size, const int axis = 1,
         prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_shuffle_desc_t data;
       error::wrap_c_api(mkldnn_shuffle_forward_desc_init(
-            &data, mkldnn::convert_to_c(aprop_kind),
-            src_desc.get_mkldnn_memory_desc_t(), axis, group_size),
+            &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), axis, group_size),
           "could not create a shuffle forward descriptor");
       create_primitive_desc(data);
     }
   };
 public:
   template<typename ...Ts>
-  channel_shuffle_forward(const tdesc_t &x_desc, Ts &&...args) {
+  channel_shuffle_forward(const tdesc_t& x_desc, Ts &&...args) {
     descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
@@ -1499,18 +1493,17 @@ public:
 struct channel_shuffle_backward : public computation,
   public utils::computation_cache<channel_shuffle_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &grady_desc, const int group_size, const int axis = 1) {
+    descriptor(const tdesc_t& grady_desc, const int group_size, const int axis = 1) {
       mkldnn_shuffle_desc_t data;
       error::wrap_c_api(mkldnn_shuffle_backward_desc_init(
-            &data, grady_desc.get_mkldnn_memory_desc_t(), static_cast<int>(axis),
-            static_cast<int>(group_size)),
+            &data, grady_desc.get_mkldnn_memory_desc_t(), static_cast<int>(axis), static_cast<int>(group_size)),
           "could not create a shuffle backward descriptor");
       create_primitive_desc(data);
     }
   };
 public:
   template<typename ...Ts>
-  channel_shuffle_backward(const tdesc_t &grady_desc, Ts &&...args) {
+  channel_shuffle_backward(const tdesc_t& grady_desc, Ts &&...args) {
     descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
     computation::init(backward_descriptor);
   }
@@ -1534,7 +1527,7 @@ public:
 struct concat : public computation,
   public utils::computation_cache<concat> {
   struct descriptor : public descriptor_group {
-    descriptor(int concat_dimension, const std::vector<tdesc_t> &inputs) {
+    descriptor(int concat_dimension, const std::vector<tdesc_t>& inputs) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
@@ -1543,25 +1536,24 @@ struct concat : public computation,
       reset(result);
     }
 
-    descriptor(int concat_dimension, const std::vector<tdesc_t> &inputs, const tdesc_t out_desc) {
+    descriptor(int concat_dimension, const std::vector<tdesc_t>& inputs, const tdesc_t out_desc) {
       mkldnn_primitive_desc_t result;
       auto c_api_inputs = tdesc_t::convert_to_c(inputs);
       error::wrap_c_api(mkldnn_concat_primitive_desc_create(
-            &result, out_desc.get_mkldnn_memory_desc_t(), (int)c_api_inputs.size(),
-            concat_dimension, &c_api_inputs[0]),
+            &result, out_desc.get_mkldnn_memory_desc_t(), (int)c_api_inputs.size(), concat_dimension, &c_api_inputs[0]),
           "could not create a concat primitive descriptor");
       reset(result);
     }
   };
 public:
 
-  concat(int concat_dimension, const std::vector<tdesc_t> &inputs) {
+  concat(int concat_dimension, const std::vector<tdesc_t>& inputs) {
     descriptor forward_descriptor (concat_dimension, inputs);
     computation::init(forward_descriptor, inputs);
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, std::vector<tensor>& inputs, int axis, tensor& output) {
+  static void compute(key_t& key, std::vector<tensor>& inputs, int axis, tensor& output) {
     std::vector<tdesc_t> tdesc;
     std::vector<tdtype_t> inputs_dt;
     std::vector<tdims_t> inputs_dims;
@@ -1691,7 +1683,7 @@ public:
 
 struct batch_norm_forward_base : public computation {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &src_desc, float epsilon, unsigned flags, prop_kind aprop_kind) {
+    descriptor(const tdesc_t& src_desc, float epsilon, unsigned flags, prop_kind aprop_kind) {
       mkldnn_batch_normalization_desc_t data;
       error::wrap_c_api(mkldnn_batch_normalization_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), epsilon, flags),
@@ -1699,7 +1691,7 @@ struct batch_norm_forward_base : public computation {
       create_primitive_desc(data);
     }
 
-    descriptor(const tdesc_t &src_desc, float epsilon, attr_t attr, unsigned flags, prop_kind aprop_kind) {
+    descriptor(const tdesc_t& src_desc, float epsilon, attr_t attr, unsigned flags, prop_kind aprop_kind) {
       mkldnn_batch_normalization_desc_t data;
       error::wrap_c_api(mkldnn_batch_normalization_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), src_desc.get_mkldnn_memory_desc_t(), epsilon, flags),
@@ -1737,7 +1729,7 @@ public:
   void execute(const tensor& src, const tensor& scale, const tensor& shift, const tensor& dst) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
+    std::memcpy((char*)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
     computation::execute(src, weights_, dst);
   }
 
@@ -1746,13 +1738,13 @@ public:
       const tensor& scale, const tensor& shift, const tensor& dst) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
+    std::memcpy((char*)weights_.get_data_handle() + scale.get_size(), shift.get_data_handle(), shift.get_size());
     computation::execute(src, mean, variance, weights_, dst);
   }
 
   // Inplace support?
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor& src, const tensor& scale,
+  static void compute(key_t& key, const tensor& src, const tensor& scale,
       const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tdtype_t::f32) {
@@ -1775,7 +1767,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor& src, const tensor& mean, const tensor& variance,
+  static void compute(key_t& key, const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& scale, const tensor& shift, tensor& dst, float epsilon) {
     auto src_in = src;
     if (src.get_data_type() != tdtype_t::f32) {
@@ -1818,9 +1810,9 @@ private:
 struct batch_normalization_forward_training : public batch_norm_forward_base,
   public utils::computation_cache<batch_normalization_forward_training> {
   float get_epsilon() const {
-    const mkldnn_batch_normalization_desc_t *p_desc;
+    const mkldnn_batch_normalization_desc_t* p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
-        static_cast<mkldnn_query_t>(query::batch_normalization_d), 0, (void *)&p_desc),
+        static_cast<mkldnn_query_t>(query::batch_normalization_d), 0, (void*)&p_desc),
       "could not query batch normalization descriptor");
     return p_desc->batch_norm_epsilon;
   }
@@ -1854,7 +1846,7 @@ public:
       const tensor& dst, const tensor& mean, const tensor& variance) {
     // Small amount of buffer, car is good
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
-    std::memcpy((char *)weights_.get_data_handle() + scale.get_size(),
+    std::memcpy((char*)weights_.get_data_handle() + scale.get_size(),
         shift.get_data_handle(), shift.get_size());
     computation::execute(src, weights_, dst, mean, variance);
   }
@@ -1908,7 +1900,7 @@ public:
     }
     if (running_var.get_descriptor() != comp.expected_statistic_descriptor()){
       running_var.reinit<alloc>(comp.expected_statistic_descriptor());
-      auto p = static_cast<float *>(running_var.get_data_handle());
+      auto p = static_cast<float*>(running_var.get_data_handle());
       std::fill_n(p, running_var.get_nelems(), 1);
     }
 
@@ -1925,7 +1917,7 @@ private:
 struct batch_normalization_backward : public computation,
   public utils::computation_cache<batch_normalization_backward> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &gradx_desc, const tdesc_t &x_desc,
+    descriptor(const tdesc_t& gradx_desc, const tdesc_t& x_desc,
         float epsilon, unsigned flags, prop_kind aprop_kind)
       : hint_(x_desc, epsilon, flags, prop_kind::forward_training) {
       mkldnn_batch_normalization_desc_t data;
@@ -1940,18 +1932,18 @@ struct batch_normalization_backward : public computation,
   };
 
   float get_epsilon() const {
-    const mkldnn_batch_normalization_desc_t *p_desc;
+    const mkldnn_batch_normalization_desc_t* p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
-        static_cast<mkldnn_query_t>(query::batch_normalization_d), 0, (void *)&p_desc),
+        static_cast<mkldnn_query_t>(query::batch_normalization_d), 0, (void*)&p_desc),
       "could not query batch normalization descriptor");
     return p_desc->batch_norm_epsilon;
   }
 
 public:
   prop_kind get_prop_kind() const {
-    const mkldnn_batch_normalization_desc_t *p_desc;
+    const mkldnn_batch_normalization_desc_t* p_desc;
     error::wrap_c_api(mkldnn_primitive_desc_query(get_mkldnn_primitive_desc_t(),
-        static_cast<mkldnn_query_t>(query::batch_normalization_d), 0, (void *)&p_desc),
+        static_cast<mkldnn_query_t>(query::batch_normalization_d), 0, (void*)&p_desc),
       "could not query batch normalization descriptor");
     return static_cast<prop_kind>(p_desc->prop_kind);
   }
@@ -1987,9 +1979,9 @@ public:
     grad_scale_shift_.reinit<alloc>(comp.expected_gradw_descriptor());
 
     computation::execute(src, mean, variance, grady, weights_, gradx, grad_scale_shift_);
-    std::memcpy(gradw.get_data_handle(), (char *)grad_scale_shift_.get_data_handle(), gradw.get_size());
+    std::memcpy(gradw.get_data_handle(), (char*)grad_scale_shift_.get_data_handle(), gradw.get_size());
     std::memcpy(grad_shift.get_data_handle(),
-        (char *)grad_scale_shift_.get_data_handle() + gradw.get_size(), grad_shift.get_size());
+        (char*)grad_scale_shift_.get_data_handle() + gradw.get_size(), grad_shift.get_size());
   }
 
   void execute(const tensor& src, const tensor& mean, const tensor& variance,
@@ -2037,8 +2029,8 @@ private:
 struct inner_product_forward: public computation,
   public utils::computation_cache<inner_product_forward> {
   struct descriptor: public descriptor_group {
-    descriptor(const tdesc_t &src_desc, const tdesc_t &weights_desc, const tdesc_t &bias_desc,
-        const tdesc_t &dst_desc, const attr_t& attr = attr_t(),
+    descriptor(const tdesc_t& src_desc, const tdesc_t& weights_desc, const tdesc_t& bias_desc,
+        const tdesc_t& dst_desc, const attr_t& attr = attr_t(),
         prop_kind aprop_kind = prop_kind::forward) {
       mkldnn_inner_product_desc_t data;
       mkldnn_memory_desc_t weights_data;
@@ -2051,8 +2043,7 @@ struct inner_product_forward: public computation,
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
       error::wrap_c_api(mkldnn_inner_product_forward_desc_init(
-            &data, mkldnn::convert_to_c(aprop_kind),
-            &src_data, &weights_data, &bias_data, &dst_data),
+            &data, mkldnn::convert_to_c(aprop_kind), &src_data, &weights_data, &bias_data, &dst_data),
           "could not create a inner product forward descriptor");
       create_primitive_desc_v2(data, attr);
     }
@@ -2060,13 +2051,13 @@ struct inner_product_forward: public computation,
 
  public:
   template<typename ...Ts>
-  inner_product_forward(const tdesc_t &src_desc, Ts&&... args) {
+  inner_product_forward(const tdesc_t& src_desc, Ts&&... args) {
     descriptor forward_descriptor(src_desc, std::forward<Ts>(args)...);
     computation::init(forward_descriptor);
   }
 
   template <class alloc, bool with_bias>
-  static void compute_impl(inner_product_forward &comp, const tensor& src,
+  static void compute_impl(inner_product_forward& comp, const tensor& src,
       const tensor& weights, const tensor& bias, tensor& dst) {
     auto src_in = comp.transform_input_cache<alloc>(0, src);
     auto weights_in = comp.transform_input_cache<alloc>(1, weights.as_weights());
@@ -2090,7 +2081,7 @@ struct inner_product_forward: public computation,
   }
 
   template <class alloc, bool with_bias, typename ...Ts>
-  static inline void compute_impl(key_t &key, const tensor& src, const tensor& weights, const tensor& bias,
+  static inline void compute_impl(key_t& key, const tensor& src, const tensor& weights, const tensor& bias,
       tensor& dst,  const scale_t& src_scales,
       const scale_t& weights_scales, const scale_t& dst_scales, const attr_t& attr,
       const lowp_kind alowp_kind, Ts&&... args) {
@@ -2204,7 +2195,7 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool with_bias=true>
-  static inline void compute(key_t &key, const tensor &src, const tensor& weights, const tensor& bias, tensor& dst,
+  static inline void compute(key_t& key, const tensor& src, const tensor& weights, const tensor& bias, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     auto weights_in = weights.as_weights();
@@ -2237,7 +2228,7 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator>
-  static void compute(key_t &key, const tensor &src, const tensor& weights, tensor& dst,
+  static void compute(key_t& key, const tensor& src, const tensor& weights, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     static tensor dummy_bias;
@@ -2245,7 +2236,7 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator, bool with_bias=true>
-  static inline void compute(const tensor &src, const tensor& weights, const tensor& bias, tensor& dst,
+  static inline void compute(const tensor& src, const tensor& weights, const tensor& bias, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     key_t key;
@@ -2253,7 +2244,7 @@ struct inner_product_forward: public computation,
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor &src, const tensor& weights, tensor& dst,
+  static void compute(const tensor& src, const tensor& weights, tensor& dst,
       const scale_t& src_scales = scale_t(), const scale_t& weights_scales = scale_t(), const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(), prop_kind aprop_kind = prop_kind::forward, const lowp_kind alowp_kind = LOWP_U8S8) {
     static tensor dummy_bias;
@@ -2287,7 +2278,7 @@ private:
 struct inner_product_backward_data: public computation,
   public utils::computation_cache<inner_product_backward_data> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &gradx_desc, const tdesc_t &weights_desc, const tdesc_t &grady_desc)
+    descriptor(const tdesc_t& gradx_desc, const tdesc_t& weights_desc, const tdesc_t& grady_desc)
       : hint_(gradx_desc, weights_desc, tdesc_t(), grady_desc) {
       auto diff_src_data = gradx_desc.format_any();
       auto weights_data = weights_desc.get_mkldnn_memory_desc_t();
@@ -2304,7 +2295,7 @@ struct inner_product_backward_data: public computation,
 
 public:
   template<typename ...Ts>
-  inner_product_backward_data(const tdesc_t &gradx_desc, Ts&&... args) {
+  inner_product_backward_data(const tdesc_t& gradx_desc, Ts&&... args) {
     descriptor backward_data_descriptor(gradx_desc, std::forward<Ts>(args)...);
     computation::init(backward_data_descriptor);
   }
@@ -2338,8 +2329,7 @@ public:
 struct inner_product_backward_weights : public computation,
   public utils::computation_cache<inner_product_backward_weights> {
   struct descriptor : public descriptor_group {
-    descriptor(const tdesc_t &x_desc, const tdesc_t &gradw_desc,
-        const tdesc_t &gradb_desc, const tdesc_t &grady_desc)
+    descriptor(const tdesc_t& x_desc, const tdesc_t& gradw_desc, const tdesc_t& gradb_desc, const tdesc_t& grady_desc)
       : hint_(x_desc, gradw_desc, gradb_desc, grady_desc) {
       mkldnn_inner_product_desc_t data;
       auto src_data = x_desc.format_any();
@@ -2358,7 +2348,7 @@ struct inner_product_backward_weights : public computation,
 
 public:
   template<typename ...Ts>
-  inner_product_backward_weights(const tdesc_t &x_desc, Ts&&... args) {
+  inner_product_backward_weights(const tdesc_t& x_desc, Ts&&... args) {
     descriptor backward_weights_descriptor(x_desc, std::forward<Ts>(args)...);
     computation::init(backward_weights_descriptor);
   }
@@ -2412,9 +2402,9 @@ public:
     std::unique_ptr<int[]> bernouli_nums(new int[size]);
     utils::bernoulli_generate(size, 1.0 - ratio, bernouli_nums.get());
 
-    const auto src_data = static_cast<T *>(src.get_data_handle());
-    const auto mask_data = static_cast<T *>(mask.get_data_handle());
-    const auto dst_data = static_cast<T *>(dst.get_data_handle());
+    const auto src_data = static_cast<T*>(src.get_data_handle());
+    const auto mask_data = static_cast<T*>(mask.get_data_handle());
+    const auto dst_data = static_cast<T*>(dst.get_data_handle());
 
     # pragma omp parallel for schedule(static)
     for (size_t i = 0; i < size; i++) {
@@ -2424,7 +2414,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor &src, float ratio,
+  static void compute(const tensor& src, float ratio,
       tensor& dst, tensor& mask) {
     switch(src.get_data_type()) {
     case tdtype_t::f32:
@@ -2456,9 +2446,9 @@ public:
     gx.reinit<alloc>(gy.get_descriptor());
 
     const auto size = mask.get_nelems();
-    const auto mask_data = static_cast<T *>(mask.get_data_handle());
-    const auto gy_data = static_cast<T *>(gy.get_data_handle());
-    const auto gx_data = static_cast<T *>(gx.get_data_handle());
+    const auto mask_data = static_cast<T*>(mask.get_data_handle());
+    const auto gy_data = static_cast<T*>(gy.get_data_handle());
+    const auto gx_data = static_cast<T*>(gx.get_data_handle());
 
     # pragma omp parallel for schedule(static)
     for (size_t i = 0; i < size; i++) {
@@ -2467,7 +2457,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  static void compute(const tensor &mask, const tensor &gy, tensor& gx) {
+  static void compute(const tensor& mask, const tensor& gy, tensor& gx) {
     switch(gy.get_data_type()) {
     case tdtype_t::f32:
       compute_impl<float, alloc>(mask, gy, gx);

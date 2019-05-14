@@ -1244,39 +1244,11 @@ public:
     feed_from(adims, adata_type, array);
   }
 
+  /// Convert the tensor to public format, and f32 data type by default
   template<class alloc = utils::allocator>
-  inline tensor to_public_format() const {
+  inline tensor to_public(void* array = nullptr, bool scale_out = true) const {
     tensor ret;
-    auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
-      ? engine::default_format(ndims()) : public_format_;
-
-    dims iohw_dims;
-    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-    if (public_format_ == format::iohw) {
-      iohw_dims = get_public_format_dims();
-      ret.init<alloc>({iohw_dims, get_data_type(), format::oihw});
-      iohw_definedby_blocked(ret);
-    } else {
-      ret.init<alloc>({get_dims(), get_data_type(), dst_format});
-    }
-
-    reorder::compute(*this, ret);
-    if (has_scale()) {
-      ret.set_scale(get_scale());
-    }
-
-    // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
-    if (!iohw_dims.empty()) {
-      ret.set_descriptor({iohw_dims, get_data_type(), dst_format});
-    }
-
-    return ret;
-  }
-
-  /// Convert the tensor to public format and data type
-  template<class alloc = utils::allocator>
-  inline tensor to_public(void* array = nullptr) const {
-    tensor ret;
+    auto dst_dtype = scale_out ? data_type::f32 : get_data_type();
     auto dst_format = ((public_format_ == format::format_undef) || (public_format_ == format::iohw))
       ? engine::default_format(ndims()) : public_format_;
 
@@ -1285,20 +1257,18 @@ public:
     if (public_format_ == format::iohw) {
       iohw_dims = get_public_format_dims();
       if (array == nullptr)
-        ret.init<alloc>({iohw_dims, data_type::f32, format::oihw});
+        ret.init<alloc>({iohw_dims, dst_dtype, format::oihw});
       else
-        ret.init({iohw_dims, data_type::f32, format::oihw}, array);
+        ret.init({iohw_dims, dst_dtype, format::oihw}, array);
       iohw_definedby_blocked(ret);
     } else {
       if (array == nullptr)
-        ret.init<alloc>({get_dims(), data_type::f32, dst_format});
+        ret.init<alloc>({get_dims(), dst_dtype, dst_format});
       else
-        ret.init({get_dims(), data_type::f32, dst_format}, array);
+        ret.init({get_dims(), dst_dtype, dst_format}, array);
     }
 
-    if (!has_scale()) {
-      reorder::compute(*this, ret);
-    } else {
+    if (scale_out && has_scale()) {
       auto& src_scale = get_scale();
       scale_t scales(src_scale.size());
       for (int i = 0 ; i < src_scale.size(); i++) {
@@ -1306,22 +1276,33 @@ public:
       }
       int mask = IDEEP_TENSOR_SCALE_MASK(src_scale.size(), is_grouped());
       reorder::compute(*this, ret, {mask, scales});
+    } else {
+      reorder::compute(*this, ret);
+      if (has_scale()) {
+        ret.set_scale(get_scale());
+      }
     }
 
     // TODO:it will be remove when deconvolution in mkl-dnn support iohw format.
     if (!iohw_dims.empty()) {
-      ret.set_descriptor({iohw_dims, data_type::f32, dst_format});
+      ret.set_descriptor({iohw_dims, dst_dtype, dst_format});
     }
 
     return ret;
   }
 
+  /// Convert the tensor to public format and keep original data type
+  template<class alloc = utils::allocator>
+  inline tensor to_public_format(void* array = nullptr) const {
+    return to_public<alloc>(array, false /* scale out */);
+  }
+
   //XXX: obseleted! DO NOT use it again.
   // Only for compatibility usage. Will be removed soon.
-  // Pls use to_public, instead.
+  // Pls use to_public|to_public_format|feed_from, instead.
   template<class alloc = utils::allocator>
   inline tensor reorder_to(void* array = nullptr) const {
-    return to_public<alloc>(array);
+    return to_public<alloc>(array, true /* scale out */);
   }
 
   bool is_nchw_channel_blocking() const {

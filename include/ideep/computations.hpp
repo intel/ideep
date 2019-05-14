@@ -721,8 +721,8 @@ public:
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
-    auto grady_in = comp.transform_input_uncache<alloc>(0, grady);
-    auto weights_in = comp.transform_input_uncache<alloc>(1, weights.as_weights());
+    auto grady_in = comp.transform_input_cache<alloc>(0, grady);
+    auto weights_in = comp.transform_input_cache<alloc>(1, weights.as_weights());
     gradx.reinit<alloc>(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -791,8 +791,8 @@ public:
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
-    auto src_in = comp.transform_input_uncache<alloc>(0, src);
-    auto grady_in = comp.transform_input_uncache<alloc>(1, grady);
+    auto src_in = comp.transform_input_cache<alloc>(0, src);
+    auto grady_in = comp.transform_input_cache<alloc>(1, grady);
     gradw.reinit<alloc>(comp.expected_gradw_descriptor());
 
     if (with_gradb) {
@@ -989,8 +989,8 @@ struct convolution_transpose_backward_data : public computation,
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         is_iohw ? weight_desc : weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
-    auto grady_in = comp.transform_input_uncache<alloc>(0, grady);
-    auto weights_in = comp.transform_input_uncache<alloc>(1, weights);
+    auto grady_in = comp.transform_input_cache<alloc>(0, grady);
+    auto weights_in = comp.transform_input_cache<alloc>(1, weights);
 
     gradx.reinit<alloc>(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
@@ -1057,8 +1057,8 @@ struct convolution_transpose_backward_weights : public computation,
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
-    auto src_in = comp.transform_input_uncache<alloc>(0, src);
-    auto grady_in = comp.transform_input_uncache<alloc>(1, grady);
+    auto src_in = comp.transform_input_cache<alloc>(0, src);
+    auto grady_in = comp.transform_input_cache<alloc>(1, grady);
     gradw.reinit<alloc>(comp.expected_gradw_descriptor());
 
     if (with_gradb) {
@@ -1517,7 +1517,7 @@ public:
         grady.get_internal_format(), group_size, axis);
     fetch_or_create_m(comp, key, grady.get_descriptor(), group_size, axis);
 
-    auto grady_in = comp.transform_input_uncache<alloc>(0, grady);
+    auto grady_in = comp.transform_input_cache<alloc>(0, grady);
     if (gradx != grady)
       gradx.reinit<alloc>(comp.expected_gradx_descriptor());
 
@@ -1999,7 +1999,7 @@ public:
     utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), epsilon);
 
-    auto grady_in = comp.transform_input_uncache<alloc>(3, grady);
+    auto grady_in = comp.transform_input_cache<alloc>(3, grady);
     gradx.reinit<alloc>(comp.expected_gradx_descriptor());
     gradw.reinit<alloc>(comp.expected_gradw_descriptor());
 
@@ -2014,7 +2014,7 @@ public:
     utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), epsilon);
 
-    auto grady_in = comp.transform_input_uncache<alloc>(3, grady);
+    auto grady_in = comp.transform_input_cache<alloc>(3, grady);
     gradx.reinit<alloc>(comp.expected_gradx_descriptor());
     grad_scale.reinit<alloc>(mean.get_descriptor());
     grad_shift.reinit<alloc>(mean.get_descriptor());
@@ -2320,8 +2320,8 @@ public:
     utils::create_key(key, grady.get_data_type(), grady.get_dims(), weights_in.get_dims(), gradx_dims);
     fetch_or_create_m(comp, key, gradx_desc, weights_in.get_descriptor(), grady.get_descriptor());
 
-    auto grady_in = comp.transform_input_uncache<alloc>(0, grady);
-    weights_in = comp.transform_input_uncache<alloc>(1, weights_in);
+    auto grady_in = comp.transform_input_cache<alloc>(0, grady);
+    weights_in = comp.transform_input_cache<alloc>(1, weights_in);
     gradx.reinit<alloc>(comp.expected_gradx_descriptor());
     comp.execute(grady_in, weights_in, gradx);
   }
@@ -2370,8 +2370,8 @@ public:
     utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, with_gradb, grady.get_dims());
     fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, gradb_desc, grady.get_descriptor());
 
-    auto x_in = comp.transform_input_uncache<alloc>(0, x);
-    auto grady_in = comp.transform_input_uncache<alloc>(1, grady);
+    auto x_in = comp.transform_input_cache<alloc>(0, x);
+    auto grady_in = comp.transform_input_cache<alloc>(1, grady);
     gradw.reinit<alloc>(comp.expected_gradw_descriptor());
 
     if (with_gradb) {

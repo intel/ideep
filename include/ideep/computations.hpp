@@ -2461,7 +2461,7 @@ public:
   eltwise_binary() = default;
 
   template<class alloc = utils::allocator>
-  static void compute(eltwise_binary_op op, tensor &inputA, tensor &inputB, tensor &outputC) {
+  static void compute(eltwise_binary_op op, tensor& inputA, tensor& inputB, tensor& outputC) {
     IDEEP_ENFORCE(inputA.ndims() >= inputB.ndims(), "Incorrect dims");
     outputC.reinit<alloc>(inputA.get_descriptor());
     if (inputA.get_dims() == inputB.get_dims()) {

@@ -873,8 +873,8 @@ struct convolution_transpose_forward : public computation,
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
         bias.get_descriptor(), tdesc_t{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
 
-    auto src_in = comp.transform_input_uncache<alloc>(0, src);
-    auto weights_in = comp.transform_input_uncache<alloc>(1, weights.as_weights());
+    auto src_in = comp.transform_input_cache<alloc>(0, src);
+    auto weights_in = comp.transform_input_cache<alloc>(1, weights.as_weights());
 
     dst.reinit<alloc>(comp.expected_dst_descriptor());
     if (with_bias) {
@@ -1143,7 +1143,7 @@ public:
     fetch_or_create_m(comp, key, src_desc, local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
-    auto src_in = comp.transform_input_uncache<alloc>(0, src, {0, src_scales});
+    auto src_in = comp.transform_input_cache<alloc>(0, src, {0, src_scales});
 
     if (dst != src) {
       dst.reinit<alloc>(comp.expected_dst_descriptor());
@@ -1481,7 +1481,7 @@ public:
 
     fetch_or_create_m(comp, key, src.get_descriptor(), group_size, axis, aprop_kind);
 
-    auto src_in = comp.transform_input_uncache<alloc>(0, src);
+    auto src_in = comp.transform_input_cache<alloc>(0, src);
     if (dst != src) {
       dst.reinit<alloc>(comp.expected_dst_descriptor());
     }

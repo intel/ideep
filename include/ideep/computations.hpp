@@ -2494,8 +2494,7 @@ public:
   template<class alloc = utils::allocator>
   static void compute(eltwise_binary_op op, tensor &inputA, tensor &inputB, tensor &outputC) {
     IDEEP_ENFORCE(inputA.ndims() >= inputB.ndims(), "Incorrect dims");
-    IDEEP_ENFORCE(inputA.get_descriptor() == outputC.get_descriptor(), "Incorrect tensor descriptor");
-
+    outputC.reinit<alloc>(inputA.get_descriptor());
     if (inputA.get_dims() == inputB.get_dims()) {
       auto* inputB_data = inputB.get_data_handle();
       tensor scratch_tensor;
@@ -2504,17 +2503,26 @@ public:
         treorder_t::compute(inputB, scratch_tensor);
         inputB_data = scratch_tensor.get_data_handle();
       }
+      float* X = static_cast<float*>(inputA.get_data_handle());
+      float* Y = static_cast<float*>(inputB.get_data_handle());
+      float* Z = static_cast<float*>(outputC.get_data_handle());
+      unsigned N = static_cast<unsigned>(inputA.get_nelems());
       switch (op) {
       case ELTWISE_ADD:
 #ifdef __AVX2__
-        FM_AVX2_PREF::add<float>(
-            static_cast<float*>(outputC.get_data_handle()),
-            static_cast<float*>(inputA.get_data_handle()),
-            static_cast<float*>(inputB_data),
-            static_cast<unsigned>(inputA.get_nelems()));
+        FM_AVX2_PREF::add<float>(Z, X, Y, N);
         return;
 #endif
       case ELTWISE_MUL:
+#ifdef __AVX2__
+        FM_AVX2_PREF::mul<float>(Z, X, Y, N);
+#else
+        #pragma omp parallel for schedule(static)
+          for (auto n = 0; n < N; n++) {
+            Z[n] = X[n] * Y[n];
+          }
+#endif
+        return;
       case ELTWISE_DIV:
       default:
         throw error(mkldnn_invalid_arguments, "Not implemented!");

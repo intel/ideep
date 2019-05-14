@@ -559,6 +559,8 @@ public:
 
   //XXX: obseleted! DO NOT use it again.
   // Only for compatibility usage. Will be removed soon.
+  // Because internal buffer will be allocated by default alloc.
+  // No way to pass a user alloc here.
   param(const descriptor& adesc) {
     init(adesc);
   }
@@ -1019,6 +1021,8 @@ public:
 
   //XXX: obseleted! DO NOT use it again.
   // Only for compatibility usage. Will be removed soon.
+  // Because internal buffer will be allocated by default alloc.
+  // No way to pass a user alloc here.
   tensor(const descriptor& major) : param(major) {}
 
   tensor(const descriptor& major, void* h_major) : param(major, h_major) {}

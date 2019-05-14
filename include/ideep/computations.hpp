@@ -42,7 +42,7 @@ public:
     output.reinit<alloc>(input.get_descriptor());
 
     key_t key;
-    check_or_create_k(key, input.get_data_type(), input.get_dims(), input.get_internal_format());
+    check_or_create_k(key, input);
     fetch_or_create_m(comp, key, input_desc);
 
     comp.reorder_(input, output);
@@ -69,8 +69,7 @@ public:
     IDEEP_ENFORCE(axis < input.ndims(), "invalid axis in split");
 
     key_t key;
-    check_or_create_k(key, input.get_data_type(), input.get_dims(), input.get_internal_format(),
-        axis_info, axis, add_axis);
+    check_or_create_k(key, input, axis_info, axis, add_axis);
     fetch_or_create_m(comp, key, axis_info.size());
 
     for (unsigned i = 0; i < axis_info.size(); ++i) {
@@ -149,6 +148,8 @@ public:
 
   template<class alloc = utils::allocator>
   tensor transform_input_cache(int index, const tensor& input, attr_t attr = attr_t()) {
+    // NOTE: To cache the reorder for specific computation, the input tensor and attr must
+    // be recorded in the computation key with all details.
     IDEEP_ENFORCE(index < inputs_num_, "Invalid input index");
     if (ins_buf_[index] == nullptr) {
       return input;
@@ -474,10 +475,8 @@ struct convolution_forward: public computation,
       dst.get_internal_format() : engine::default_format(dst_dims.size());
     tdesc_t dst_desc_in(dst_dims, dst_data_type, dst_format);
 
-    check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
-        weights.get_data_type(), weights.get_dims(), weights.get_internal_format(), with_bias,
-        strides, dilates, padding_l, padding_r, op_attr, src_scales, dst_scales, args...);
-
+    check_or_create_k(key, src, weights, with_bias, strides, dilates, padding_l, padding_r,
+        op_attr, src_scales, dst_scales, args...);
     fetch_or_create_m(comp, key, src_desc, weights_desc, bias_desc, dst_desc_in, strides, dilates,
             padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
 
@@ -715,9 +714,7 @@ public:
       const tdims_t& gradx_dims, tensor& gradx, Ts&&... args) {
     tdesc_t result_desc(gradx_dims, grady.get_data_type());
     key_t key;
-    utils::create_key(key, grady.get_data_type(), grady.get_dims(),
-        weights.get_dims(), gradx_dims, args...);
-
+    check_or_create_k(key, grady, weights, gradx_dims, args...);
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
@@ -785,9 +782,7 @@ public:
     }
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), with_gradb,
-        grady.get_dims(), gradw_dims, grady.get_dim(1), args...);
-
+    check_or_create_k(key, src, with_gradb, grady, gradw_dims, args...);
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
@@ -868,9 +863,7 @@ struct convolution_transpose_forward : public computation,
   static void compute_impl(const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& dst_dims, tensor& dst, Ts&&... args) {
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), weights.get_dims(), with_bias,
-        dst_dims, args...);
-
+    check_or_create_k(key, src, weights, with_bias, dst_dims, args...);
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
         bias.get_descriptor(), tdesc_t{dst_dims, src.get_data_type()}, std::forward<Ts>(args)...);
 
@@ -983,9 +976,7 @@ struct convolution_transpose_backward_data : public computation,
     }
 
     key_t key;
-    utils::create_key(key, grady.get_data_type(), grady.get_dims(),
-        is_iohw ? oihw_dims : weights.get_dims(), gradx_dims, args...);
-
+    check_or_create_k(key, grady, weights, oihw_dims, gradx_dims, args...);
     fetch_or_create_m(comp, key, grady.get_descriptor(),
         is_iohw ? weight_desc : weights.get_descriptor(), result_desc, std::forward<Ts>(args)...);
 
@@ -1052,8 +1043,7 @@ struct convolution_transpose_backward_weights : public computation,
     }
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), with_gradb, grady.get_dims(),
-        gradw_dims, grady.get_dim(1), args...);
+    check_or_create_k(key, src, with_gradb, grady, gradw_dims, args...);
     fetch_or_create_m(comp, key, src.get_descriptor(), grady.get_descriptor(), gradw_desc,
         gradb_desc, std::forward<Ts>(args)...);
 
@@ -1138,9 +1128,7 @@ public:
       IDEEP_ENFORCE(src.get_data_type() == tdtype_t::f32, "Incorrect src data type");
     }
 
-    check_or_create_k(key, src_desc.get_data_type(), src_desc.get_dims(),
-        src_desc.get_internal_format(), local_size, alpha, beta, k, aalgorithm, aprop_kind);
-
+    check_or_create_k(key, src, local_size, alpha, beta, k, aalgorithm, aprop_kind);
     fetch_or_create_m(comp, key, src_desc, local_size, alpha, beta, k, aalgorithm, aprop_kind);
 
     bool with_workspace = aprop_kind == prop_kind::forward_training;
@@ -1201,9 +1189,7 @@ public:
       int local_size, float alpha, float beta, float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels) {
     key_t key;
-    utils::create_key(key, x.get_data_type(), x.get_dims(),
-        x.get_internal_format(), local_size, alpha, beta, k, aalgorithm);
-
+    check_or_create_k(key, x, local_size, alpha, beta, k, aalgorithm);
     fetch_or_create_m(comp, key, x.get_descriptor(),
         grady.get_descriptor(), local_size, alpha, beta, k, aalgorithm);
 
@@ -1252,10 +1238,9 @@ public:
   static void compute(key_t& key, const tensor& src, const tdims_t& dst_dims, tensor& dst,
       const tdims_t& strides, const tdims_t& kernel, const tdims_t& padding_l, const tdims_t& padding_r,
       algorithm aalgorithm, prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
-    check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
-        dst_dims, strides, kernel, padding_l, padding_r, aalgorithm, aprop_kind, apadding_kind);
-
     tdesc_t dst_desc(dst_dims, src.get_data_type());
+    check_or_create_k(key, src, dst_dims, strides, kernel, padding_l, padding_r, aalgorithm,
+        aprop_kind, apadding_kind);
     fetch_or_create_m(comp, key, src.get_descriptor(), dst_desc, strides, kernel, padding_l,
         padding_r, aalgorithm, aprop_kind, apadding_kind);
 
@@ -1328,9 +1313,8 @@ public:
     }
 
     key_t key;
-    utils::create_key(key, grady_in.get_data_type(), grady_in.get_dims(), grady_in.get_internal_format(),
-        x.get_dims(), strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
-
+    check_or_create_k(key, grady_in, x.get_dims(), strides, kernel, padding_l, padding_r,
+        aalgorithm, apadding_kind);
     fetch_or_create_m(comp, key, x.get_descriptor(), grady_in.get_descriptor(),
         strides, kernel, padding_l, padding_r, aalgorithm, apadding_kind);
 
@@ -1373,9 +1357,7 @@ public:
       treorder_t::compute(src, src_in, {0, scale});
     }
 
-    check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(), src_in.get_internal_format(),
-        alpha, beta, aalgorithm, aprop_kind);
-
+    check_or_create_k(key, src_in, alpha, beta, aalgorithm, aprop_kind);
     fetch_or_create_m(comp, key, src_in.get_descriptor(),
         alpha, beta, aalgorithm, aprop_kind);
 
@@ -1437,9 +1419,7 @@ public:
     }
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
-        alpha, beta, aalgorithm);
-
+    check_or_create_k(key, src, alpha, beta, aalgorithm);
     fetch_or_create_m(comp, key, grady_in.get_descriptor(),
         src.get_descriptor(), alpha, beta, aalgorithm);
 
@@ -1477,9 +1457,7 @@ public:
     auto group_size = src.get_dim(axis) / group;
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(),
-        src.get_internal_format(), group_size, axis, aprop_kind);
-
+    check_or_create_k(key, src, group_size, axis, aprop_kind);
     fetch_or_create_m(comp, key, src.get_descriptor(), group_size, axis, aprop_kind);
 
     auto src_in = comp.transform_input_cache<alloc>(0, src);
@@ -1513,8 +1491,7 @@ public:
   static void compute(const tensor& grady, tensor& gradx, const int group, const int axis = 1) {
     auto group_size = grady.get_dim(axis) / group;
     key_t key;
-    utils::create_key(key, grady.get_data_type(), grady.get_dims(),
-        grady.get_internal_format(), group_size, axis);
+    check_or_create_k(key, grady, group_size, axis);
     fetch_or_create_m(comp, key, grady.get_descriptor(), group_size, axis);
 
     auto grady_in = comp.transform_input_cache<alloc>(0, grady);
@@ -1756,9 +1733,7 @@ public:
       treorder_t::compute(src, src_in, {0, src_scales});
     }
 
-    check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
-          src_in.get_internal_format(), epsilon, 3);
-
+    check_or_create_k(key, src_in, epsilon, 3);
     fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon,
         batch_normalization_flag::use_scale_shift);
 
@@ -1779,9 +1754,7 @@ public:
       treorder_t::compute(src, src_in, {0, src_scales});
     }
 
-    check_or_create_k(key, src_in.get_data_type(), src_in.get_dims(),
-        src_in.get_internal_format(), epsilon, 5);
-
+    check_or_create_k(key, src_in, epsilon, 5);
     fetch_or_create_m(comp, key, src_in.get_descriptor(), epsilon);
 
     if (dst != src) {
@@ -1869,8 +1842,7 @@ public:
   static void compute(const tensor& src, const tensor& scale, const tensor& shift,
       tensor& dst, tensor& mean, tensor& variance, float momentum, float epsilon) {
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
-
+    check_or_create_k(key, src, epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
     comp.eps = epsilon;
@@ -1886,8 +1858,7 @@ public:
   static void compute(const tensor& src, const tensor& scale, const tensor& shift, tensor& dst,
       tensor& mean, tensor& variance, tensor& running_mean, tensor& running_var, float momentum, float epsilon) {
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
-
+    check_or_create_k(key, src, epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(),
         scale.get_descriptor(), shift.get_descriptor(), momentum, epsilon);
 
@@ -1975,7 +1946,7 @@ public:
     std::memcpy(weights_.get_data_handle(), scale.get_data_handle(), scale.get_size());
 
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), get_epsilon());
+    check_or_create_k(key, src, get_epsilon());
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), get_epsilon());
     grad_scale_shift_.reinit<alloc>(comp.expected_gradw_descriptor());
 
@@ -1996,7 +1967,7 @@ public:
   static void compute(const tensor& src, const tensor& mean, const tensor& variance,
       const tensor& grady, const tensor& scale, tensor& gradx, tensor& gradw, float epsilon) {
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
+    check_or_create_k(key, src, grady, epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), epsilon);
 
     auto grady_in = comp.transform_input_cache<alloc>(3, grady);
@@ -2011,7 +1982,7 @@ public:
       const tensor& variance, const tensor& grady, const tensor& scale,
       tensor& gradx, tensor& grad_scale, tensor& grad_shift, float epsilon) {
     key_t key;
-    utils::create_key(key, src.get_data_type(), src.get_dims(), src.get_internal_format(), epsilon);
+    check_or_create_k(key, src, grady, epsilon);
     fetch_or_create_m(comp, key, src.get_descriptor(), src.get_descriptor(), epsilon);
 
     auto grady_in = comp.transform_input_cache<alloc>(3, grady);
@@ -2159,11 +2130,9 @@ struct inner_product_forward: public computation,
     auto dst_format = engine::default_format(dst_dims.size());
     tdesc_t dst_desc_in(dst_dims, dst_data_type, dst_format);
 
-    check_or_create_k(key, src.get_data_type(), src.get_dims(), src.get_internal_format(),
-        weights.get_data_type(), weights.get_dims(), weights.get_internal_format(), with_bias,
-        op_attr, src_scales, dst_scales, args...);
-
-    fetch_or_create_m(comp, key, src_desc, weights_desc, bias_desc, dst_desc_in, op_attr, std::forward<Ts>(args)...);
+    check_or_create_k(key, src, weights, with_bias, op_attr, src_scales, dst_scales, args...);
+    fetch_or_create_m(comp, key, src_desc, weights_desc, bias_desc, dst_desc_in, op_attr,
+        std::forward<Ts>(args)...);
 
     auto src_in = comp.transform_input_cache<alloc>(0, src, src_attr);
     auto weights_in = comp.transform_input_cache<alloc>(1, weights.as_weights(), weights_attr);
@@ -2317,7 +2286,7 @@ public:
     tdesc_t gradx_desc(gradx_dims, grady.get_data_type());
 
     key_t key;
-    utils::create_key(key, grady.get_data_type(), grady.get_dims(), weights_in.get_dims(), gradx_dims);
+    check_or_create_k(key, grady, weights_in, gradx_dims);
     fetch_or_create_m(comp, key, gradx_desc, weights_in.get_descriptor(), grady.get_descriptor());
 
     auto grady_in = comp.transform_input_cache<alloc>(0, grady);
@@ -2367,7 +2336,7 @@ public:
     }
 
     key_t key;
-    utils::create_key(key, x.get_data_type(), x.get_dims(), gradw_dims, with_gradb, grady.get_dims());
+    check_or_create_k(key, x, gradw_dims, with_gradb, grady);
     fetch_or_create_m(comp, key, x.get_descriptor(), gradw_desc, gradb_desc, grady.get_descriptor());
 
     auto x_in = comp.transform_input_cache<alloc>(0, x);

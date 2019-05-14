@@ -6,6 +6,7 @@
 #include "lru_cache.hpp"
 #include "utils.hpp"
 #include "primitives.hpp"
+#include "fast_math.hpp"
 
 namespace ideep {
 
@@ -2476,6 +2477,50 @@ public:
       break;
     default:
       throw error(mkldnn_invalid_arguments, "Unsupported mkldnn data type!");
+    }
+  }
+};
+
+struct eltwise_binary {
+public:
+  enum eltwise_binary_op {
+    ELTWISE_ADD,
+    ELTWISE_MUL,
+    ELTWISE_DIV,
+  };
+
+  eltwise_binary() = default;
+
+  template<class alloc = utils::allocator>
+  static void compute(eltwise_binary_op op, tensor &inputA, tensor &inputB, tensor &outputC) {
+    IDEEP_ENFORCE(inputA.ndims() >= inputB.ndims(), "Incorrect dims");
+    IDEEP_ENFORCE(inputA.get_descriptor() == outputC.get_descriptor(), "Incorrect tensor descriptor");
+
+    if (inputA.get_dims() == inputB.get_dims()) {
+      auto* inputB_data = inputB.get_data_handle();
+      tensor scratch_tensor;
+      if (inputA.get_internal_format() != inputB.get_internal_format()) {
+        scratch_tensor.init<alloc>(inputA.get_descriptor());
+        treorder_t::compute(inputB, scratch_tensor);
+        inputB_data = scratch_tensor.get_data_handle();
+      }
+      switch (op) {
+      case ELTWISE_ADD:
+#ifdef __AVX2__
+        FM_AVX2_PREF::add<float>(
+            static_cast<float*>(outputC.get_data_handle()),
+            static_cast<float*>(inputA.get_data_handle()),
+            static_cast<float*>(inputB_data),
+            static_cast<unsigned>(inputA.get_nelems()));
+        return;
+#endif
+      case ELTWISE_MUL:
+      case ELTWISE_DIV:
+      default:
+        throw error(mkldnn_invalid_arguments, "Not implemented!");
+      }
+    } else {
+      throw error(mkldnn_invalid_arguments, "Not implemented!");
     }
   }
 };

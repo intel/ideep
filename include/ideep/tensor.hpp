@@ -557,14 +557,6 @@ public:
     init(descriptor(), nullptr);
   }
 
-  //XXX: obseleted! DO NOT use it again.
-  // Only for compatibility usage. Will be removed soon.
-  // Because internal buffer will be allocated by default alloc.
-  // No way to pass a user alloc here.
-  param(const descriptor& adesc) {
-    init(adesc);
-  }
-
   /// Constructs a param and allocating internal buffer.
   param(const descriptor& adesc, void* ahandle) {
     init(adesc, ahandle);
@@ -1019,12 +1011,6 @@ public:
 
   tensor() : param() {}
 
-  //XXX: obseleted! DO NOT use it again.
-  // Only for compatibility usage. Will be removed soon.
-  // Because internal buffer will be allocated by default alloc.
-  // No way to pass a user alloc here.
-  tensor(const descriptor& major) : param(major) {}
-
   tensor(const descriptor& major, void* h_major) : param(major, h_major) {}
 
   tensor(const descriptor& major, void* h_major, const scale_t& scale)
@@ -1229,23 +1215,9 @@ public:
     reorder::compute(src_in, *this, {mask, scales});
   }
 
-  //XXX: obseleted! DO NOT use it again.
-  // Only for compatibility usage. Will be removed soon.
-  // Pls use feed_from, instead.
-  inline void reorder_from(const tensor& src) {
-    feed_from(src);
-  }
-
   /// Fill the tensor with parameters
   inline void feed_from(const dims& adims, data_type adata_type, const void* array) {
     feed_from({{adims, adata_type, engine::default_format(adims.size())}, const_cast<void*>(array)});
-  }
-
-  //XXX: obseleted! DO NOT use it again.
-  // Only for compatibility usage. Will be removed soon.
-  // Pls use feed_from, instead.
-  inline void reorder_from(const dims& adims, data_type adata_type, const void* array) {
-    feed_from(adims, adata_type, array);
   }
 
   /// Convert the tensor to public format, and f32 data type by default
@@ -1299,14 +1271,6 @@ public:
   template<class alloc = utils::allocator>
   inline tensor to_public_format(void* array = nullptr) const {
     return to_public<alloc>(array, false /* scale out */);
-  }
-
-  //XXX: obseleted! DO NOT use it again.
-  // Only for compatibility usage. Will be removed soon.
-  // Pls use to_public|to_public_format|feed_from, instead.
-  template<class alloc = utils::allocator>
-  inline tensor reorder_to(void* array = nullptr) const {
-    return to_public<alloc>(array, true /* scale out */);
   }
 
   bool is_nchw_channel_blocking() const {

@@ -16,15 +16,6 @@ using tdtype_t = tensor::data_type;
 using treorder_t = tensor::reorder;
 using attr_t = descriptor_group::attr_t;
 
-// FIXME: This is a temp API only to fix compatibility issue.
-// Will be removed after corrected the invocation in pytorch
-struct reorder {
-public:
-  static void compute(const tensor& input, tensor& output, const attr_t& attr = attr_t()) {
-    treorder_t::compute(input, output, attr);
-  }
-};
-
 struct direct_copy : public utils::computation_cache<direct_copy> {
 public:
   direct_copy(tdesc_t desc) {
@@ -585,8 +576,6 @@ struct convolution_forward: public computation,
         aalgorithm, aprop_kind, appading_kind, alowp_kind);
   }
 
-  // FIXME: This is a temp API only to fix compatibility issue.
-  // Will be removed after corrected the invocation in pytorch
   template<class alloc = utils::allocator, bool with_bias = true>
   static void compute(const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,
@@ -600,8 +589,6 @@ struct convolution_forward: public computation,
         aalgorithm, aprop_kind, appading_kind);
   }
 
-  // FIXME: This is a temp API only to fix compatibility issue.
-  // Will be removed after corrected the invocation in pytorch
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& weights,
       const tdims_t& result_dims, tensor& dst, const tdims_t& strides, const tdims_t& dilates,

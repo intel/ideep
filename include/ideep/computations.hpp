@@ -820,19 +820,22 @@ struct convolution_transpose_forward : public computation,
       public utils::computation_cache<convolution_transpose_forward> {
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t& src_desc, const tdesc_t& weights_desc, const tdesc_t& bias_desc,
-        const tdesc_t& dst_desc, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-        const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
-        prop_kind aprop_kind = prop_kind::forward, padding_kind apadding_kind = padding_kind::zero) {
+        const tdesc_t& dst_desc, const tdims_t& strides, const tdims_t& dilates,
+        const tdims_t& padding_l, const tdims_t& padding_r, const attr_t& attr = attr_t(),
+        algorithm aalgorithm = algorithm::deconvolution_direct,
+        prop_kind aprop_kind = prop_kind::forward,
+        padding_kind apadding_kind = padding_kind::zero) {
       utils::validate_dims(strides, padding_l, padding_r);
       mkldnn_deconvolution_desc_t data;
       auto src_data = src_desc.format_any();
       auto weights_data = weights_desc.format_any();
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
-      error::wrap_c_api(mkldnn_deconvolution_forward_desc_init(
-              &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
-              &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &padding_l[0],
-              &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
+      auto dilates_in = utils::get_compatible_dilates(dilates);
+      error::wrap_c_api(
+          mkldnn_dilated_deconvolution_forward_desc_init(&data, mkldnn::convert_to_c(aprop_kind),
+              convert_to_c(aalgorithm), &src_data, &weights_data, &bias_data, &dst_data, &strides[0],
+              &dilates_in[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution forward descriptor");
       create_primitive_desc_v2(data, attr);
     }
@@ -868,25 +871,25 @@ struct convolution_transpose_forward : public computation,
   template<class alloc = utils::allocator, bool with_bias = true>
   static void compute(const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
       tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-      const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
+      const tdims_t& dilates = {1, 1}, const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
-    compute_impl<alloc, with_bias>(src, weights, bias, result_dims, dst, strides, padding_l, padding_r,
+    compute_impl<alloc, with_bias>(src, weights, bias, result_dims, dst, strides, dilates, padding_l, padding_r,
         attr, aalgorithm, aprop_kind, appading_kind);
   }
 
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& weights, const tdims_t& result_dims,
       tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-      const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
+      const tdims_t& dilates = {1, 1}, const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
     static tensor dummy_bias;
     compute<alloc, false>(src, weights, dummy_bias,  result_dims, dst, strides, padding_l, padding_r,
-        attr, aalgorithm, aprop_kind, appading_kind);
+        dilates, attr, aalgorithm, aprop_kind, appading_kind);
   }
 
   static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims,
-      tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1},
-      const tdims_t& padding_l = {0, 0}, const tdims_t& padding_r = {0, 0}, int group = 1) {
+      tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1}, const tdims_t& padding_l = {0, 0},
+      const tdims_t& padding_r = {0, 0}, int group = 1, const tdims_t& dilates = {1, 1}) {
     auto dims_in = weights_dims;
     if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
       tensor::group_dims(dims_in, group);
@@ -901,9 +904,8 @@ struct convolution_transpose_forward : public computation,
     auto kw = dims_in[ndims - 1];
     auto h = 8 * kh;
     auto w = 8 * kw;
-    auto oh = (h - 1) * strides[0] + kh - padding_l[0] - padding_r[0];
-    auto ow = (w - 1) * strides[1] + kw - padding_l[1] - padding_r[1];
-
+    auto oh = (h - 1) * strides[0] + (1 + (kh - 1) * (dilates[0])) - padding_l[0] - padding_r[0];
+    auto ow = (w - 1) * strides[1] + (1 + (kw - 1) * (dilates[1])) - padding_l[1] - padding_r[1];
     tdims_t x_dims = {1, ic, h, w};
     tdims_t y_dims = {1, oc, oh, ow};
     auto x_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::u8;
@@ -914,7 +916,7 @@ struct convolution_transpose_forward : public computation,
     tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
 
     convolution_transpose_forward comp(x_desc, weights_desc, tdesc_t(), y_desc,
-        strides, padding_l, padding_r);
+        strides, dilates, padding_l, padding_r);
     return comp.dup_descriptor_of(query::weights_pd);
   }
 };
@@ -923,17 +925,18 @@ struct convolution_transpose_backward_data : public computation,
       public utils::computation_cache<convolution_transpose_backward_data> {
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t& grady_desc, const tdesc_t& weights_desc, const tdesc_t& gradx_desc,
-        const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
+        const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l, const tdims_t& padding_r,
         algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
-        : hint_(gradx_desc, weights_desc, tdesc_t(), grady_desc, strides, padding_l, padding_r) {
+        : hint_(gradx_desc, weights_desc, tdesc_t(), grady_desc, strides, dilates, padding_l, padding_r) {
       utils::validate_dims(strides, padding_l, padding_r);
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
+      auto dilates_in = utils::get_compatible_dilates(dilates);
       mkldnn_deconvolution_desc_t data;
-      error::wrap_c_api(mkldnn_deconvolution_backward_data_desc_init(
-              &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any,
-              &strides[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
+      error::wrap_c_api(mkldnn_dilated_deconvolution_backward_data_desc_init(
+              &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any, &strides[0],
+              &dilates_in[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward data descriptor");
       create_primitive_desc(data, hint_.get());
     }
@@ -977,9 +980,10 @@ struct convolution_transpose_backward_data : public computation,
   template <class alloc = utils::allocator>
   static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims,
       tensor& gradx, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-      algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides, padding_l, padding_r,
-        aalgorithm, apadding_kind);
+      const tdims_t& dilates = {1, 1}, algorithm aalgorithm = algorithm::deconvolution_direct,
+      padding_kind apadding_kind = padding_kind::zero) {
+    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides, dilates, padding_l,
+        padding_r, aalgorithm, apadding_kind);
   }
 };
 
@@ -987,20 +991,22 @@ struct convolution_transpose_backward_weights : public computation,
       public utils::computation_cache<convolution_transpose_backward_weights> {
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t& x_desc, const tdesc_t& grady_desc, const tdesc_t& gradw_desc,
-        const tdesc_t& gradb_desc, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
-        algorithm aalgorithm = algorithm::deconvolution_direct, padding_kind apadding_kind = padding_kind::zero)
-        : hint_(x_desc, gradw_desc, gradb_desc, grady_desc, strides, padding_l, padding_r) {
+        const tdesc_t& gradb_desc, const tdims_t& strides, const tdims_t& dilates, const tdims_t& padding_l,
+        const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
+        padding_kind apadding_kind = padding_kind::zero)
+        : hint_(x_desc, gradw_desc, gradb_desc, grady_desc, strides, dilates, padding_l, padding_r) {
       utils::validate_dims(strides, padding_l, padding_r);
       mkldnn_deconvolution_desc_t data;
       auto src_any = x_desc.format_any();
       auto diff_weights_any = gradw_desc.format_any();
       auto diff_bias_any = gradb_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
+      auto dilates_in = utils::get_compatible_dilates(dilates);
 
-      error::wrap_c_api(mkldnn_deconvolution_backward_weights_desc_init(
-              &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, &diff_bias_any,
-              &diff_dst_any, &strides[0], &padding_l[0], &padding_r[0],
-              mkldnn::convert_to_c(apadding_kind)),
+      error::wrap_c_api(
+          mkldnn_dilated_deconvolution_backward_weights_desc_init(&data, convert_to_c(aalgorithm),
+              &src_any, &diff_weights_any, &diff_bias_any, &diff_dst_any, &strides[0],
+              &dilates_in[0], &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a deconvolution backward weights descriptor");
       create_primitive_desc(data, hint_.get());
     }
@@ -1049,20 +1055,20 @@ struct convolution_transpose_backward_weights : public computation,
   template<class alloc = utils::allocator, bool with_gradb = true>
   static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, tensor& gradb, const tdims_t& strides, const tdims_t& padding_l,
-      const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
+      const tdims_t& padding_r, const tdims_t& dilates = {1, 1}, algorithm aalgorithm = algorithm::deconvolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc, with_gradb>(src, grady, gradw_dims, gradw, gradb, strides, padding_l, padding_r,
+    compute_impl<alloc, with_gradb>(src, grady, gradw_dims, gradw, gradb, strides, dilates, padding_l, padding_r,
         aalgorithm, apadding_kind);
   }
 
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, const tdims_t& strides, const tdims_t& padding_l,
-      const tdims_t& padding_r, algorithm aalgorithm = algorithm::deconvolution_direct,
+      const tdims_t& padding_r, const tdims_t& dilates = {1, 1}, algorithm aalgorithm = algorithm::deconvolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     static tensor dummy_gradb;
     compute<alloc, false>(src, grady, gradw_dims, gradw, dummy_gradb, strides, padding_l, padding_r,
-        aalgorithm, apadding_kind);
+        dilates, aalgorithm, apadding_kind);
   }
 };
 

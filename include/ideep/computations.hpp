@@ -1652,6 +1652,96 @@ public:
   }
 };
 
+struct softmax_forward : public computation,
+  public utils::computation_cache<softmax_forward> {
+  struct descriptor : public descriptor_group {
+    descriptor(const tdesc_t& x_desc, int softmax_axis,
+        prop_kind aprop_kind = prop_kind::forward) {
+      mkldnn_softmax_desc_t data;
+      error::wrap_c_api(mkldnn_softmax_forward_desc_init(
+            &data, mkldnn::convert_to_c(aprop_kind),
+            x_desc.get_mkldnn_memory_desc_t(), softmax_axis),
+          "could not create a softmax forward descriptor");
+      create_primitive_desc(data);
+    }
+  };
+
+public:
+  template<typename ...Ts>
+  softmax_forward(const tdesc_t& x_desc, Ts &&...args) {
+    descriptor forward_descriptor(x_desc, std::forward<Ts>(args)...);
+    computation::init(forward_descriptor);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(key_t& key, const tensor& src, tensor& dst,
+      int softmax_axis, prop_kind aprop_kind = prop_kind::forward) {
+    check_or_create_k(key, src, softmax_axis, aprop_kind);
+    fetch_or_create_m(comp, key, src.get_descriptor(), softmax_axis, aprop_kind);
+
+    if (dst != src) {
+      dst.reinit<alloc>(src.get_descriptor());
+    }
+
+    comp.execute(src, dst);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src, tensor& dst, int softmax_axis, prop_kind aprop_kind = prop_kind::forward) {
+    key_t key;
+    compute<alloc>(key, src, dst, softmax_axis, aprop_kind);
+  }
+
+};
+
+struct softmax_backward : public computation,
+  public utils::computation_cache<softmax_backward> {
+  struct descriptor : public descriptor_group {
+    descriptor(const tdesc_t& grady_desc, const tdesc_t& y_desc, int softmax_axis)
+      : hint_(y_desc, softmax_axis) {
+      mkldnn_softmax_desc_t data;
+      error::wrap_c_api(mkldnn_softmax_backward_desc_init(
+            &data, grady_desc.get_mkldnn_memory_desc_t(),
+            y_desc.get_mkldnn_memory_desc_t(), softmax_axis),
+          "could not create a softmax backward descriptor");
+      create_primitive_desc(data, hint_.get());
+    }
+  private:
+    softmax_forward::descriptor hint_;
+  };
+
+public:
+  template<typename ...Ts>
+  softmax_backward(const tdesc_t& grady_desc, Ts &&...args) {
+    descriptor backward_descriptor(grady_desc, std::forward<Ts>(args)...);
+    computation::init(backward_descriptor);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& y, const tensor& grady, tensor& gradx, int softmax_axis) {
+    // if grady is from outside, make it ours
+    tensor grady_in = grady;
+    if (grady.get_internal_format() != y.get_internal_format()) {
+      grady_in.init<alloc>(y.get_descriptor());
+      treorder_t::compute(grady, grady_in);
+      if (grady == gradx) {
+        gradx.set_descriptor(grady_in.get_descriptor());
+      }
+    }
+
+    key_t key;
+    check_or_create_k(key, y, softmax_axis);
+    fetch_or_create_m(comp, key, grady_in.get_descriptor(),
+        y.get_descriptor(), softmax_axis);
+
+    if (grady != gradx)
+      gradx.reinit<alloc>(comp.expected_gradx_descriptor());
+
+    comp.execute(y, grady_in, gradx);
+  }
+
+};
+
 struct batch_norm_forward_base : public computation {
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t& src_desc, float epsilon, unsigned flags, prop_kind aprop_kind) {

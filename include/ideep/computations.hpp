@@ -852,6 +852,7 @@ struct convolution_transpose_forward : public computation,
   template <class alloc, bool with_bias, typename... Ts>
   static void compute_impl(const tensor& src, const tensor& weights, const tensor& bias,
       const tdims_t& dst_dims, tensor& dst, Ts&&... args) {
+    IDEEP_ENFORCE(!weights.has_scale(), "Unsupported lowp input");
     key_t key;
     check_or_create_k(key, src, weights, with_bias, dst_dims, args...);
     fetch_or_create_m(comp, key, src.get_descriptor(), weights.get_descriptor(),
@@ -1456,6 +1457,7 @@ public:
     auto src_in = comp.transform_input_cache<alloc>(0, src);
     if (dst != src) {
       dst.reinit<alloc>(comp.expected_dst_descriptor());
+      if (src.has_scale()) dst.set_scale(src.get_scale());
     }
 
     comp.execute(src_in, dst);
@@ -1676,6 +1678,7 @@ public:
   template<class alloc = utils::allocator>
   static void compute(key_t& key, const tensor& src, tensor& dst,
       int softmax_axis, prop_kind aprop_kind = prop_kind::forward) {
+    IDEEP_ENFORCE(!src.has_scale(), "Unsupported lowp input");
     check_or_create_k(key, src, softmax_axis, aprop_kind);
     fetch_or_create_m(comp, key, src.get_descriptor(), softmax_axis, aprop_kind);
 

@@ -275,7 +275,7 @@ public:
       auto op = [] (TF vmm1, TF vmm2) {
         vmm1 = mul_ps(vmm1, vmm2);
         return vmm1;
-      }
+      };
       vecwise_binary_op(dst, src1, src2, nelems, op, op);
       } else {
         throw error(mkldnn_unimplemented, "Not implemented!");

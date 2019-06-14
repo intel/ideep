@@ -251,11 +251,34 @@ public:
 
   template<typename T>
   void create_primitive_desc_v2(const T& desc, const attr_t attr = attr_t(), const_mkldnn_primitive_desc_t hint = nullptr) {
-      mkldnn_primitive_desc_t result;
-      error::wrap_c_api(mkldnn_primitive_desc_create_v2(
-            &result, &desc, attr.get(), engine::cpu_engine().get(), hint),
-          "could not create a primitive descriptor");
-      reset(result);
+    mkldnn_primitive_desc_t result;
+    error::wrap_c_api(mkldnn_primitive_desc_create_v2(
+          &result, &desc, attr.get(), engine::cpu_engine().get(), hint),
+        "could not create a primitive descriptor");
+    reset(result);
+  }
+
+  template<typename T>
+  void create_primitive_desc_by_info_str_v2(std::string info_str, const T& desc,
+      const attr_t attr = attr_t(), const_mkldnn_primitive_desc_t hint = nullptr) {
+    const char *query_info_str;
+    mkldnn_primitive_desc_t result;
+    mkldnn_primitive_desc_iterator_t iterator = nullptr;
+    error::wrap_c_api(mkldnn_primitive_desc_iterator_create_v2(
+          &iterator, &desc, attr.get(), engine::cpu_engine().get(), hint),
+            "could not create a primitive descriptor iterator");
+    do {
+      result = mkldnn_primitive_desc_iterator_fetch(iterator);
+      error::wrap_c_api(result != nullptr ? mkldnn_success : mkldnn_runtime_error,
+              "could not fetch a primitive descriptor from the iterator");
+      error::wrap_c_api(mkldnn_primitive_desc_query(result, mkldnn_query_impl_info_str, 0, &query_info_str),
+              "could not query implementation info string");
+      if (info_str == query_info_str) {
+        reset(result);
+        return;
+      }
+    } while(mkldnn_primitive_desc_iterator_next(iterator) != mkldnn_iterator_ends);
+    error::wrap_c_api(mkldnn_runtime_error, "could not fetch a primitive descriptor by info_str");
   }
 
   /// Query interface

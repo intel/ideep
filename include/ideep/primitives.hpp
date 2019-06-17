@@ -273,7 +273,7 @@ public:
               "could not fetch a primitive descriptor from the iterator");
       error::wrap_c_api(mkldnn_primitive_desc_query(result, mkldnn_query_impl_info_str, 0, &query_info_str),
               "could not query implementation info string");
-      if (info_str == query_info_str) {
+      if (std::string(query_info_str).find(info_str) != std::string::npos) {
         reset(result);
         return;
       }

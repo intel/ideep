@@ -175,9 +175,8 @@ private:
 /// A default stream
 struct stream: public mkldnn::stream {
   using mkldnn::stream::stream;
-  static stream& default_stream() {
-    static thread_local stream s(mkldnn::stream::kind::eager);
-    return s;
+  static stream default_stream() {
+    return stream(mkldnn::stream::kind::eager);
   }
 };
 

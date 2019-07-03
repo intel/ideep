@@ -480,7 +480,7 @@ struct convolution_forward: public computation,
             padding_l, padding_r, op_attr, std::forward<Ts>(args)...);
 
     auto src_in = comp.transform_input_cache<alloc>(0, src, src_attr);
-    auto weights_in = comp.transform_input_cache(1, weights.as_weights(), weights_attr);
+    auto weights_in = comp.transform_input_cache<alloc>(1, weights.as_weights(), weights_attr);
 
     auto dst_desc = comp.expected_dst_descriptor();
     if (dst.get_descriptor() != dst_desc) {

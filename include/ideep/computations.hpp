@@ -2469,8 +2469,9 @@ public:
     const auto src_data = static_cast<T*>(src.get_data_handle());
     const auto mask_data = static_cast<T*>(mask.get_data_handle());
     const auto dst_data = static_cast<T*>(dst.get_data_handle());
-
-    # pragma omp parallel for schedule(static)
+#ifdef _OPENMP
+# pragma omp parallel for schedule(static)
+#endif
     for (size_t i = 0; i < size; i++) {
       mask_data[i] = bernouli_nums[i] * scale;
       dst_data[i] = mask_data[i] * src_data[i];
@@ -2513,8 +2514,9 @@ public:
     const auto mask_data = static_cast<T*>(mask.get_data_handle());
     const auto gy_data = static_cast<T*>(gy.get_data_handle());
     const auto gx_data = static_cast<T*>(gx.get_data_handle());
-
-    # pragma omp parallel for schedule(static)
+#ifdef _OPENMP
+# pragma omp parallel for schedule(static)
+#endif
     for (size_t i = 0; i < size; i++) {
       gx_data[i] = mask_data[i] * gy_data[i];
     }
@@ -2580,10 +2582,12 @@ public:
 #ifdef __AVX2__
         FM_AVX2_PREF::mul<float>(Z, X, Y, N);
 #else
-        #pragma omp parallel for schedule(static)
-          for (auto n = 0; n < N; n++) {
-            Z[n] = X[n] * Y[n];
-          }
+#ifdef _OPENMP
+# pragma omp parallel for schedule(static)
+#endif
+        for (auto n = 0; n < N; n++) {
+          Z[n] = X[n] * Y[n];
+        }
 #endif
         return;
       case ELTWISE_DIV:

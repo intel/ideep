@@ -1305,6 +1305,11 @@ public:
     atensor.set_descriptor(io_desc);
   }
 
+  template<typename T>
+  inline void fill_all_elems(T val) {
+    utils::fast_memset(static_cast<T*>(get_data_handle()), val, get_size() / sizeof(T));
+  }
+
 protected:
   std::shared_ptr<tensor> twin_;
 };

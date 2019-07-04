@@ -16,11 +16,14 @@
 #include <mkl_vml_functions.h>
 #include <mkldnn.h>
 #include <mkldnn.hpp>
+#include <assert.h>
 #ifdef _OPENMP
 #include <omp.h>
 #else
 #define omp_get_max_threads() 1
+#define omp_get_num_threads() 1
 #define omp_get_thread_num()  0
+#define omp_in_parallel()     0
 #endif
 
 namespace ideep {
@@ -217,6 +220,113 @@ static void inline validate_dims(const mkldnn::memory::dims& dims, Ts&... rest) 
   }
   validate_dims(rest...);
 #endif
+}
+
+template<typename T, typename U>
+inline T div_up(const T a, const U b) {
+    assert(b);
+    return(a + b - 1) / b;
+}
+template <typename T, typename U>
+inline void balance211(T n, U team, U tid, T& n_start, T& n_end) {
+    T n_min = 1;
+    T &n_my = n_end;
+    if (team <= 1 || n == 0) {
+        n_start = 0;
+        n_my = n;
+    } else if (n_min == 1) {
+        // team = T1 + T2
+        // n = T1*n1 + T2*n2  (n1 - n2 = 1)
+        T n1 = div_up(n, (T)team);
+        T n2 = n1 - 1;
+        T T1 = n - n2 * (T)team;
+        n_my = (T)tid < T1 ? n1 : n2;
+        n_start = (T)tid <= T1 ? tid * n1 : T1 * n1 + ((T)tid - T1) * n2;
+    }
+
+    n_end += n_start;
+}
+
+inline void fast_memcpy(char* data_o, char* data_i, size_t len)
+{
+    size_t nelems = len / 4;
+    size_t nelems_char = len % 4;
+    const int block_size = 16;
+    const auto num_blocks = nelems / block_size;
+    const auto rem_elems =  nelems % block_size;
+    float* output_f = (float*)data_o;
+    float* input_f = (float*) data_i;
+    char* output_c = (char*) data_o;
+    char* input_c = (char*) data_i;
+#ifdef _OPENMP
+# pragma omp parallel
+#endif
+    {
+        const int ithr = omp_get_thread_num();
+        const int nthr = omp_get_num_threads();
+        size_t start{0}, end{0};
+        balance211(num_blocks, nthr, ithr, start, end);
+        start = start * block_size;
+        end = end * block_size;
+#ifdef _OPENMP
+#if (_OPENMP >= 201307)
+# pragma omp parallel for simd
+#else
+# pragma omp parallel for
+#endif
+#endif
+        for (size_t e = start; e < end; ++e) {
+            output_f[e] = input_f[e];
+        }
+        if (rem_elems != 0 && ithr ==  nthr -1 )  {
+            for (auto e = nelems - rem_elems; e < nelems; ++e) {
+                output_f[e] = input_f[e];
+            }
+        }
+        if (nelems_char != 0 && ithr ==  nthr -1){
+            for (auto e = nelems*4; e < len; ++e) {
+                output_c[e] = input_c[e];
+            }
+        }
+    }
+    return;
+}
+
+template<typename T>
+inline void fast_memset(T* data_o, T val, size_t len)
+{
+    size_t nelems = len;
+    const int block_size = 16;
+    const auto num_blocks = nelems / block_size;
+    const auto rem_elems =  nelems % block_size;
+    float *output_f = (float *)data_o;
+#ifdef _OPENMP
+# pragma omp parallel
+#endif
+    {
+        const int ithr = omp_get_thread_num();
+        const int nthr = omp_get_num_threads();
+        size_t start{0}, end{0};
+        balance211(num_blocks, nthr, ithr, start, end);
+        start = start * block_size;
+        end = end * block_size;
+#ifdef _OPENMP
+#if (_OPENMP >= 201307)
+# pragma omp parallel for simd
+#else
+# pragma omp parallel for
+#endif
+#endif
+        for (size_t e = start; e < end; ++e) {
+            output_f[e] = val;
+        }
+        if (rem_elems != 0 && ithr ==  nthr -1 )  {
+            for (auto e = nelems - rem_elems; e < nelems; ++e) {
+                output_f[e] = val;
+            }
+        }
+    }
+    return;
 }
 
 }

@@ -181,6 +181,15 @@ public:
 
   static inline lru_cache<key_t, value_t>& t_store() {
     static thread_local lru_cache<key_t, value_t> t_store_(capacity);
+    static thread_local int new_capacity = [&](const char *pt) {
+      if (pt != NULL) {
+        IDEEP_ENFORCE(std::atoi(pt) > 0 , "The LRU_CACHE_CAPACITY should be positive");
+        t_store_.resize(std::atoi(pt));
+        return std::atoi(pt);
+      } else {
+        return 0;
+      }
+    } (std::getenv("LRU_CACHE_CAPACITY"));
     return t_store_;
   }
 };

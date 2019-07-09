@@ -740,7 +740,9 @@ public:
     return mkldnn_memory_primitive_desc_get_size(get_mkldnn_primitive_desc_t());
   }
 
-  /// Return element number of the param
+  /// Return element number of the param.
+  /// The number is the meaning values for a tensor, instead of whole buffer.
+  /// It is the number without counting in paddings.
   inline dim_t get_nelems() const {
     const mkldnn_memory_desc_t* mdesc = get_mkldnn_memory_desc_t();
     return std::accumulate(mdesc->dims, &mdesc->dims[mdesc->ndims], 1, std::multiplies<dim_t>());

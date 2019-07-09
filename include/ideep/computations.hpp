@@ -2462,7 +2462,7 @@ public:
     if (src.has_scale()) dst.set_scale(src.get_scale());
 
     const auto scale = 1.0 / (1.0 - ratio);
-    const auto size = src.get_nelems();
+    const auto size = src.get_size() / sizeof(T);
     std::unique_ptr<int[]> bernouli_nums(new int[size]);
     utils::bernoulli_generate(size, 1.0 - ratio, bernouli_nums.get());
 
@@ -2510,7 +2510,7 @@ public:
     dropout_backward comp;
     gx.reinit<alloc>(gy.get_descriptor());
 
-    const auto size = mask.get_nelems();
+    const auto size = mask.get_size() /  sizeof(T);
     const auto mask_data = static_cast<T*>(mask.get_data_handle());
     const auto gy_data = static_cast<T*>(gy.get_data_handle());
     const auto gx_data = static_cast<T*>(gx.get_data_handle());
@@ -2571,7 +2571,7 @@ public:
       float* X = static_cast<float*>(inputA.get_data_handle());
       float* Y = static_cast<float*>(inputB.get_data_handle());
       float* Z = static_cast<float*>(outputC.get_data_handle());
-      unsigned N = static_cast<unsigned>(inputA.get_nelems());
+      unsigned N = static_cast<unsigned>(inputA.get_size() / sizeof(float));
       switch (op) {
       case ELTWISE_ADD:
 #ifdef __AVX2__

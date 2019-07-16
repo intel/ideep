@@ -326,6 +326,7 @@ public:
         break;
       case mkldnn_nchw:
       case mkldnn_chwn:
+      case mkldnn_nChw4c:
       case mkldnn_nChw8c:
       case mkldnn_nChw16c:
         ret = format::nchw;
@@ -376,6 +377,11 @@ public:
       case mkldnn_Goihw16g:
       case mkldnn_Goihw16g_s8s8:
       case mkldnn_gOhIw16o4i:
+      case mkldnn_gOIhw2i8o4i:
+      case mkldnn_gOIhw2i8o4i_s8s8:
+      case mkldnn_gOIhw4o4i:
+      case mkldnn_gOIhw4o4i_s8s8:
+      case mkldnn_gOIhw4i4o:
         ret = format::goihw;
         break;
       case mkldnn_ntc:

@@ -2422,7 +2422,7 @@ public:
     auto gradw_dims = x.get_dims();
     gradw_dims[0] = grady.get_dim(1);
 
-    tdesc_t gradw_desc(gradw_dims, x.get_data_type());
+    tdesc_t gradw_desc = tdesc_t(gradw_dims, x.get_data_type()).as_weights_format();
 
     tdesc_t gradb_desc;
     if (with_gradb) {

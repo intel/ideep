@@ -2600,6 +2600,80 @@ public:
   }
 };
 
+struct rnn_forward: public computation,
+    public utils::computation_cache<rnn_forward> {
+  struct descriptor : public descriptor_group {
+    descriptor(const tdesc_t& src_layer_desc, const tdesc_t& src_iter_desc,
+        const tdesc_t& weights_layer_desc, const tdesc_t& weights_iter_desc, const tdesc_t& bias_desc,
+        const tdesc_t& dst_layer_desc, const tdesc_t& dst_iter_desc, rnn_kind akind, bool reverse,
+        prop_kind aprop_kind = prop_kind::forward_inference) {
+      mkldnn_rnn_cell_desc_t rnn_cell_data;
+      mkldnn_rnn_desc_t rnn_data;
+      auto src_layer_data = src_layer_desc.get_mkldnn_memory_desc_t();
+      auto src_iter_data = src_iter_desc.format_any();
+      auto weights_layer_data = weights_layer_desc.format_any();
+      auto weights_iter_data = weights_iter_desc.format_any();
+      auto bias_data = bias_desc.format_any();
+      auto dst_layer_data = dst_layer_desc.get_mkldnn_memory_desc_t();
+      auto dst_iter_data = dst_iter_desc.format_any();
+
+      auto algo = utils::rnn_kind_to_algorithm(akind);
+      auto acti = utils::rnn_kind_to_activation(akind);
+      auto dir = reverse ? mkldnn::rnn_direction::unidirectional_right2left
+          : mkldnn::rnn_direction::unidirectional_left2right;
+      error::wrap_c_api(
+          mkldnn_rnn_cell_desc_init(&rnn_cell_data, mkldnn::convert_to_c(algo),
+              mkldnn::convert_to_c(acti), 0U, 0, 0),
+          "could not create a rnn cell descriptor");
+      error::wrap_c_api(
+          mkldnn_rnn_forward_desc_init(&rnn_data, mkldnn::convert_to_c(aprop_kind),
+              &rnn_cell_data, mkldnn::convert_to_c(dir), src_layer_data, &src_iter_data,
+              &weights_layer_data, &weights_iter_data, &bias_data, dst_layer_data,
+              &dst_iter_data),
+          "could not create a rnn forward descriptor");
+      create_primitive_desc(rnn_data);
+    }
+  };
+
+public:
+  template<typename... Ts>
+  rnn_forward(const tdesc_t& src_layer_desc, Ts&&... args) {
+    descriptor forward_descriptor(src_layer_desc, std::forward<Ts>(args)...);
+    computation::init(forward_descriptor);
+  }
+
+  template<class alloc = utils::allocator>
+  static void compute(const tensor& src_layer, const tensor& src_iter,
+      const tensor& weights_layer, const tensor& weights_iter, const tensor& bias,
+      const tdims_t& dst_layer_dims, tensor& dst_layer,
+      const tdims_t& dst_iter_dims, tensor& dst_iter,
+      rnn_kind akind, bool reverse) {
+    auto dtype = src_layer.get_data_type();
+    auto src_layer_desc = tdesc_t(src_layer.get_dims(), dtype, format::tnc);
+    auto src_iter_desc = tdesc_t(src_iter.get_dims(), dtype, format::ldsnc);
+    auto dst_layer_desc = tdesc_t(dst_layer_dims, dtype, format::tnc);
+    auto dst_iter_desc = tdesc_t(dst_iter_dims, dtype, format::ldsnc);
+
+    key_t key;
+    check_or_create_k(key, src_layer, src_iter, weights_layer, weights_iter, bias,
+        dst_layer_dims, dst_iter_dims, akind, reverse);
+    fetch_or_create_m(comp, key, src_layer_desc, src_iter_desc,
+        weights_layer.get_descriptor(), weights_iter.get_descriptor(),
+        bias.get_descriptor(), dst_layer_desc, dst_iter_desc, akind, reverse);
+
+    auto src_layer_in = comp.transform_input_cache<alloc>(0, src_layer.as_rnn());
+    auto src_iter_in = comp.transform_input_cache<alloc>(1, src_iter.as_rnn());
+    auto weights_layer_in = comp.transform_input_cache<alloc>(2, weights_layer.as_rnn(/*is_weight*/true));
+    auto weights_iter_in = comp.transform_input_cache<alloc>(3, weights_iter.as_rnn(/*is_weight*/true));
+    auto bias_in = comp.transform_input_cache<alloc>(4, bias.as_rnn(/*is_weight*/true));
+
+    dst_layer.reinit<alloc>(dst_layer_desc);
+    dst_iter.reinit<alloc>(dst_iter_desc);
+
+    comp.execute(src_layer_in, src_iter_in, weights_layer_in, weights_iter_in, bias_in, dst_layer, dst_iter);
+  }
+};
+
 } // namespace ideep
 
 #endif

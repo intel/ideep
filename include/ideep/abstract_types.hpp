@@ -109,6 +109,13 @@ enum lowp_kind {
   LOWP_S8S8 = 1
 };
 
+enum rnn_kind {
+  RNN_RELU = 0,
+  RNN_TANH = 1,
+  LSTM = 2,
+  GRU = 3
+};
+
 /// hide other formats
 enum format {
   format_undef = mkldnn_format_undef,
@@ -136,6 +143,10 @@ enum format {
   hwigo = mkldnn_hwigo,
   ntc = mkldnn_ntc,
   tnc = mkldnn_tnc,
+  ldigo = mkldnn_ldigo,
+  ldgoi = mkldnn_ldgoi,
+  ldgo = mkldnn_ldgo,
+  ldsnc = mkldnn_ldsnc,
   iohw = mkldnn_format_last + 1,
   format_last = iohw + 1
 };

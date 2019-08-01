@@ -329,6 +329,28 @@ inline void fast_memset(T* data_o, T val, size_t len)
     return;
 }
 
+inline mkldnn::algorithm rnn_kind_to_algorithm(rnn_kind rnn) {
+  if (rnn == RNN_RELU || rnn == RNN_TANH) {
+    return mkldnn::algorithm::vanilla_rnn;
+  } else if (rnn == LSTM) {
+    return mkldnn::algorithm::vanilla_lstm;
+  } else if (rnn == GRU) {
+    return mkldnn::algorithm::gru_linear_before_reset;
+  } else {
+    return mkldnn::algorithm::algorithm_undef;
+  }
+}
+
+inline mkldnn::algorithm rnn_kind_to_activation(rnn_kind rnn) {
+  if (rnn == RNN_RELU) {
+    return mkldnn::algorithm::eltwise_relu;
+  } else if (rnn == RNN_TANH || rnn == LSTM || rnn == GRU) {
+    return mkldnn::algorithm::eltwise_tanh;
+  } else {
+    return mkldnn::algorithm::algorithm_undef;
+  }
+}
+
 }
 }
 #endif

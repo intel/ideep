@@ -268,6 +268,24 @@ public:
       }
     }
 
+    // Change format to rnn
+    descriptor as_rnn_format(bool is_weight) const {
+      switch(ndims()) {
+      case 3:
+        return format_to(format::tnc);
+      case 4:
+        return format_to(format::ldgo);
+      case 5:
+        if (is_weight) {
+          return format_to(format::ldigo);
+        } else {
+          return format_to(format::ldsnc);
+        }
+      default:
+        return *this;
+      }
+    }
+
     bool is_shape_compatible(const dims& next) const {
       auto origin = get_mkldnn_memory_desc_t();
       auto volume_old = std::accumulate(
@@ -388,6 +406,18 @@ public:
       case mkldnn_tnc:
         ret = format::tnc;
         break;
+      case mkldnn_ldigo:
+        ret = format::ldigo;
+        break;
+      case mkldnn_ldgoi:
+        ret = format::ldgoi;
+        break;
+      case mkldnn_ldgo:
+        ret = format::ldgo;
+        break;
+      case mkldnn_ldsnc:
+        ret = format::ldsnc;
+      break;
       case mkldnn_blocked:
       case mkldnn_wino_fmt:
       case mkldnn_format_undef:
@@ -424,6 +454,10 @@ public:
         case format::oiw:
         case format::wio:
         case format::tnc:
+        case format::ldigo:
+        case format::ldgoi:
+        case format::ldgo:
+        case format::ldsnc:
         case format::nchw:
         case format::nhwc:
         case format::chwn:
@@ -443,6 +477,8 @@ public:
 
     inline bool format_compatible_with(format aformat) const {
       if (public_format_ == format::format_undef && public_format_ == aformat ) {
+          return true;
+      } else if (aformat == tnc || aformat == ldgo || aformat == ldsnc || aformat == ldigo || aformat == ldgoi) {
           return true;
       } else {
         switch(public_format_) {
@@ -1102,6 +1138,12 @@ public:
     tensor ret = *this;
     if (!is_weights())
       ret.set_descriptor(get_descriptor().as_weights_format());
+    return ret;
+  }
+
+  tensor as_rnn(bool is_weight = false) const {
+    tensor ret = *this;
+    ret.set_descriptor(get_descriptor().as_rnn_format(is_weight));
     return ret;
   }
 

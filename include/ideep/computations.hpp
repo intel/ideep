@@ -138,7 +138,7 @@ public:
   }
 
   template<class alloc = utils::allocator>
-  tensor transform_input_cache(int index, const tensor& input, attr_t attr = attr_t()) {
+  const tensor& transform_input_cache(int index, const tensor& input, attr_t attr = attr_t()) {
     // NOTE: To cache the reorder for specific computation, the input tensor and attr must
     // be recorded in the computation key with all details.
     IDEEP_ENFORCE(index < inputs_num_, "Invalid input index");
@@ -163,11 +163,11 @@ public:
     reorder_(input, in_ten);
     ins_buf_[index] = std::make_shared<tensor>(in_ten);
     reorders_[index] = std::make_shared<treorder_t>(reorder_);
-    return in_ten;
+    return *ins_buf_[index];
   }
 
   template<class alloc = utils::allocator>
-  tensor transform_input_uncache(int index, const tensor& input, attr_t attr = attr_t()) {
+  const tensor& transform_input_uncache(int index, const tensor& input, attr_t attr = attr_t()) {
     IDEEP_ENFORCE(index < inputs_num_, "Invalid input index");
     auto src_desc = input.get_descriptor();
     auto dst_desc = inouts_[index].get_descriptor();
@@ -339,8 +339,7 @@ struct convolution_forward: public computation,
             &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a dilated convolution forward descriptor");
       auto dims = weights_desc.ndims();
-      if (dims == 5
-          && (src_desc.get_dim(1) / weights_desc.get_dim(0)) % 4 != 0) { 
+      if (dims == 5 && (src_desc.get_dim(1) / weights_desc.get_dim(0)) % 4 != 0) {
         // this will be removed after mkldnn v2.0 released
         std::string info_str ="gemm";
         create_primitive_desc_by_info_str_v2(info_str, data, attr);

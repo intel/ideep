@@ -12,8 +12,10 @@
 #include <chrono>
 #include <vector>
 #include <iterator>
+#ifdef IDEEP_USE_MKL
 #include <mkl_vsl.h>
 #include <mkl_vml_functions.h>
+#endif
 #include <mkldnn.h>
 #include <mkldnn.hpp>
 #include <assert.h>
@@ -180,6 +182,9 @@ inline void create_key(key_t& key_to_create, Ts&&... args) {
   if (key.empty()) { utils::create_key(key, __VA_ARGS__); }
 
 static void bernoulli_generate(const long n, const double p, int* r) {
+#ifndef IDEEP_UES_MKL
+    IDEEP_ENFORCE(0, "can not use bernoulli_generate without install MKL");
+#else
   std::srand(std::time(0));
   const int seed = 17 + std::rand() % 4096;
 
@@ -199,6 +204,7 @@ static void bernoulli_generate(const long n, const double p, int* r) {
       vslDeleteStream(&stream);
     }
   }
+#endif
 }
 
 static inline mkldnn::memory::dims get_compatible_dilates(const mkldnn::memory::dims& dilates) {

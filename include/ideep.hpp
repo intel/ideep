@@ -21,15 +21,13 @@
  *
  */
 
-
 #ifndef _IDEEP_HPP
 #define _IDEEP_HPP
 
-#ifndef DOXYGEN_SHOULD_SKIP_THIS
-#include <assert.h>
 #include <stdlib.h>
 #include <algorithm>
 #include <memory>
+#include <map>
 #include <vector>
 #include <iterator>
 #include <string>
@@ -37,13 +35,9 @@
 #include <numeric>
 #include <functional>
 #include <iostream>
-#include <immintrin.h>
 
 #include "ideep/abstract_types.hpp"
-#include "ideep/fast_math.hpp"
 #include "ideep/tensor.hpp"
 #include "ideep/computations.hpp"
-#include "ideep/allocators.hpp"
-#endif
 
 #endif

@@ -2,98 +2,116 @@
 #define _ABSTRACT_TYPES_HPP_
 
 #include <string>
+#include <cstring>
+#include <map>
+#include <vector>
+#include <stdlib.h>
 #include <mkldnn.h>
 #include <mkldnn.hpp>
 
 namespace ideep {
 
-using error = mkldnn::error;
+#ifdef _WIN32
+#define IDEEP_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__)
+#define IDEEP_EXPORT __attribute__((__visibility__("default")))
+#else
+#define IDEEP_EXPORT
+#endif
 
+#ifndef NDEBUG
 #define IDEEP_ENFORCE(condition, message) \
   do {  \
     error::wrap_c_api((condition) \
         ? mkldnn_success : mkldnn_invalid_arguments, (message));  \
-  } while(false) \
+  } while(false)
+#else
+#define IDEEP_ENFORCE(condition, message)
+#endif
 
-#define IDEEP_STD_EQUAL(v, i) \
-  std::all_of(v.begin(), v.end(), [](decltype(v)::value_type k){return k == i;})
+#define IDEEP_STD_ANY_LE(v, i) \
+  std::any_of(v.begin(), v.end(), []( \
+        std::remove_reference<decltype(v)>::type::value_type k){return k <= i;})
+
+#define IDEEP_STD_EACH_SUB(v, i) \
+  for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
+
+// For 2D convolution with grouped weights, the ndims must be 5 (goihw)
+#define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)
+
+#define IDEEP_MOD_PTR(ptr, bytes) (((uintptr_t)(ptr)) & ((bytes) - 1))
+#define IDEEP_IS_ALIGNED_PTR(ptr, bytes) ((IDEEP_MOD_PTR(ptr, bytes)) == 0)
+
+struct error: public std::exception {
+    mkldnn_status_t status;
+    const char *message;
+
+    error(mkldnn_status_t astatus, const char* amessage)
+        : status(astatus), message(amessage) {}
+
+    static void wrap_c_api(mkldnn_status_t status, const char * message) {
+      if (status != mkldnn_success) {
+        throw error(status, message);
+      }
+    }
+};
 
 /// Same class for resource management, except public default constructor
 /// Movable support for better performance
 template <typename T, typename traits = mkldnn::handle_traits<T>>
-class c_wrapper{
-protected:
-  std::shared_ptr<typename std::remove_pointer<T>::type> _data;
+class c_wrapper :
+  public std::shared_ptr<typename std::remove_pointer<T>::type> {
+  using super = std::shared_ptr<typename std::remove_pointer<T>::type>;
 public:
-  /// Constructs a C handle wrapper.
-  /// @param t The C handle to wrap.
-  /// @param weak A flag to specify whether to construct a weak wrapper.
-  c_wrapper(T t = nullptr, bool weak = false): _data(t, [weak]() {
-    auto dummy = [](T) {
-      return decltype(traits::destructor(0))(0);
-    };
-    return weak? dummy : traits::destructor;
-  }()) {}
+  c_wrapper(T t = nullptr, bool weak = false)
+    : super(t, [weak]() {
+        auto dummy = [](T) { return decltype(traits::destructor(0))(0); };
+        return weak? dummy : traits::destructor; }()) {}
 
-  bool operator==(const T other) const { return other == _data.get(); }
-  bool operator!=(const T other) const { return !(*this == other); }
-
-  c_wrapper(const c_wrapper& other): _data(other._data) {}
-  c_wrapper(c_wrapper&& movable) : _data(std::move(movable._data)) {}
-
-  c_wrapper &operator=(c_wrapper&& other) {
-    _data = std::move(other._data);
-    return *this;
-  }
-
-  c_wrapper &operator=(const c_wrapper& other) {
-    _data = other._data;
-    return *this;
-  }
-
+  using super::super;
   /// Resets the value of a C handle.
-  /// @param t The new value of the C handle.
-  /// @param weak A flag to specify whether the wrapper should be weak.
   void reset(T t, bool weak = false) {
-    auto dummy_destructor = [](T) {
-      return decltype(traits::destructor(0))(0);
-    };
-    _data.reset(t, weak ? dummy_destructor : traits::destructor);
-  }
-
-  /// Returns the value of the underlying C handle.
-  T get() const { return _data.get(); }
-
-  bool operator==(const c_wrapper &other) const {
-    return other._data.get() == _data.get();
-  }
-  bool operator!=(const c_wrapper &other) const {
-    return !(*this == other);
+    auto dummy_destructor = [](T) { return decltype(traits::destructor(0))(0); };
+    super::reset(t, weak ? dummy_destructor : traits::destructor);
   }
 };
 
-/// C wrappers which form a functioning complex, in case multiple
-/// Primitives needed to finish certain task.
-template <typename T>
-class c_wrapper_complex : public c_wrapper<T> {
-public:
-  using size_type = typename std::vector<c_wrapper<T>>::size_type;
-  constexpr static int max_reorder_needed = 3;
+using key_t = std::string;
+using scale_t = std::vector<float>;
 
-  c_wrapper_complex() {}
-
-  inline bool need_reorder_input(int pos) const {
-    if (pos < max_reorder_needed/* auxiliaries_.size()*/)
-      return auxiliaries_[pos] != nullptr;
-    return false;
-  }
-protected:
-  c_wrapper<T> auxiliaries_[max_reorder_needed];
-};
-
+using query = mkldnn::query;
+using kind = mkldnn::primitive::kind;
+using prop_kind = mkldnn::prop_kind;
+using algorithm = mkldnn::algorithm;
+using padding_kind = mkldnn::padding_kind;
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
 using round_mode = mkldnn::round_mode;
+
+#define IDEEP_OP_SCALE_MASK(scale_size) (((scale_size) > 1) ? 2 : 0)
+#define IDEEP_TENSOR_SCALE_MASK(scale_size, grouped) \
+  (((scale_size) > 1) ? ((grouped) ? 3 : 1) : 0)
+
+const scale_t IDEEP_DEF_SCALE {1.0f};
+
+constexpr int IDEEP_U8_MAX = 0xFF;
+constexpr int IDEEP_S8_MAX = 0x7F;
+constexpr int IDEEP_S32_MAX = 0x7FFFFFFF;
+const std::map<mkldnn::memory::data_type, int> dt_max_map
+{
+  {mkldnn::memory::data_type::s32, IDEEP_S32_MAX},
+  {mkldnn::memory::data_type::s8, IDEEP_S8_MAX},
+  {mkldnn::memory::data_type::u8, IDEEP_U8_MAX}
+};
+
+enum lowp_kind {
+  LOWP_U8S8 = 0,
+  LOWP_S8S8 = 1
+};
+
+#define IDEEP_TO_EULER_1DIMS(idims, edims) (edims = {idims[0]})
+#define IDEEP_TO_EULER_2DIMS(idims, edims) (edims = {idims[0], idims[1]})
+#define IDEEP_TO_EULER_4DIMS(idims, edims) (edims = {idims[0], idims[1], idims[2], idims[3]})
 
 /// hide other formats
 enum format {
@@ -104,6 +122,10 @@ enum format {
   nc = mkldnn_nc,
   io = mkldnn_io,
   oi = mkldnn_oi,
+  ncw = mkldnn_ncw,
+  nwc = mkldnn_nwc,
+  oiw = mkldnn_oiw,
+  wio = mkldnn_wio,
   nchw = mkldnn_nchw,
   nhwc = mkldnn_nhwc,
   chwn = mkldnn_chwn,
@@ -113,11 +135,15 @@ enum format {
   ihwo = mkldnn_ihwo,
   hwio = mkldnn_hwio,
   oidhw = mkldnn_oidhw,
+  dhwio = mkldnn_dhwio,
   goihw = mkldnn_goihw,
   hwigo = mkldnn_hwigo,
   ntc = mkldnn_ntc,
   tnc = mkldnn_tnc,
-  format_last = mkldnn_format_last
+  iohw = mkldnn_format_last + 1,
+  format_last = iohw + 1,
+  OIhw16i16o = mkldnn_OIhw16i16o,
+  nChw16c = mkldnn_nChw16c
 };
 
 /// cpu execution engine only.
@@ -127,14 +153,7 @@ struct engine: public mkldnn::engine {
   void operator =(engine const &) = delete;
 
   /// Singleton CPU engine for all primitives
-  static engine &cpu_engine();
-
-  /// Put this global engine in only one library
-  #define INIT_GLOBAL_ENGINE \
-  ideep::engine &ideep::engine::cpu_engine() { \
-    static engine cpu_engine; \
-    return cpu_engine; \
-  }
+  static IDEEP_EXPORT engine &cpu_engine();
 
   inline static format default_format(int ndims) {
     switch(ndims) {
@@ -143,7 +162,7 @@ struct engine: public mkldnn::engine {
     case 2:
       return format::nc;
     case 3:
-      return format::blocked;
+      return format::ncw;
     case 4:
       return format::nchw;
     case 5:
@@ -154,11 +173,6 @@ struct engine: public mkldnn::engine {
   }
 
 private:
-  /// Constructs an engine.
-  ///
-  /// @param akind The kind of engine to construct.
-  /// @param dformat The default data type of the engine.
-
   engine(kind akind = kind::cpu)
     :mkldnn::engine(akind, 0) {
   }
@@ -167,15 +181,12 @@ private:
 /// A default stream
 struct stream: public mkldnn::stream {
   using mkldnn::stream::stream;
-  static stream default_stream() {
-    return stream(mkldnn::stream::kind::eager);
+  static stream &default_stream() {
+    static thread_local stream s(mkldnn::stream::kind::eager);
+    return s;
   }
 };
 
-using kind = mkldnn::primitive::kind;
-using prop_kind = mkldnn::prop_kind;
-using algorithm = mkldnn::algorithm;
-using padding_kind = mkldnn::padding_kind;
 }
 
 #endif

@@ -272,14 +272,14 @@ public:
     descriptor as_rnn_format(bool is_weight) const {
       switch(ndims()) {
       case 3:
-        return format_to(format::tnc);
+        return {get_dims(), get_data_type(), format::tnc};
       case 4:
-        return format_to(format::ldgo);
+        return {get_dims(), get_data_type(), format::ldgo};
       case 5:
         if (is_weight) {
-          return format_to(format::ldigo);
+          return {get_dims(), get_data_type(), format::ldigo};
         } else {
-          return format_to(format::ldsnc);
+          return {get_dims(), get_data_type(), format::ldsnc};
         }
       default:
         return *this;
@@ -417,7 +417,10 @@ public:
         break;
       case mkldnn_ldsnc:
         ret = format::ldsnc;
-      break;
+        break;
+      case mkldnn_rnn_packed:
+        ret = format::rnn_packed;
+        break;
       case mkldnn_blocked:
       case mkldnn_wino_fmt:
       case mkldnn_format_undef:
@@ -458,6 +461,7 @@ public:
         case format::ldgoi:
         case format::ldgo:
         case format::ldsnc:
+        case format::rnn_packed:
         case format::nchw:
         case format::nhwc:
         case format::chwn:
@@ -478,7 +482,8 @@ public:
     inline bool format_compatible_with(format aformat) const {
       if (public_format_ == format::format_undef && public_format_ == aformat ) {
           return true;
-      } else if (aformat == tnc || aformat == ldgo || aformat == ldsnc || aformat == ldigo || aformat == ldgoi) {
+      } else if (aformat == tnc || aformat == ldgo || aformat == ldsnc || aformat == ldigo ||
+          aformat == ldgoi || aformat == rnn_packed) {
           return true;
       } else {
         switch(public_format_) {

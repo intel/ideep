@@ -2604,8 +2604,8 @@ struct rnn_forward: public computation,
   struct descriptor : public descriptor_group {
     descriptor(const tdesc_t& src_layer_desc, const tdesc_t& src_iter_desc,
         const tdesc_t& weights_layer_desc, const tdesc_t& weights_iter_desc, const tdesc_t& bias_desc,
-        const tdesc_t& dst_layer_desc, const tdesc_t& dst_iter_desc, rnn_kind akind, bool reverse,
-        prop_kind aprop_kind = prop_kind::forward_inference) {
+        const tdesc_t& dst_layer_desc, const tdesc_t& dst_iter_desc, rnn_kind akind,
+        const mkldnn_rnn_direction_t direction, prop_kind aprop_kind = prop_kind::forward_inference) {
       mkldnn_rnn_cell_desc_t rnn_cell_data;
       mkldnn_rnn_desc_t rnn_data;
       auto src_layer_data = src_layer_desc.get_mkldnn_memory_desc_t();
@@ -2618,15 +2618,14 @@ struct rnn_forward: public computation,
 
       auto algo = utils::rnn_kind_to_algorithm(akind);
       auto acti = utils::rnn_kind_to_activation(akind);
-      auto dir = reverse ? mkldnn::rnn_direction::unidirectional_right2left
-          : mkldnn::rnn_direction::unidirectional_left2right;
+
       error::wrap_c_api(
           mkldnn_rnn_cell_desc_init(&rnn_cell_data, mkldnn::convert_to_c(algo),
               mkldnn::convert_to_c(acti), 0U, 0, 0),
           "could not create a rnn cell descriptor");
       error::wrap_c_api(
           mkldnn_rnn_forward_desc_init(&rnn_data, mkldnn::convert_to_c(aprop_kind),
-              &rnn_cell_data, mkldnn::convert_to_c(dir), src_layer_data, &src_iter_data,
+              &rnn_cell_data, direction, src_layer_data, &src_iter_data,
               &weights_layer_data, &weights_iter_data, &bias_data, dst_layer_data,
               &dst_iter_data),
           "could not create a rnn forward descriptor");
@@ -2646,19 +2645,18 @@ public:
       const tensor& weights_layer, const tensor& weights_iter, const tensor& bias,
       const tdims_t& dst_layer_dims, tensor& dst_layer,
       const tdims_t& dst_iter_dims, tensor& dst_iter,
-      rnn_kind akind, bool reverse) {
+      tensor& workspace, rnn_kind akind, mkldnn_rnn_direction_t direction,
+      prop_kind aprop_kind = prop_kind::forward_training) {
     auto dtype = src_layer.get_data_type();
-    auto src_layer_desc = tdesc_t(src_layer.get_dims(), dtype, format::tnc);
-    auto src_iter_desc = tdesc_t(src_iter.get_dims(), dtype, format::ldsnc);
-    auto dst_layer_desc = tdesc_t(dst_layer_dims, dtype, format::tnc);
-    auto dst_iter_desc = tdesc_t(dst_iter_dims, dtype, format::ldsnc);
+    tdesc_t dst_layer_desc(dst_layer_dims, dtype, src_layer.get_internal_format());
+    tdesc_t dst_iter_desc(dst_iter_dims, dtype, src_iter.get_internal_format());
 
     key_t key;
     check_or_create_k(key, src_layer, src_iter, weights_layer, weights_iter, bias,
-        dst_layer_dims, dst_iter_dims, akind, reverse);
-    fetch_or_create_m(comp, key, src_layer_desc, src_iter_desc,
+        dst_layer_dims, dst_iter_dims, akind, direction, aprop_kind);
+    fetch_or_create_m(comp, key, src_layer.get_descriptor(), src_iter.get_descriptor(),
         weights_layer.get_descriptor(), weights_iter.get_descriptor(),
-        bias.get_descriptor(), dst_layer_desc, dst_iter_desc, akind, reverse);
+        bias.get_descriptor(), dst_layer_desc, dst_iter_desc, akind, direction, aprop_kind);
 
     auto src_layer_in = comp.transform_input_cache<alloc>(0, src_layer.as_rnn());
     auto src_iter_in = comp.transform_input_cache<alloc>(1, src_iter.as_rnn());
@@ -2666,11 +2664,205 @@ public:
     auto weights_iter_in = comp.transform_input_cache<alloc>(3, weights_iter.as_rnn(/*is_weight*/true));
     auto bias_in = comp.transform_input_cache<alloc>(4, bias.as_rnn(/*is_weight*/true));
 
-    dst_layer.reinit<alloc>(dst_layer_desc);
-    dst_iter.reinit<alloc>(dst_iter_desc);
+    tensor dst_layer_in;
+    bool reorder_dst_layer = (
+        dst_layer.get_descriptor() != comp.expected_descriptor_of(query::dst_pd, 0));
+    if (reorder_dst_layer) {
+      dst_layer_in.init<alloc>(comp.expected_descriptor_of(query::dst_pd, 0));
+    } else {
+      dst_layer_in = dst_layer;
+    }
 
-    comp.execute(src_layer_in, src_iter_in, weights_layer_in, weights_iter_in, bias_in, dst_layer, dst_iter);
+    tensor dst_iter_in;
+    bool reorder_dst_iter = (
+        dst_iter.get_descriptor() != comp.expected_descriptor_of(query::dst_pd, 1));
+    if (reorder_dst_iter) {
+      dst_iter_in.init<alloc>(comp.expected_descriptor_of(query::dst_pd, 1));
+    } else {
+      dst_iter_in = dst_iter;
+    }
+
+    if (aprop_kind == prop_kind::forward_training) {
+        workspace.reinit<alloc>(comp.expected_workspace_descriptor());
+        comp.execute(
+            src_layer_in, src_iter_in, weights_layer_in, weights_iter_in, bias_in, dst_layer_in,
+            dst_iter_in, workspace);
+    } else {
+      comp.execute(
+        src_layer_in, src_iter_in, weights_layer_in, weights_iter_in, bias_in, dst_layer_in,
+        dst_iter_in);
+    }
+
+    if (reorder_dst_layer)
+      treorder_t::compute(dst_layer_in, dst_layer);
+    if (reorder_dst_iter)
+      treorder_t::compute(dst_iter_in, dst_iter);
   }
+};
+
+struct rnn_backward : public computation,
+  public utils::computation_cache<rnn_backward> {
+  struct descriptor : public descriptor_group {
+    descriptor(const tdesc_t& src_layer_desc, const tdesc_t& src_iter_desc,
+        const tdesc_t& weights_layer_desc, const tdesc_t& weights_iter_desc,
+        const tdesc_t& bias_desc, const tdesc_t& dst_layer_desc, const tdesc_t& dst_iter_desc,
+        const tdesc_t& diff_src_layer_desc, const tdesc_t& diff_src_iter_desc,
+        const tdesc_t& diff_weights_layer_desc, const tdesc_t& diff_weights_iter_desc,
+        const tdesc_t& diff_bias_desc, const tdesc_t& diff_dst_layer_desc,
+        const tdesc_t& diff_dst_iter_desc, rnn_kind akind, const mkldnn_rnn_direction_t direction,
+        prop_kind aprop_kind = prop_kind::backward) {
+      mkldnn_rnn_cell_desc_t rnn_cell_data;
+      mkldnn_rnn_desc_t data;
+      auto src_layer_data = src_layer_desc.format_any();
+      auto src_iter_data = src_iter_desc.format_any();
+      auto weights_layer_data = weights_layer_desc.format_any();
+      auto weights_iter_data = weights_iter_desc.format_any();
+      auto dst_layer_data = dst_layer_desc.format_any();
+      auto dst_iter_data = dst_iter_desc.format_any();
+      auto diff_src_layer_data = diff_src_layer_desc.format_any();
+      auto diff_src_iter_data = diff_src_iter_desc.format_any();
+      auto diff_weights_layer_data = diff_weights_layer_desc.format_any();
+      auto diff_weights_iter_data = diff_weights_iter_desc.format_any();
+      auto diff_dst_layer_data = diff_dst_layer_desc.format_any();
+      auto diff_dst_iter_data = diff_dst_iter_desc.format_any();
+      auto bias_data = bias_desc.format_any();
+      auto diff_bias_data = diff_bias_desc.format_any();
+
+      auto algo = utils::rnn_kind_to_algorithm(akind);
+      auto acti = utils::rnn_kind_to_activation(akind);
+      error::wrap_c_api(
+          mkldnn_rnn_cell_desc_init(&rnn_cell_data, mkldnn::convert_to_c(algo),
+              mkldnn::convert_to_c(acti), 0U, 0, 0),
+          "could not create a rnn cell descriptor");
+      error::wrap_c_api(mkldnn_rnn_backward_desc_init(
+            &data, mkldnn::convert_to_c(aprop_kind), &rnn_cell_data, direction, &src_layer_data,
+            &src_iter_data, &weights_layer_data, &weights_iter_data, &bias_data, &dst_layer_data,
+            &dst_iter_data, &diff_src_layer_data, &diff_src_iter_data, &diff_weights_layer_data,
+            &diff_weights_iter_data, &diff_bias_data, &diff_dst_layer_data, &diff_dst_iter_data),
+          "could not init a backward rnn descriptor");
+      create_primitive_desc(data);
+    }
+  };
+
+public:
+  template<typename ...Ts>
+  rnn_backward(const tdesc_t& src_layer_desc, Ts &&...args) {
+    descriptor backward_descriptor(src_layer_desc, std::forward<Ts>(args)...);
+    computation::init(backward_descriptor);
+  }
+
+  template <class alloc = utils::allocator>
+  static void compute(const tensor& src_layer, const tensor& src_iter, const tensor& weights_layer,
+      const tensor& weights_iter, const tensor& bias, const tensor& dst_layer, const tensor& dst_iter,
+      const tensor& diff_dst_layer, const tensor& diff_dst_iter, const tensor& workspace,
+      const bool with_bias, tensor& diff_src_layer, tensor& diff_src_iter, tensor& diff_weights_layer,
+      tensor& diff_weights_iter, tensor& diff_bias, rnn_kind akind, mkldnn_rnn_direction_t direction,
+      prop_kind aprop_kind = prop_kind::backward) {
+    tdesc_t bias_desc;
+    tdesc_t diff_bias_desc;
+    bias_desc = bias.get_descriptor();
+    diff_bias_desc = tdesc_t(bias.get_dims(), bias.get_data_type());
+    tdesc_t src_layer_desc = src_layer.get_descriptor();
+    tdesc_t src_iter_desc = src_iter.get_descriptor();
+    tdesc_t weights_layer_desc = weights_layer.get_descriptor();
+    tdesc_t weights_iter_desc = weights_iter.get_descriptor();
+
+    key_t key;
+    check_or_create_k(key, src_layer, src_iter, weights_layer, weights_iter,
+        dst_layer.get_dims(), dst_iter.get_dims(), bias, akind, direction, aprop_kind);
+    fetch_or_create_m(comp, key, src_layer_desc, src_iter_desc, weights_layer_desc,
+        weights_iter_desc, bias_desc, dst_layer.get_descriptor(),
+        dst_iter.get_descriptor(), src_layer_desc, src_iter_desc,
+        weights_layer_desc, weights_iter_desc, diff_bias_desc,
+        diff_dst_layer.get_descriptor(), diff_dst_iter.get_descriptor(), akind,
+        direction, aprop_kind);
+
+    auto src_layer_in = comp.transform_input_cache<alloc>(0, src_layer);
+    auto src_iter_in = comp.transform_input_cache<alloc>(1, src_iter);
+    auto weights_layer_in = comp.transform_input_cache<alloc>(2, weights_layer);
+    auto weights_iter_in = comp.transform_input_cache<alloc>(3, weights_iter);
+    auto bias_in = comp.transform_input_cache<alloc>(4, bias);
+    auto dst_layer_in = comp.transform_input_cache<alloc>(5, dst_layer);
+    auto dst_iter_in = comp.transform_input_cache<alloc>(6, dst_iter);
+    auto diff_dst_layer_in = comp.transform_input_cache<alloc>(7, diff_dst_layer);
+    auto diff_dst_iter_in = comp.transform_input_cache<alloc>(8, diff_dst_iter);
+    auto workspace_in = comp.transform_input_cache<alloc>(9, workspace);
+
+    tensor diff_src_layer_in;
+    bool reorder_diff_src_layer = (
+        diff_src_layer.get_descriptor() != comp.expected_descriptor_of(query::diff_src_pd, 0));
+
+    tensor::descriptor tmp_desc1(comp.expected_descriptor_of(query::diff_src_pd, 0));
+    if (reorder_diff_src_layer) {
+      diff_src_layer_in.init<alloc>(comp.expected_descriptor_of(query::diff_src_pd, 0));
+    } else {
+      diff_src_layer_in = diff_src_layer;
+    }
+
+    tensor diff_src_iter_in;
+    bool reorder_diff_src_iter = (
+        diff_src_iter.get_descriptor() != comp.expected_descriptor_of(query::diff_src_pd, 1));
+    if (reorder_diff_src_iter) {
+      diff_src_iter_in.init<alloc>(comp.expected_descriptor_of(query::diff_src_pd, 1));
+    } else {
+      diff_src_iter_in = diff_src_iter;
+    }
+
+    tensor diff_weights_layer_in;
+    bool reorder_diff_weights_layer = (
+        diff_weights_layer.get_descriptor() != comp.expected_descriptor_of(query::diff_weights_pd, 0));
+
+    tensor::descriptor tmp_desc(comp.expected_descriptor_of(query::diff_weights_pd, 0));
+    if (reorder_diff_weights_layer) {
+      diff_weights_layer_in.init<alloc>(comp.expected_descriptor_of(query::diff_weights_pd, 0));
+    } else {
+      diff_weights_layer_in = diff_weights_layer;
+    }
+
+    tensor diff_weights_iter_in;
+    bool reorder_diff_weights_iter = (
+        diff_weights_iter.get_descriptor() != comp.expected_descriptor_of(query::diff_weights_pd, 1));
+
+    if (reorder_diff_weights_iter) {
+      diff_weights_iter_in.init<alloc>(comp.expected_descriptor_of(query::diff_weights_pd, 1));
+    } else {
+      diff_weights_iter_in = diff_weights_iter;
+    }
+
+    tensor diff_bias_in;
+    bool reorder_bias;
+    reorder_bias = (
+        diff_bias.get_descriptor() != comp.expected_descriptor_of(query::diff_weights_pd, 2));
+    if (reorder_bias) {
+      diff_bias_in.init<alloc>(comp.expected_descriptor_of(query::diff_weights_pd, 2));
+    } else {
+      diff_bias_in = diff_bias;
+    }
+
+    comp.execute(src_layer_in, src_iter_in, weights_layer_in, weights_iter_in,
+        bias_in, dst_layer_in, dst_iter_in, diff_dst_layer_in, diff_dst_iter_in,
+        workspace_in, diff_src_layer_in, diff_src_iter_in, diff_weights_layer_in,
+        diff_weights_iter_in, diff_bias_in);
+
+    if (reorder_diff_src_layer) {
+      treorder_t::compute(diff_src_layer_in, diff_src_layer);
+    }
+    if (reorder_diff_src_iter) {
+      treorder_t::compute(diff_src_iter_in, diff_src_iter);
+    }
+    if (reorder_diff_weights_layer) {
+      treorder_t::compute(diff_weights_layer_in, diff_weights_layer);
+    }
+    if (reorder_diff_weights_iter) {
+      treorder_t::compute(diff_weights_iter_in, diff_weights_iter);
+    }
+    if (with_bias) {
+      if (reorder_bias) {
+        treorder_t::compute(diff_bias_in, diff_bias);
+      }
+    }
+  }
+
 };
 
 } // namespace ideep

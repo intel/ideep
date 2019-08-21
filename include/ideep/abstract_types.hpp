@@ -147,6 +147,7 @@ enum format {
   ldgoi = mkldnn_ldgoi,
   ldgo = mkldnn_ldgo,
   ldsnc = mkldnn_ldsnc,
+  rnn_packed = mkldnn_rnn_packed,
   iohw = mkldnn_format_last + 1,
   format_last = iohw + 1
 };

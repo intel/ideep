@@ -18,7 +18,6 @@
 #endif
 #include <mkldnn.h>
 #include <mkldnn.hpp>
-#include <assert.h>
 #ifdef _OPENMP
 #include <omp.h>
 #else
@@ -182,14 +181,16 @@ inline void create_key(key_t& key_to_create, Ts&&... args) {
   if (key.empty()) { utils::create_key(key, __VA_ARGS__); }
 
 static void bernoulli_generate(const long n, const double p, int* r) {
-#ifndef IDEEP_UES_MKL
-    IDEEP_ENFORCE(0, "can not use bernoulli_generate without install MKL");
+#ifndef IDEEP_USE_MKL
+  IDEEP_ENFORCE(0, "can not use bernoulli_generate without MKL support");
 #else
   std::srand(std::time(0));
   const int seed = 17 + std::rand() % 4096;
 
   int nthr = omp_get_max_threads();
+#ifdef _OPENMP
   # pragma omp parallel num_threads(nthr)
+#endif
   {
     const int ithr = omp_get_thread_num();
     const long avg_amount = (n + nthr - 1) / nthr;
@@ -230,7 +231,7 @@ static void inline validate_dims(const mkldnn::memory::dims& dims, Ts&... rest) 
 
 template<typename T, typename U>
 inline T div_up(const T a, const U b) {
-    assert(b);
+    IDEEP_ENFORCE(b != 0, "divide zero in div_up");
     return(a + b - 1) / b;
 }
 template <typename T, typename U>

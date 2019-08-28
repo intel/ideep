@@ -64,7 +64,7 @@ docker pull chainer/chainer:latest-intel-python2
 docker run -it chainer/chainer:latest-intel-python2 /bin/bash
 ```
 
-**Multinode support:**
+## Multinode support:
 
 Non-blocking multinode data parallelism is supported.  The system is requried to meet MPICH dependency and user needs to replace the cmake command in build process:
 

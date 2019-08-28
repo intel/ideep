@@ -6,7 +6,6 @@
 #include "lru_cache.hpp"
 #include "utils.hpp"
 #include "primitives.hpp"
-#include "fast_math.hpp"
 
 namespace ideep {
 
@@ -2573,21 +2572,20 @@ public:
       unsigned N = static_cast<unsigned>(inputA.get_size() / sizeof(float));
       switch (op) {
       case ELTWISE_ADD:
-#ifdef __AVX2__
-        FM_AVX2_PREF::add<float>(Z, X, Y, N);
-        return;
+#ifdef _OPENMP
+# pragma omp parallel for schedule(static)
 #endif
+        for (auto n = 0; n < N; n++) {
+          Z[n] = X[n] + Y[n];
+        }
+        return;
       case ELTWISE_MUL:
-#ifdef __AVX2__
-        FM_AVX2_PREF::mul<float>(Z, X, Y, N);
-#else
 #ifdef _OPENMP
 # pragma omp parallel for schedule(static)
 #endif
         for (auto n = 0; n < N; n++) {
           Z[n] = X[n] * Y[n];
         }
-#endif
         return;
       case ELTWISE_DIV:
       default:

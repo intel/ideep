@@ -1,6 +1,6 @@
-# Chainer Backend for Intel Architecture
+# Intel® Optimization for Chainer* 
 
-A Chainer module providing numpy like API and DNN acceleration using MKL-DNN.
+Chainer Backend for Intel Architecture, a Chainer module providing numpy like API and DNN acceleration using MKL-DNN.
 
 
 ## Requirements

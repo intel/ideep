@@ -2468,7 +2468,11 @@ public:
     const auto mask_data = static_cast<T*>(mask.get_data_handle());
     const auto dst_data = static_cast<T*>(dst.get_data_handle());
 #ifdef _OPENMP
+#if (_OPENMP >= 201307)
+# pragma omp parallel for simd
+#else
 # pragma omp parallel for schedule(static)
+#endif
 #endif
     for (size_t i = 0; i < size; i++) {
       mask_data[i] = bernouli_nums[i] * scale;
@@ -2513,7 +2517,11 @@ public:
     const auto gy_data = static_cast<T*>(gy.get_data_handle());
     const auto gx_data = static_cast<T*>(gx.get_data_handle());
 #ifdef _OPENMP
+#if (_OPENMP >= 201307)
+# pragma omp parallel for simd
+#else
 # pragma omp parallel for schedule(static)
+#endif
 #endif
     for (size_t i = 0; i < size; i++) {
       gx_data[i] = mask_data[i] * gy_data[i];
@@ -2573,7 +2581,11 @@ public:
       switch (op) {
       case ELTWISE_ADD:
 #ifdef _OPENMP
+#if (_OPENMP >= 201307)
+# pragma omp parallel for simd
+#else
 # pragma omp parallel for schedule(static)
+#endif
 #endif
         for (auto n = 0; n < N; n++) {
           Z[n] = X[n] + Y[n];
@@ -2581,7 +2593,11 @@ public:
         return;
       case ELTWISE_MUL:
 #ifdef _OPENMP
+#if (_OPENMP >= 201307)
+# pragma omp parallel for simd
+#else
 # pragma omp parallel for schedule(static)
+#endif
 #endif
         for (auto n = 0; n < N; n++) {
           Z[n] = X[n] * Y[n];

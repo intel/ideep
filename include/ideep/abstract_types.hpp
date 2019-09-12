@@ -87,6 +87,7 @@ using padding_kind = mkldnn::padding_kind;
 using batch_normalization_flag = mkldnn::batch_normalization_flag;
 using query = mkldnn::query;
 using round_mode = mkldnn::round_mode;
+using rnn_direction = mkldnn::rnn_direction;
 
 #define IDEEP_OP_SCALE_MASK(scale_size) (((scale_size) > 1) ? 2 : 0)
 #define IDEEP_TENSOR_SCALE_MASK(scale_size, grouped) \

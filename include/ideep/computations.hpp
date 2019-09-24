@@ -337,14 +337,7 @@ struct convolution_forward: public computation,
             &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &dilates_in[0],
             &padding_l[0], &padding_r[0], mkldnn::convert_to_c(apadding_kind)),
           "could not create a dilated convolution forward descriptor");
-      auto dims = weights_desc.ndims();
-      if (dims == 5 && (src_desc.get_dim(1) / weights_desc.get_dim(0)) % 4 != 0) {
-        // this will be removed after mkldnn v2.0 released
-        std::string info_str ="gemm";
-        create_primitive_desc_by_info_str_v2(info_str, data, attr);
-      } else {
-        create_primitive_desc_v2(data, attr);
-      }
+      create_primitive_desc_v2(data, attr);
     }
   };
 

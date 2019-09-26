@@ -116,20 +116,14 @@ using bytestring = std::string;
 
 inline void to_bytes(bytestring& bytes, const int arg) {
   auto as_cstring = reinterpret_cast<const char*>(&arg);
-#ifndef __AVX__
   if (arg == 0) return;
   auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
-#else
-  unsigned int lz;
-  asm volatile ("lzcntl %1, %0": "=r" (lz): "r" (arg));
-  auto len = sizeof(int) - lz / 8;
-#endif
   bytes.append(as_cstring, len);
 }
 
 inline void to_bytes(bytestring& bytes, const bool arg) {
   to_bytes(bytes, arg ? 1 : 0);
-  bytes.append(1, 'x');
+  bytes.append(1, 'b');
 }
 
 inline void to_bytes(bytestring& bytes, const float arg) {
@@ -147,11 +141,11 @@ inline void to_bytes(bytestring& bytes, const std::vector<T> arg) {
   if (arg.size() > 0) {
     for (T elems : arg) {
       to_bytes(bytes, elems);
-      bytes.append(1, 'x');
+      bytes.append(1, 'v');
     }
     bytes.pop_back();
   } else {
-    bytes.append(1, 'x');
+    bytes.append(1, 'v');
   }
 }
 

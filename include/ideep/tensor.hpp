@@ -337,6 +337,9 @@ public:
         break;
       case mkldnn_ncw:
       case mkldnn_nwc:
+      case mkldnn_nCw4c:
+      case mkldnn_nCw8c:
+      case mkldnn_nCw16c:
         ret = format::ncw;
         break;
       case mkldnn_nhwc:
@@ -351,56 +354,106 @@ public:
         break;
       case mkldnn_ncdhw:
       case mkldnn_ndhwc:
+      case mkldnn_nCdhw4c:
+      case mkldnn_nCdhw8c:
       case mkldnn_nCdhw16c:
         ret = format::ncdhw;
         break;
       case mkldnn_oihw:
       case mkldnn_ihwo:
       case mkldnn_hwio:
+      case mkldnn_ohwi:
+      case mkldnn_iohw:
+      case mkldnn_hwio_s8s8:
+      case mkldnn_oIhw8i:
+      case mkldnn_oIhw16i:
+      case mkldnn_OIhw4i4o:
       case mkldnn_OIhw8i8o:
       case mkldnn_OIhw16i16o:
+      case mkldnn_OIhw4i16o4i:
+      case mkldnn_OIhw4i16o4i_s8s8:
+      case mkldnn_OIhw8i16o2i:
+      case mkldnn_IOhw8i16o2i:
+      case mkldnn_OIhw8o16i2o:
+      case mkldnn_IOhw8o16i2o:
       case mkldnn_OIhw8o8i:
       case mkldnn_OIhw16o16i:
-      case mkldnn_OIhw8i16o2i:
-      case mkldnn_OIhw8o16i2o:
+      case mkldnn_IOhw16o16i:
       case mkldnn_Oihw8o:
+      case mkldnn_Oihw4o:
       case mkldnn_Oihw16o:
       case mkldnn_Ohwi8o:
+      case mkldnn_Ohwi4o:
       case mkldnn_Ohwi16o:
       case mkldnn_OhIw16o4i:
-      case mkldnn_OIhw4i16o4i:
-      case mkldnn_IOhw16o16i:
-      case mkldnn_OIhw4i16o4i_s8s8:
         ret = format::oihw;
         break;
       case mkldnn_oidhw:
       case mkldnn_dhwio:
+      case mkldnn_oIdhw8i:
+      case mkldnn_oIdhw16i:
+      case mkldnn_OIdhw4i4o:
+      case mkldnn_Odhwi4o:
+      case mkldnn_OIdhw8i8o:
+      case mkldnn_OIdhw8o8i:
+      case mkldnn_Odhwi8o:
+      case mkldnn_OIdhw16i16o:
+      case mkldnn_OIdhw16o16i:
+      case mkldnn_Oidhw4o:
+      case mkldnn_Oidhw16o:
+      case mkldnn_Odhwi16o:
+      case mkldnn_OIdhw8i16o2i:
+      case mkldnn_OIdhw8o16i2o:
+      case mkldnn_IOdhw8o16i2o:
         ret = format::oidhw;
         break;
       case mkldnn_goihw:
       case mkldnn_hwigo:
+      case mkldnn_giohw:
+      case mkldnn_hwigo_s8s8:
+      case mkldnn_gOIhw4i4o:
       case mkldnn_gOIhw8i8o:
       case mkldnn_gOIhw16i16o:
       case mkldnn_gOIhw4i16o4i:
+      case mkldnn_gOIhw4i16o4i_s8s8:
+      case mkldnn_gOIhw2i8o4i:
+      case mkldnn_gOIhw2i8o4i_s8s8:
       case mkldnn_gOIhw8i16o2i:
+      case mkldnn_gIOhw8i16o2i:
       case mkldnn_gOIhw8o16i2o:
+      case mkldnn_gIOhw8o16i2o:
+      case mkldnn_gOIhw4o4i:
+      case mkldnn_gOIhw4o4i_s8s8:
       case mkldnn_gOIhw8o8i:
       case mkldnn_gOIhw16o16i:
       case mkldnn_gIOhw16o16i:
       case mkldnn_gOihw8o:
+      case mkldnn_gOihw4o:
       case mkldnn_gOihw16o:
       case mkldnn_gOhwi8o:
+      case mkldnn_gOhwi4o:
       case mkldnn_gOhwi16o:
       case mkldnn_Goihw8g:
       case mkldnn_Goihw16g:
       case mkldnn_Goihw16g_s8s8:
       case mkldnn_gOhIw16o4i:
-      case mkldnn_gOIhw2i8o4i:
-      case mkldnn_gOIhw2i8o4i_s8s8:
-      case mkldnn_gOIhw4o4i:
-      case mkldnn_gOIhw4o4i_s8s8:
-      case mkldnn_gOIhw4i4o:
         ret = format::goihw;
+        break;
+      case mkldnn_goidhw:
+      case mkldnn_gOIdhw4i4o:
+      case mkldnn_gOdhwi4o:
+      case mkldnn_gOIdhw8i8o:
+      case mkldnn_gOIdhw8o8i:
+      case mkldnn_gOdhwi8o:
+      case mkldnn_gOIdhw8i16o2i:
+      case mkldnn_gOIdhw8o16i2o:
+      case mkldnn_gIOdhw8o16i2o:
+      case mkldnn_gOIdhw16i16o:
+      case mkldnn_gOIdhw16o16i:
+      case mkldnn_gOidhw4o:
+      case mkldnn_gOidhw16o:
+      case mkldnn_gOdhwi16o:
+        ret = format::goidhw;
         break;
       case mkldnn_ntc:
       case mkldnn_tnc:
@@ -427,7 +480,7 @@ public:
         ret = format::format_undef;
         break;
       default:
-        // std::cout<<"Unsupported MKL-DNN memory format: "<<mformat<<std::endl;
+        //std::cout<<"Unsupported MKL-DNN memory format: "<<mformat<<std::endl;
         throw error(mkldnn_runtime_error, "unsupported mkldnn memory format!");
       }
       return ret;
@@ -473,6 +526,7 @@ public:
         case format::oidhw:
         case format::dhwio:
         case format::goihw:
+        case format::goidhw:
           return aformat;
         default:
           return format::format_undef;
@@ -899,7 +953,7 @@ public:
   }
 
   inline bool is_grouped() const {
-    return public_format_ == format::goihw;
+    return public_format_ == format::goihw || public_format_ == format::goidhw;
   }
 
   static inline void group_dims(dims& adims, const int group) {
@@ -919,7 +973,12 @@ public:
       IDEEP_ENFORCE(is_public_format(), "can not make grouped with internal format");
       auto adims = get_dims();
       group_dims(adims, group);
-      set_descriptor({adims, get_data_type(), format::goihw});
+      auto ndims = adims.size();
+      if (ndims == 5) {
+        set_descriptor({adims, get_data_type(), format::goihw});
+      } else {
+        set_descriptor({adims, get_data_type(), format::goidhw});
+      }
     }
   }
 
@@ -928,7 +987,12 @@ public:
       IDEEP_ENFORCE(is_public_format(), "can not make ungrouped with internal format");
       auto adims = get_dims();
       ungroup_dims(adims);
-      set_descriptor({adims, get_data_type(), format::oihw});
+      auto ndims = adims.size();
+      if (ndims == 4) {
+        set_descriptor({adims, get_data_type(), format::oihw});
+      } else {
+        set_descriptor({adims, get_data_type(), format::oidhw});
+      }
     }
   }
 

@@ -202,13 +202,17 @@ static void bernoulli_generate(const long n, const double p, int* r) {
 #endif
 }
 
-static inline mkldnn::memory::dims get_compatible_dilates(const mkldnn::memory::dims& dilates) {
-    if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
-      auto dilates_in = dilates;
-      IDEEP_STD_EACH_SUB(dilates_in, 1);
-      return dilates_in;
-    }
+static inline mkldnn::memory::dims get_compatible_dilates(const mkldnn::memory::dims& dilates, int dilates_size) {
+  if (!dilates.empty() && !IDEEP_STD_ANY_LE(dilates, 0)) {
+    auto dilates_in = dilates;
+    IDEEP_STD_EACH_SUB(dilates_in, 1);
+    return dilates_in;
+  }
+  if (dilates_size == 2) {
     return {0, 0};
+  } else {
+    return {0, 0, 0};
+  }
 }
 
 static void inline validate_dims() {}

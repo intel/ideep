@@ -331,7 +331,7 @@ struct convolution_forward: public computation,
       auto bias_data = bias_desc.format_any();
       auto dst_data = attr.get_post_ops().has_op_kind(kind::sum) ?
         *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates);
+      auto dilates_in = utils::get_compatible_dilates(dilates, src_desc.ndims() - 2);
       error::wrap_c_api(mkldnn_dilated_convolution_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
             &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &dilates_in[0],
@@ -606,41 +606,66 @@ struct convolution_forward: public computation,
       prop_kind aprop_kind = prop_kind::forward, tdtype_t x_dtype = tdtype_t::f32,
       const tdims_t& src_dims = tdims_t()) {
     auto dims_in = weights_dims;
-    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
+    auto src_size =  strides.size() + 2; // we should give the stride to make check 2d or 3d conv
+    if ((src_size == 4 && group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in))
+        || (src_size == 5 && group > 1 && !IDEEP_IS_GROUPED_5DIMS(dims_in))) {
       tensor::group_dims(dims_in, group);
     }
     auto ndims = dims_in.size();
-    auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
+    auto grouped = (src_size == 4 && IDEEP_IS_GROUPED_4DIMS(dims_in))
+                    || (src_size == 5 && IDEEP_IS_GROUPED_5DIMS(dims_in));
     auto g = grouped ? dims_in[0] : 1;
-    auto dilates_in = utils::get_compatible_dilates(dilates);
+    auto dilates_in = utils::get_compatible_dilates(dilates, src_size - 2);
 
     IDEEP_ENFORCE(!(aalgorithm == algorithm::convolution_winograd && src_dims.empty()),
         "Incorrect src_dims");
+    tdims_t x_dims;
+    tdims_t y_dims;
     auto ic = g * dims_in[1 + grouped];
     auto oc = g * dims_in[0 + grouped];
-    auto kh = dims_in[ndims - 2];
-    auto kw = dims_in[ndims - 1];
-    int mb, h, w;
+    tdims_t kernel_size;
+    if (src_size == 5){
+      kernel_size.push_back(dims_in[ndims - 3]);
+    }
+    kernel_size.push_back(dims_in[ndims - 2]);
+    kernel_size.push_back(dims_in[ndims - 1]);
+    auto src_format = src_size == 4 ? format::nchw : format::ncdhw;
     if (src_dims.empty()) {
       // Construct a dummy case
-      mb = 1;
-      h = 2 * kh;
-      w = 4 * kw;
+      x_dims.push_back(1);
+      x_dims.push_back(ic);
+      y_dims.push_back(1);
+      y_dims.push_back(oc);
+      if (src_size == 4) {
+        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[1]);
+      } else {
+        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[1]);
+        x_dims.push_back(8 * kernel_size[2]);
+      }
     } else {
       // Use the real data
-      mb = src_dims[0];
-      h = src_dims[2];
-      w = src_dims[3];
+      for (auto i=0; i < src_size; ++i) {
+         x_dims.push_back(src_dims[i]);
+      }
+      y_dims.push_back(src_dims[0]);
+      y_dims.push_back(oc);
     }
-    auto oh = (h - ((kh - 1) * (dilates_in[0] + 1) + 1) + (padding_l[0] + padding_r[0])) / strides[0] + 1;
-    auto ow = (w - ((kw - 1) * (dilates_in[1] + 1) + 1) + (padding_l[1] + padding_r[1])) / strides[1] + 1;
+    for (auto d = 2; d < src_size; ++d) {
+      auto out_size = (x_dims[d] - ((kernel_size[d-2] - 1) * (dilates_in[d-2] + 1) + 1)
+          + (padding_l[d-2] + padding_r[d-2])) / strides[d-2] + 1;
+      y_dims.push_back(out_size);
+    }
 
-    tdims_t x_dims = { mb, ic, h, w};
-    tdims_t y_dims = { mb, oc, oh, ow};
     auto y_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::s32;
-    tdesc_t x_desc(x_dims, x_dtype, format::nchw);
-    tdesc_t y_desc(y_dims, y_dtype, format::nchw);
-    tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
+    tdesc_t x_desc(x_dims, x_dtype, src_format);
+    tdesc_t y_desc(y_dims, y_dtype, src_format);
+    auto weight_format = grouped ? format::goihw : format::oihw;
+    if (src_size == 5) {
+      weight_format = grouped ? format::goidhw : format::oidhw;
+    }
+    tdesc_t weights_desc(dims_in, dtype, weight_format);
 
     // FIXME: workaroud winograd format issue in inference
     // If prop_kind == forward_inference, the mkldnn_wino_fmt for weights is required by winograd primitive.
@@ -676,7 +701,7 @@ struct convolution_backward_data : public computation,
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
       error::wrap_c_api(mkldnn_dilated_convolution_backward_data_desc_init(
             &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any,
             &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
@@ -737,7 +762,7 @@ struct convolution_backward_weights : public computation,
       auto diff_weights_any = gradw_desc.format_any();
       auto diff_bias_any = gradb_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
       error::wrap_c_api(mkldnn_dilated_convolution_backward_weights_desc_init(
             &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, &diff_bias_any,
             &diff_dst_any, &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
@@ -790,13 +815,16 @@ public:
       const tdims_t& padding_r, const int group, algorithm aalgorithm = algorithm::convolution_direct,
       padding_kind apadding_kind = padding_kind::zero) {
     auto gw_dims_in = gradw_dims;
-    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
+    auto src_size = grady.ndims();
+    if ((src_size == 4 && group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims))
+        || (src_size == 5 && group > 1 && !IDEEP_IS_GROUPED_5DIMS(gradw_dims))) {
       tensor::group_dims(gw_dims_in, group);
     }
     compute_impl<alloc, with_gradb>(src, grady, gw_dims_in, gradw, gradb,
         strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
 
-    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims)) {
+    if ((src_size == 4 && group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims))
+        || (src_size == 5 && group > 1 && !IDEEP_IS_GROUPED_5DIMS(gradw_dims))) {
       IDEEP_ENFORCE(group == gradw.get_dim(0), "invalid dim 0 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims[0] == group * gradw.get_dim(1), "invalid dim 1 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1, "invalid ndim in grouped gradw");
@@ -830,7 +858,7 @@ struct convolution_transpose_forward : public computation,
       auto weights_data = weights_desc.format_any();
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates);
+      auto dilates_in = utils::get_compatible_dilates(dilates, src_desc.ndims() - 2);
       error::wrap_c_api(
           mkldnn_dilated_deconvolution_forward_desc_init(&data, mkldnn::convert_to_c(aprop_kind),
               convert_to_c(aalgorithm), &src_data, &weights_data, &bias_data, &dst_data, &strides[0],
@@ -932,7 +960,7 @@ struct convolution_transpose_backward_data : public computation,
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
       mkldnn_deconvolution_desc_t data;
       error::wrap_c_api(mkldnn_dilated_deconvolution_backward_data_desc_init(
               &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any, &strides[0],
@@ -1001,7 +1029,7 @@ struct convolution_transpose_backward_weights : public computation,
       auto diff_weights_any = gradw_desc.format_any();
       auto diff_bias_any = gradb_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
 
       error::wrap_c_api(
           mkldnn_dilated_deconvolution_backward_weights_desc_init(&data, convert_to_c(aalgorithm),

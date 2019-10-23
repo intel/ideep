@@ -943,23 +943,34 @@ public:
     return public_format_ == format::goihw || public_format_ == format::goidhw;
   }
 
-  static inline void group_dims(dims& adims, const int group) {
+  static inline void group_dims(dims& adims, const int group, const bool deconv = false) {
     adims.insert(adims.begin(), group);
-    adims[1] /= group;
+    if (deconv) {
+      adims[2] /= group;
+    } else {
+      adims[1] /= group;
+    }
   }
 
-  static inline int ungroup_dims(dims& adims) {
+
+  static inline int ungroup_dims(dims& adims, const bool deconv = false) {
     int group = adims[0];
-    adims[1] *= group;
+    if (deconv) {
+      adims[2] *= group;
+    } else {
+      adims[1] *= group;
+    }
     adims.erase(adims.begin());
     return group;
   }
 
-  void make_group(int group) {
+  void make_group(int group, const bool deconv = false) {
+    // for deconv with g > 1, the format is go(i/g)hw given oihw and group,
+    // for conv with g > 1, the format is g(o/g)ihw given oihw and group
     if (group > 1 && !is_grouped()) {
       IDEEP_ENFORCE(is_public_format(), "can not make grouped with internal format");
       auto adims = get_dims();
-      group_dims(adims, group);
+      group_dims(adims, group, deconv);
       auto ndims = adims.size();
       if (ndims == 5) {
         set_descriptor({adims, get_data_type(), format::goihw});
@@ -969,11 +980,11 @@ public:
     }
   }
 
-  void make_ungroup() {
+  void make_ungroup(const bool deconv = false) {
     if (is_grouped()) {
       IDEEP_ENFORCE(is_public_format(), "can not make ungrouped with internal format");
       auto adims = get_dims();
-      ungroup_dims(adims);
+      ungroup_dims(adims, deconv);
       auto ndims = adims.size();
       if (ndims == 4) {
         set_descriptor({adims, get_data_type(), format::oihw});

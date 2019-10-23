@@ -36,10 +36,9 @@ namespace ideep {
 #define IDEEP_STD_EACH_SUB(v, i) \
   for (auto it = v.begin(); it != v.end(); it++) {*it -= i;}
 
-// For 2D convolution with grouped weights, the ndims must be 5 (goihw)
-#define IDEEP_IS_GROUPED_4DIMS(d) (((d).size() == 5) ? 1 : 0)
-// For 3D convolution with grouped weights, the ndims must be 6 (goidhw)
-#define IDEEP_IS_GROUPED_5DIMS(d) (((d).size() == 6) ? 1 : 0)
+// For convolution with grouped weights, the ndims must be 5 (goihw) or 6 (goidhw)
+#define IDEEP_IS_GROUPED(id, wd) (((id == 4 && (wd).size() == 5) \
+    || (id == 5 && (wd).size() == 6)) ? 1 : 0)
 
 #define IDEEP_MOD_PTR(ptr, bytes) (((uintptr_t)(ptr)) & ((bytes) - 1))
 #define IDEEP_IS_ALIGNED_PTR(ptr, bytes) ((IDEEP_MOD_PTR(ptr, bytes)) == 0)

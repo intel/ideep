@@ -331,7 +331,7 @@ struct convolution_forward: public computation,
       auto bias_data = bias_desc.format_any();
       auto dst_data = attr.get_post_ops().has_op_kind(kind::sum) ?
         *dst_desc.get_mkldnn_memory_desc_t() : dst_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates, src_desc.ndims() - 2);
+      auto dilates_in = utils::get_compatible_dilates(dilates, src_desc.ndims());
       error::wrap_c_api(mkldnn_dilated_convolution_forward_desc_init(
             &data, mkldnn::convert_to_c(aprop_kind), convert_to_c(aalgorithm),
             &src_data, &weights_data, &bias_data, &dst_data, &strides[0], &dilates_in[0],
@@ -607,15 +607,13 @@ struct convolution_forward: public computation,
       const tdims_t& src_dims = tdims_t()) {
     auto dims_in = weights_dims;
     auto src_size =  strides.size() + 2; // we should give the stride to make check 2d or 3d conv
-    if ((src_size == 4 && group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in))
-        || (src_size == 5 && group > 1 && !IDEEP_IS_GROUPED_5DIMS(dims_in))) {
+    auto grouped = IDEEP_IS_GROUPED(src_size, dims_in);
+    if (group > 1 && !grouped) {
       tensor::group_dims(dims_in, group);
     }
     auto ndims = dims_in.size();
-    auto grouped = (src_size == 4 && IDEEP_IS_GROUPED_4DIMS(dims_in))
-                    || (src_size == 5 && IDEEP_IS_GROUPED_5DIMS(dims_in));
     auto g = grouped ? dims_in[0] : 1;
-    auto dilates_in = utils::get_compatible_dilates(dilates, src_size - 2);
+    auto dilates_in = utils::get_compatible_dilates(dilates, src_size);
 
     IDEEP_ENFORCE(!(aalgorithm == algorithm::convolution_winograd && src_dims.empty()),
         "Incorrect src_dims");
@@ -701,7 +699,7 @@ struct convolution_backward_data : public computation,
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims());
       error::wrap_c_api(mkldnn_dilated_convolution_backward_data_desc_init(
             &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any,
             &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
@@ -762,7 +760,7 @@ struct convolution_backward_weights : public computation,
       auto diff_weights_any = gradw_desc.format_any();
       auto diff_bias_any = gradb_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims());
       error::wrap_c_api(mkldnn_dilated_convolution_backward_weights_desc_init(
             &data, convert_to_c(aalgorithm), &src_any, &diff_weights_any, &diff_bias_any,
             &diff_dst_any, &strides[0], &dilates_in[0], &padding_l[0], &padding_r[0],
@@ -816,15 +814,13 @@ public:
       padding_kind apadding_kind = padding_kind::zero) {
     auto gw_dims_in = gradw_dims;
     auto src_size = grady.ndims();
-    if ((src_size == 4 && group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims))
-        || (src_size == 5 && group > 1 && !IDEEP_IS_GROUPED_5DIMS(gradw_dims))) {
+    auto grouped = IDEEP_IS_GROUPED(src_size, gradw_dims);
+    if (group > 1 && !grouped) {
       tensor::group_dims(gw_dims_in, group);
     }
     compute_impl<alloc, with_gradb>(src, grady, gw_dims_in, gradw, gradb,
         strides, dilates, padding_l, padding_r, aalgorithm, apadding_kind);
-
-    if ((src_size == 4 && group > 1 && !IDEEP_IS_GROUPED_4DIMS(gradw_dims))
-        || (src_size == 5 && group > 1 && !IDEEP_IS_GROUPED_5DIMS(gradw_dims))) {
+    if (group > 1 && !grouped) {
       IDEEP_ENFORCE(group == gradw.get_dim(0), "invalid dim 0 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims[0] == group * gradw.get_dim(1), "invalid dim 1 in grouped gradw");
       IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1, "invalid ndim in grouped gradw");
@@ -858,7 +854,7 @@ struct convolution_transpose_forward : public computation,
       auto weights_data = weights_desc.format_any();
       auto bias_data = bias_desc.format_any();
       auto dst_data = dst_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates, src_desc.ndims() - 2);
+      auto dilates_in = utils::get_compatible_dilates(dilates, src_desc.ndims());
       error::wrap_c_api(
           mkldnn_dilated_deconvolution_forward_desc_init(&data, mkldnn::convert_to_c(aprop_kind),
               convert_to_c(aalgorithm), &src_data, &weights_data, &bias_data, &dst_data, &strides[0],
@@ -900,8 +896,10 @@ struct convolution_transpose_forward : public computation,
   static void compute(const tensor& src, const tensor& weights, const tensor& bias, const tdims_t& result_dims,
       tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
       const tdims_t& dilates = {1, 1}, const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
-      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
-    compute_impl<alloc, with_bias>(src, weights, bias, result_dims, dst, strides, dilates, padding_l, padding_r,
+      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero, const int group = 1) {
+    auto weights_in = weights;
+    weights_in.make_group(group, true);
+    compute_impl<alloc, with_bias>(src, weights_in, bias, result_dims, dst, strides, dilates, padding_l, padding_r,
         attr, aalgorithm, aprop_kind, appading_kind);
   }
 
@@ -909,39 +907,59 @@ struct convolution_transpose_forward : public computation,
   static void compute(const tensor& src, const tensor& weights, const tdims_t& result_dims,
       tensor& dst, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
       const tdims_t& dilates = {1, 1}, const attr_t& attr = attr_t(), algorithm aalgorithm = algorithm::deconvolution_direct,
-      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero) {
+      prop_kind aprop_kind = prop_kind::forward, padding_kind appading_kind = padding_kind::zero, const int group = 1) {
     static tensor dummy_bias;
     compute<alloc, false>(src, weights, dummy_bias,  result_dims, dst, strides, padding_l, padding_r,
-        dilates, attr, aalgorithm, aprop_kind, appading_kind);
+        dilates, attr, aalgorithm, aprop_kind, appading_kind, group);
   }
 
   static tdesc_t expected_weights_descriptor(const tdims_t& weights_dims,
       tdtype_t dtype = tdtype_t::f32, const tdims_t& strides = {1, 1}, const tdims_t& padding_l = {0, 0},
-      const tdims_t& padding_r = {0, 0}, int group = 1, const tdims_t& dilates = {1, 1}) {
+      const tdims_t& padding_r = {0, 0}, const int group = 1, const tdims_t& dilates = {1, 1}) {
     auto dims_in = weights_dims;
-    if (group > 1 && !IDEEP_IS_GROUPED_4DIMS(dims_in)) {
-      tensor::group_dims(dims_in, group);
+    auto src_size =  strides.size() + 2; // we should give the stride to make check 2d or 3d conv
+    auto grouped = IDEEP_IS_GROUPED(src_size, dims_in);
+    if (group > 1 && !grouped) {
+      tensor::group_dims(dims_in, group, true);
     }
-
     auto ndims = dims_in.size();
-    auto grouped = IDEEP_IS_GROUPED_4DIMS(dims_in);
-    auto g = grouped ? dims_in[0] : 1;
+     auto g = grouped ? dims_in[0] : 1;
+    tdims_t x_dims, y_dims, kernel_size;
+    if (src_size == 5){
+      kernel_size.push_back(dims_in[ndims - 3]);
+    }
+    kernel_size.push_back(dims_in[ndims - 2]);
+    kernel_size.push_back(dims_in[ndims - 1]);
+
     auto ic = g * dims_in[1 + grouped];
     auto oc = g * dims_in[0 + grouped];
-    auto kh = dims_in[ndims - 2];
-    auto kw = dims_in[ndims - 1];
-    auto h = 8 * kh;
-    auto w = 8 * kw;
-    auto oh = (h - 1) * strides[0] + (1 + (kh - 1) * (dilates[0])) - padding_l[0] - padding_r[0];
-    auto ow = (w - 1) * strides[1] + (1 + (kw - 1) * (dilates[1])) - padding_l[1] - padding_r[1];
-    tdims_t x_dims = {1, ic, h, w};
-    tdims_t y_dims = {1, oc, oh, ow};
+    x_dims.push_back(1);
+    x_dims.push_back(ic);
+    y_dims.push_back(1);
+    y_dims.push_back(oc);
+    if (src_size == 4) {
+      x_dims.push_back(8 * kernel_size[0]);
+      x_dims.push_back(8 * kernel_size[1]);
+    } else {
+      x_dims.push_back(8 * kernel_size[0]);
+      x_dims.push_back(8 * kernel_size[1]);
+      x_dims.push_back(8 * kernel_size[2]);
+    }
+    for (auto d = 2; d < src_size; ++d) {
+      auto out_size = (x_dims[d] -1) * strides[d-2] + (1 + (kernel_size[d-2] - 1) * dilates[d-2])
+          - padding_l[d-2] - padding_r[d-2];
+      y_dims.push_back(out_size);
+    }
     auto x_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::u8;
     auto y_dtype = (dtype != tdtype_t::s8) ? dtype : tdtype_t::s32;
-
-    tdesc_t x_desc(x_dims, x_dtype, format::nchw);
-    tdesc_t y_desc(y_dims, y_dtype, format::nchw);
-    tdesc_t weights_desc(dims_in, dtype, grouped ? format::goihw : format::oihw);
+    auto src_format = src_size == 4 ? format::nchw : format::ncdhw;
+    tdesc_t x_desc(x_dims, x_dtype, src_format);
+    tdesc_t y_desc(y_dims, y_dtype, src_format);
+    auto weight_format = grouped ? format::goihw : format::oihw;
+    if (src_size == 5) {
+      weight_format = grouped ? format::goidhw : format::oidhw;
+    }
+    tdesc_t weights_desc(dims_in, dtype, weight_format);
 
     convolution_transpose_forward comp(x_desc, weights_desc, tdesc_t(), y_desc,
         strides, dilates, padding_l, padding_r);
@@ -960,7 +978,7 @@ struct convolution_transpose_backward_data : public computation,
       auto diff_src_any = gradx_desc.format_any();
       auto weights_any = weights_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims());
       mkldnn_deconvolution_desc_t data;
       error::wrap_c_api(mkldnn_dilated_deconvolution_backward_data_desc_init(
               &data, convert_to_c(aalgorithm), &diff_src_any, &weights_any, &diff_dst_any, &strides[0],
@@ -1009,8 +1027,10 @@ struct convolution_transpose_backward_data : public computation,
   static void compute(const tensor& grady, const tensor& weights, const tdims_t& gradx_dims,
       tensor& gradx, const tdims_t& strides, const tdims_t& padding_l, const tdims_t& padding_r,
       const tdims_t& dilates = {1, 1}, algorithm aalgorithm = algorithm::deconvolution_direct,
-      padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc>(grady, weights, gradx_dims, gradx, strides, dilates, padding_l,
+      padding_kind apadding_kind = padding_kind::zero, const int group = 1) {
+    auto weights_in = weights;
+    weights_in.make_group(group, true);
+    compute_impl<alloc>(grady, weights_in, gradx_dims, gradx, strides, dilates, padding_l,
         padding_r, aalgorithm, apadding_kind);
   }
 };
@@ -1029,7 +1049,7 @@ struct convolution_transpose_backward_weights : public computation,
       auto diff_weights_any = gradw_desc.format_any();
       auto diff_bias_any = gradb_desc.format_any();
       auto diff_dst_any = grady_desc.format_any();
-      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims() - 2);
+      auto dilates_in = utils::get_compatible_dilates(dilates, grady_desc.ndims());
 
       error::wrap_c_api(
           mkldnn_dilated_deconvolution_backward_weights_desc_init(&data, convert_to_c(aalgorithm),
@@ -1084,19 +1104,31 @@ struct convolution_transpose_backward_weights : public computation,
   static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, tensor& gradb, const tdims_t& strides, const tdims_t& padding_l,
       const tdims_t& padding_r, const tdims_t& dilates = {1, 1}, algorithm aalgorithm = algorithm::deconvolution_direct,
-      padding_kind apadding_kind = padding_kind::zero) {
-    compute_impl<alloc, with_gradb>(src, grady, gradw_dims, gradw, gradb, strides, dilates, padding_l, padding_r,
+      padding_kind apadding_kind = padding_kind::zero, const int group = 1) {
+    auto gw_dims_in = gradw_dims;
+    auto src_size = grady.ndims();
+    auto grouped = IDEEP_IS_GROUPED(src_size, gradw_dims);
+    if (group > 1 && !grouped) {
+      tensor::group_dims(gw_dims_in, group, true);
+    }
+    compute_impl<alloc, with_gradb>(src, grady, gw_dims_in, gradw, gradb, strides, dilates, padding_l, padding_r,
         aalgorithm, apadding_kind);
+    if (group > 1 && !grouped) {
+      IDEEP_ENFORCE(group == gradw.get_dim(0), "invalid dim 0 in grouped gradw");
+      IDEEP_ENFORCE(gradw_dims[1] == group * gradw.get_dim(2), "invalid dim 2 in grouped gradw");
+      IDEEP_ENFORCE(gradw_dims.size() == gradw.ndims() - 1, "invalid ndim in grouped gradw");
+      gradw.reshape<alloc>(gradw_dims);
+    }
   }
 
   template<class alloc = utils::allocator>
   static void compute(const tensor& src, const tensor& grady, const tdims_t& gradw_dims,
       tensor& gradw, const tdims_t& strides, const tdims_t& padding_l,
       const tdims_t& padding_r, const tdims_t& dilates = {1, 1}, algorithm aalgorithm = algorithm::deconvolution_direct,
-      padding_kind apadding_kind = padding_kind::zero) {
+      padding_kind apadding_kind = padding_kind::zero, const int group=1) {
     static tensor dummy_gradb;
     compute<alloc, false>(src, grady, gradw_dims, gradw, dummy_gradb, strides, padding_l, padding_r,
-        dilates, aalgorithm, apadding_kind);
+        dilates, aalgorithm, apadding_kind, group);
   }
 };
 

@@ -27,9 +27,13 @@
 #define omp_in_parallel()     0
 #endif
 
-/* Definitions for builtins unavailable on MSVC */
-// see https://github.com/llvm/llvm-project/blob/master/compiler-rt/lib/builtins/int_lib.h
+ 
+// Definitions for builtins unavailable on MSVC 
+//see https://github.com/llvm/llvm-project/blob/master/compiler-rt/lib/builtins/int_lib.h
 #if defined(_MSC_VER) && !defined(__clang__)
+// <ctime> not need in VS pro 1.0.1, but for Vs commun,
+// has error C2039: 'time': is not a member of 'std'. 
+#include <ctime>
 #include <intrin.h>
 uint32_t __inline clz(uint32_t x) {
   unsigned long leading_zero = 0;

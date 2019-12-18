@@ -27,6 +27,22 @@
 #define omp_in_parallel()     0
 #endif
 
+/* Definitions for builtins unavailable on MSVC */
+// see https://github.com/llvm/llvm-project/blob/master/compiler-rt/lib/builtins/int_lib.h
+#if defined(_MSC_VER) && !defined(__clang__)
+#include <intrin.h>
+uint32_t __inline clz(uint32_t x) {
+  unsigned long leading_zero = 0;
+  if (_BitScanReverse(&leading_zero, x))
+    return 31 - leading_zero;
+  return 32;
+}
+#else
+uint32_t __inline clz(uint32_t x) {
+  return __builtin_clz(x);
+}
+#endif
+
 namespace ideep {
 namespace utils {
 
@@ -117,7 +133,7 @@ using bytestring = std::string;
 inline void to_bytes(bytestring& bytes, const int arg) {
   auto as_cstring = reinterpret_cast<const char*>(&arg);
   if (arg == 0) return;
-  auto len = sizeof(arg) - (__builtin_clz(arg) / 8);
+  auto len = sizeof(arg) - (clz(arg) / 8);
   bytes.append(as_cstring, len);
 }
 
@@ -280,7 +296,7 @@ inline void fast_memcpy(char* data_o, char* data_i, size_t len)
 # pragma omp parallel for
 #endif
 #endif
-        for (size_t e = start; e < end; ++e) {
+        for (int e = start; e < end; ++e) {
             output_f[e] = input_f[e];
         }
         if (rem_elems != 0 && ithr ==  nthr -1 )  {
@@ -322,7 +338,7 @@ inline void fast_memset(T* data_o, T val, size_t len)
 # pragma omp parallel for
 #endif
 #endif
-        for (size_t e = start; e < end; ++e) {
+        for (int e = start; e < end; ++e) {
             output_f[e] = val;
         }
         if (rem_elems != 0 && ithr ==  nthr -1 )  {

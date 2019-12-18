@@ -2527,7 +2527,7 @@ public:
 # pragma omp parallel for schedule(static)
 #endif
 #endif
-    for (size_t i = 0; i < size; i++) {
+    for (auto i = 0; i < size; i++) {
       mask_data[i] = bernouli_nums[i] * scale;
       dst_data[i] = mask_data[i] * src_data[i];
     }
@@ -2576,7 +2576,7 @@ public:
 # pragma omp parallel for schedule(static)
 #endif
 #endif
-    for (size_t i = 0; i < size; i++) {
+    for (auto i = 0; i < size; i++) {
       gx_data[i] = mask_data[i] * gy_data[i];
     }
   }

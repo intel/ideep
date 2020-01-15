@@ -27,12 +27,11 @@
 #define omp_in_parallel()     0
 #endif
 
- 
-// Definitions for builtins unavailable on MSVC 
+// Definitions for builtins unavailable on MSVC
 //see https://github.com/llvm/llvm-project/blob/master/compiler-rt/lib/builtins/int_lib.h
 #if defined(_MSC_VER) && !defined(__clang__)
-// <ctime> not need in VS pro 1.0.1, but for Vs commun,
-// has error C2039: 'time': is not a member of 'std'. 
+// <ctime> not need in VS pro 1.0.1, but for VS commun,
+// has error C2039: 'time': is not a member of 'std'.
 #include <ctime>
 #include <intrin.h>
 uint32_t __inline clz(uint32_t x) {
@@ -50,7 +49,7 @@ uint32_t __inline clz(uint32_t x) {
 namespace ideep {
 namespace utils {
 
-// Shallow copied vector
+// Shallow copied vector for primitive copies
 template <class T, class Alloc = std::allocator<T>>
 class s_vector {
 public:
@@ -61,19 +60,27 @@ public:
   s_vector() : n_elems_(0), storage_() {}
 
   explicit s_vector(size_type count, const Alloc& alloc = Alloc())
-    : n_elems_(count) {
-    Alloc dup_alloc(alloc);
+    : n_elems_(count), alloc_(alloc) {
+    auto first = std::allocator_traits<Alloc>::allocate(alloc_, count);
 
-    storage_.reset(new (dup_alloc.allocate(count)) T [count] (),
-       [dup_alloc, count](T* p) mutable {
-      for (int i =0; i < count; i ++)
-        p[i].~T();
-      dup_alloc.deallocate(p, count);
+    storage_.reset(first,
+       [this, count] (T* p) mutable {
+       auto first = p;
+       auto last = first + count;
+       while (last != first)
+        std::allocator_traits<Alloc>::destroy(alloc_, --last);
+       std::allocator_traits<Alloc>::deallocate(alloc_, p, count);
     });
+
+    // construct one-by-one
+    auto last = first + count;
+    for (auto p = first; p != last; ++ p) {
+      std::allocator_traits<Alloc>::construct(alloc_, p);
+    }
   }
 
   s_vector(std::initializer_list<T> init, const Alloc& alloc = Alloc())
-    : storage_(init.size(), alloc) {
+    : s_vector(init.size(), alloc) {
       auto arr = storage_.get();
       auto src = init.begin();
       for (int i = 0; i < init.size(); i ++)
@@ -110,25 +117,29 @@ public:
     return n_elems_;
   }
 
-  void assign(size_type count, const T& val, const Alloc& alloc = Alloc()) {
-    Alloc dup_alloc(alloc);
+  void assign(size_type count, const T& val) {
+    auto first = std::allocator_traits<Alloc>::allocate(alloc_, count);
 
-    storage_.reset(new (dup_alloc.allocate(count)) T [count] (),
-       [dup_alloc, count](T* p) mutable {
-      for (int i =0; i < count; i ++)
-        p[i].~T();
-      dup_alloc.deallocate(p, count);
+    storage_.reset(first,
+       [this, count] (T* p) mutable {
+       auto first = p;
+       auto last = first + count;
+       while (last != first)
+        std::allocator_traits<Alloc>::destroy(alloc_, --last);
+       std::allocator_traits<Alloc>::deallocate(alloc_, p, count);
     });
 
-    auto* elems = storage_.get();
-    for (int i =0; i < count; i ++)
-      elems[i] = val;
-
+    // construct one-by-one
+    auto last = first + count;
+    for (auto p = first; p != last; ++ p) {
+      std::allocator_traits<Alloc>::construct(alloc_, p, val);
+    }
     n_elems_ = count;
   }
 
 protected:
   size_type n_elems_;
+  Alloc alloc_;
   std::shared_ptr<T> storage_;
 };
 

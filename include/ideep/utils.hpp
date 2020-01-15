@@ -51,7 +51,7 @@ namespace utils {
 
 // Shallow copied vector for primitive copies
 template <class T, class Alloc = std::allocator<T>>
-class s_vector {
+class s_vector: public Alloc {
 public:
   using size_type = typename std::vector<T, Alloc>::size_type;
   using reference = typename std::vector<T, Alloc>::reference;
@@ -60,22 +60,22 @@ public:
   s_vector() : n_elems_(0), storage_() {}
 
   explicit s_vector(size_type count, const Alloc& alloc = Alloc())
-    : n_elems_(count), alloc_(alloc) {
-    auto first = std::allocator_traits<Alloc>::allocate(alloc_, count);
+    : Alloc(alloc), n_elems_(count) {
+    auto first = std::allocator_traits<Alloc>::allocate(*this, count);
 
     storage_.reset(first,
        [this, count] (T* p) mutable {
        auto first = p;
        auto last = first + count;
        while (last != first)
-        std::allocator_traits<Alloc>::destroy(alloc_, --last);
-       std::allocator_traits<Alloc>::deallocate(alloc_, p, count);
+        std::allocator_traits<Alloc>::destroy(*this, --last);
+       std::allocator_traits<Alloc>::deallocate(*this, p, count);
     });
 
     // construct one-by-one
     auto last = first + count;
     for (auto p = first; p != last; ++ p) {
-      std::allocator_traits<Alloc>::construct(alloc_, p);
+      std::allocator_traits<Alloc>::construct(*this, p);
     }
   }
 
@@ -118,28 +118,27 @@ public:
   }
 
   void assign(size_type count, const T& val) {
-    auto first = std::allocator_traits<Alloc>::allocate(alloc_, count);
+    auto first = std::allocator_traits<Alloc>::allocate(*this, count);
 
     storage_.reset(first,
        [this, count] (T* p) mutable {
        auto first = p;
        auto last = first + count;
        while (last != first)
-        std::allocator_traits<Alloc>::destroy(alloc_, --last);
-       std::allocator_traits<Alloc>::deallocate(alloc_, p, count);
+        std::allocator_traits<Alloc>::destroy(*this, --last);
+       std::allocator_traits<Alloc>::deallocate(*this, p, count);
     });
 
     // construct one-by-one
     auto last = first + count;
     for (auto p = first; p != last; ++ p) {
-      std::allocator_traits<Alloc>::construct(alloc_, p, val);
+      std::allocator_traits<Alloc>::construct(*this, p, val);
     }
     n_elems_ = count;
   }
 
 protected:
   size_type n_elems_;
-  Alloc alloc_;
   std::shared_ptr<T> storage_;
 };
 

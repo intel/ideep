@@ -21,9 +21,9 @@ struct layer_normalization_forward : public dnnl::layer_normalization_forward {
         {prop_kind::forward_training, src_desc, epsilon, flags}, aengine);
 
     tensor scale_shift {pd.weights_desc()};
-    std::memcpy(scale_shift.get_data_handle(),
-                scale.get_data_handle(), scale.get_size());
-    std::memcpy(scale_shift.get_data_handle() + scale.get_size(),
+    auto* scale_shift_buf = static_cast<char *>(scale_shift.get_data_handle());
+    std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
+    std::memcpy(scale_shift_buf + scale.get_size(),
                 shift.get_data_handle(), shift.get_size());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     mean.reinit_if_possible(pd.mean_desc());

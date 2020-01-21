@@ -53,9 +53,9 @@ struct batch_normalization_forward_inference
         {prop_kind::forward_inference, src_desc, epsilon, flags}, aengine);
 
     tensor scale_shift {pd.weights_desc()};
-    std::memcpy(scale_shift.get_data_handle(),
-                scale.get_data_handle(), scale.get_size());
-    std::memcpy(scale_shift.get_data_handle() + scale.get_size(),
+    auto* scale_shift_buf = static_cast<char *>(scale_shift.get_data_handle());
+    std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
+    std::memcpy(scale_shift_buf + scale.get_size(),
                 shift.get_data_handle(), shift.get_size());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     dst.reinit_if_possible(pd.dst_desc());
@@ -102,9 +102,9 @@ struct batch_normalization_forward_training
         {prop_kind::forward_training, src_desc, epsilon, flags}, aengine);
 
     tensor scale_shift {pd.weights_desc()};
-    std::memcpy(scale_shift.get_data_handle(),
-                scale.get_data_handle(), scale.get_size());
-    std::memcpy(scale_shift.get_data_handle() + scale.get_size(),
+    auto* scale_shift_buf = static_cast<char *>(scale_shift.get_data_handle());
+    std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
+    std::memcpy(scale_shift_buf + scale.get_size(),
                 shift.get_data_handle(), shift.get_size());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     mean.reinit_if_possible(pd.mean_desc());
@@ -194,10 +194,12 @@ struct batch_normalization_backward
           epsilon, aengine);
   diff_scale.reinit_if_possible(scale.get_desc());
   diff_shift.reinit_if_possible(scale.get_desc());
-  std::memcpy(diff_scale.get_data_handle(), diff_scale_shift.get_data_handle(),
+  auto* diff_scale_shift_buf =
+      static_cast<char*>(diff_scale_shift.get_data_handle());
+  std::memcpy(diff_scale.get_data_handle(), diff_scale_shift_buf,
               diff_scale.get_size());
   std::memcpy(diff_shift.get_data_handle(),
-              diff_scale_shift.get_data_handle() + diff_scale.get_size(),
+              diff_scale_shift_buf + diff_scale.get_size(),
               diff_shift.get_size());
   }
 };

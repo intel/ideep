@@ -72,7 +72,7 @@ inline bool any_le(const std::vector<T>& v, T i) {
 }
 
 inline memory::dims get_compatible_dilates(const memory::dims& dilates) {
-  if (!dilates.empty() && !any_le(dilates, 0L))
+  if (!dilates.empty() && !any_le(dilates, static_cast<dim>(0)))
     return fmap(dilates, [](dim x) { return x - 1; });
   return {0, 0};
 }

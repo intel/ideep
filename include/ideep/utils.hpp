@@ -66,6 +66,16 @@ std::vector<U> fmap(const std::vector<T>& vec, const F& f) {
   return result;
 }
 
+template <typename T, typename P>
+constexpr bool one_of(T val, P item) {
+    return val == item;
+}
+
+template <typename T, typename P, typename... Args>
+constexpr bool one_of(T val, P item, Args... item_others) {
+    return val == item || one_of(val, item_others...);
+}
+
 template <typename T>
 inline bool any_le(const std::vector<T>& v, T i) {
   return std::any_of(v.begin(), v.end(), [i](T k) { return k <= i; });

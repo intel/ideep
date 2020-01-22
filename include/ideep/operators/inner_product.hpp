@@ -104,13 +104,14 @@ private:
     tensor::desc src_desc, weights_desc, bias_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     scale_t dst_scales_in;
-    auto dst_data_type = data_type::f32;
+    data_type dst_data_type;
     auto dst_dims = {src.get_dim(0), weights.get_dim(0)};
 
     auto weights_scales_in =
         weights.has_scale() ? weights.get_scale() : weights_scales;
 
-    // TOOD: refactor following code if we redesign the whole INT8 interface
+    // TODO(xpz): Remove int8 inner product implementation. We are switching to
+    // matmul for quantized *mm ops
     if (!weights_scales_in.empty()) {
       IDEEP_ENFORCE(alowp_kind == u8s8 || alowp_kind == s8s8,
                     "Unsupported lowp kind");
@@ -169,11 +170,24 @@ private:
         src_scale[0] = 1.f / src_scale[0];
         src_attr = {0, src_scale};
       }
-      weights_desc = weights.get_desc();
-      IDEEP_ENFORCE(weights.get_data_type() == data_type::f32,
-                    "Incorrect data type in weights");
+
+      IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
+                                  data_type::f32, data_type::bf16),
+              "Incorrect data type in weights");
+
+      // align weights data type with src
+      dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                             : data_type::f32;
+      src_desc = src.get_desc().to_type(dst_data_type);
+      weights_desc = weights.get_desc().to_type(dst_data_type);
+      // Don't set weight to format any in case DNNL brings in extra reorders.
+      // Reordering huge weights during inference might cause performance loss
+      if (dst_data_type != data_type::f32) {
+        weights_desc = weights_desc.to_format_any();
+      }
       if (with_bias) {
-        IDEEP_ENFORCE(bias.get_data_type() == data_type::f32,
+        IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
+                                    data_type::f32, data_type::bf16),
                       "Incorrect data type in bias");
         bias_desc = bias.get_desc().to_format_any();
       }
@@ -223,9 +237,14 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       const dims& diff_src_dims,
                       tensor& diff_src,
                       const engine& aengine = engine::cpu_engine()) {
+    auto weights_ = weights;
+    if (diff_dst.get_data_type() == data_type::bf16) {
+      weights_.init(weights.get_desc().to_type(data_type::bf16));
+      weights_.reorder_from(weights);
+    }
+
     // workaround: diff_src and weights from caffe2 may have different dims.
     // It would be better for caffe2 to do this reshape anyway.
-    auto weights_ = weights;
     if (diff_src_dims.size() != weights.ndims()) {
       auto new_dims = diff_src_dims;
       new_dims[0] = weights.get_dim(0);
@@ -292,9 +311,10 @@ private:
     diff_weights_dims[0] = diff_dst.get_dim(1);
     auto diff_weights_desc =
         tensor::desc(diff_weights_dims, diff_dst.get_data_type(), tag::any);
-    auto diff_bias_dims = {diff_dst.get_dim(1)};
+
+    // TODO: bf16 diff_bias
     auto diff_bias_desc =
-        tensor::desc(diff_bias_dims, diff_dst.get_data_type(), tag::any);
+        tensor::desc({diff_dst.get_dim(1)}, data_type::f32, tag::any);
 
     auto forward_hints = with_diff_bias
         ? inner_product_forward::primitive_desc({prop_kind::forward, src_desc,

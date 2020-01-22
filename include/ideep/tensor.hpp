@@ -715,21 +715,26 @@ class tensor : public memory {
   }
 
   /// Convert the tensor to public format, and f32 data type by default
-  tensor to_public(void *buffer = nullptr, bool dequantize = true) const {
-    // TODO(xpz): we may separate dequantization capability from to_public().
-    // The to_public() should only deal with the format conversions,
-    // not data type stuff.
-    auto dt = get_data_type();
-    auto dst_type = dequantize && dt != data_type::bf16 ? data_type::f32 : dt;
+  tensor to_public(void *buffer = nullptr,
+                   data_type dst_type = data_type::f32) const {
+    auto dst_desc = get_desc();
 
     // If we get a non-plain blocking format, say `Acdb16A`, we may not be able 
     // to recover it to its "unblocked" format `acdb`. Instead, we will convert
     // it to its default format `abcd` based on its dimensions.
-    auto dst_desc = is_public_format()
-        ? get_desc().to_type(dst_type) : get_desc().to_default_format();
+    if (!is_public_format()) {
+      dst_desc = dst_desc.to_default_format();
+    }
+
+    if (dst_type != data_type::undef) {
+      dst_desc = dst_desc.to_type(dst_type);
+    }
+
     auto dst = buffer ? tensor(dst_desc, buffer) : tensor(dst_desc);
 
-    if (dequantize && has_scale()) {
+    if (utils::one_of(get_data_type(),
+                      data_type::s8, data_type::u8, data_type::s32) &&
+        dst_desc.get_data_type() == data_type::f32 && has_scale()) {
       auto& src_scale = get_scale();
       auto dequantize_scale =
           utils::fmap(src_scale, [](float s) { return 1.f / s; });

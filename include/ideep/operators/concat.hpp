@@ -87,7 +87,7 @@ struct concat : public dnnl::concat {
 
     auto dst_data_type = inputs[0].get_data_type();
     scale_t min_scale(IDEEP_DEF_SCALE);
-    if (dst_data_type != data_type::f32) {
+    if (utils::one_of(dst_data_type, data_type::s8, data_type::u8)) {
       min_scale[0] = std::numeric_limits<float>::max();
       for (auto i : inputs) {
         if (i.get_data_type() != dst_data_type) {
@@ -112,7 +112,7 @@ struct concat : public dnnl::concat {
       dst.reinit_if_possible(dst_desc);
     }
       
-    if (dst_data_type != data_type::f32)
+    if (utils::one_of(dst_data_type, data_type::s8, data_type::u8))
       dst.set_scale(min_scale);
 
     scale_t scales(1);

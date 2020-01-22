@@ -190,6 +190,7 @@ struct convolution_forward : public dnnl::convolution_forward {
 
     dims x_dims = { mb, ic, h, w };
     dims y_dims = { mb, oc, oh, ow };
+    x_dtype = dtype == data_type::bf16 ? dtype : x_dtype;
     auto y_dtype = dtype != data_type::s8 ? dtype : data_type::s32;
     tensor::desc src_desc(x_dims, x_dtype);
     tensor::desc dst_desc(y_dims, y_dtype);
@@ -271,7 +272,7 @@ private:
       const engine& aengine) {
 
     scale_t dst_scales_in;
-    auto dst_data_type = data_type::f32;
+    data_type dst_data_type;
     tensor::desc src_desc, weights_desc, bias_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
 
@@ -344,19 +345,25 @@ private:
     } else {
       op_attr = attr;
 
-      src_desc = {src.get_dims(), data_type::f32};
       if (src.has_scale()) {
         auto src_scale = src.get_scale();
         src_scale[0] = 1.0f / src_scale[0];
         src_attr = {0, src_scale};
       }
 
-      weights_desc = weights_.get_desc();
-      IDEEP_ENFORCE(weights_.get_data_type() == data_type::f32,
+      IDEEP_ENFORCE(utils::one_of(weights_.get_data_type(),
+                                  data_type::f32, data_type::bf16),
                     "Incorrect data type in weights");
 
+      // align weights data type with src
+      dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                             : data_type::f32;
+      src_desc = src.get_desc().to_format_any().to_type(dst_data_type);
+      weights_desc = weights_.get_desc().to_format_any().to_type(dst_data_type);
+
       if (with_bias) {
-        IDEEP_ENFORCE(bias.get_data_type() == data_type::f32,
+        IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
+                                    data_type::f32, data_type::bf16),
                       "Incorrect data type in bias");
         bias_desc = bias.get_desc();
       }
@@ -433,7 +440,9 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
-    auto weights_desc = weights_.get_desc().to_format_any();
+    // align weight data type with diff_dst for bf16
+    auto weights_desc =
+        weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
 
     tensor::desc diff_src_desc(diff_src_dims, diff_dst_desc.get_data_type());
 
@@ -523,8 +532,9 @@ struct convolution_backward_weights
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto src_desc = src.get_desc().to_format_any();
 
-    auto diff_bias_desc =
-        tensor::desc({diff_dst.get_dim(1)}, diff_dst.get_data_type(), tag::any);
+    // TODO: bf16 diff_bias
+    auto diff_bias_desc =     
+        tensor::desc({diff_dst.get_dim(1)}, data_type::f32, tag::any);
 
     auto forward_hints =
         convolution_forward::get_primitive_desc<with_diff_bias>(

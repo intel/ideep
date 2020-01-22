@@ -14,11 +14,12 @@ struct eltwise_forward : public dnnl::eltwise_forward {
                       float alpha = 0.0,
                       float beta = 0.0,
                       const engine& aengine = engine::cpu_engine()) {
+    auto src_in = src;
     // we should leave dequantization to the framework
-    auto src_in = aalgorithm != algorithm::eltwise_relu &&
-                          src.get_data_type() != data_type::f32
-                      ? src.dequantize()
-                      : src;
+    if (aalgorithm != algorithm::eltwise_relu &&
+        utils::one_of(src.get_data_type(), data_type::s8, data_type::u8)) {
+      src_in = src_in.dequantize();
+    }
     auto src_desc = src_in.get_desc();
 
     auto pd = primitive_desc(

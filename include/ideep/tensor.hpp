@@ -31,6 +31,12 @@ class tensor : public memory {
     desc(const memory::desc &adesc, dim groups = 1)
         : memory::desc(adesc.data) { set_g(groups); };
 
+    desc &operator=(const desc &adesc) {
+      memory::desc::operator=(adesc);
+      set_g(adesc.g());
+      return *this;
+    }
+
     desc(const dnnl_memory_desc_t &adata)
         : memory::desc(adata) {};
 

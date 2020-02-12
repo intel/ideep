@@ -219,6 +219,7 @@ class tensor : public memory {
       return utils::array_cmp(data.dims, that.data.dims, data.ndims);
     }
 
+    // to be replaced with memory_desc_permute_axes in DNNL v1.3
     desc permute(const std::vector<int> &permute_axes = {}) const {
       if (data.ndims <= 1) {
         return clone();

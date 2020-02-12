@@ -523,11 +523,11 @@ struct convolution_backward_weights
 
     // make diff_weights and dilates compatible with DNNL
     auto dilates_ = utils::get_compatible_dilates(dilates);
-    auto diff_weights_desc_usr =
-        tensor::desc(diff_weights_dims, diff_dst.get_data_type());
-    auto diff_weights_desc = groups > 1
-        ? diff_weights_desc_usr.to_format_any().to_grouped(groups)
-        : diff_weights_desc_usr.to_format_any();
+    auto diff_weights_desc =
+        tensor::desc(diff_weights_dims, diff_dst.get_data_type(), tag::any);
+    if (groups > 1) {
+        diff_weights_desc = diff_weights_desc.to_grouped(groups);
+    }
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto src_desc = src.get_desc().to_format_any();
@@ -552,7 +552,10 @@ struct convolution_backward_weights
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
-    diff_weights.reinit_if_possible(pd.diff_weights_desc());
+    // embed group info into diff_weights_desc
+    auto expected_diff_weights_desc =
+        tensor::desc(pd.diff_weights_desc(), groups);
+    diff_weights.reinit_if_possible(expected_diff_weights_desc);
 
     if (with_diff_bias) {
       diff_bias.reinit_if_possible(pd.diff_bias_desc());
@@ -566,11 +569,6 @@ struct convolution_backward_weights
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_DIFF_WEIGHTS, diff_weights}});
-    }
-
-    if (groups > 1) {
-      diff_weights.to_format(format_tag::abcde);
-      diff_weights.set_desc(diff_weights_desc_usr);
     }
   }
 };

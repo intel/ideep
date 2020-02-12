@@ -8,7 +8,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
   using super = dnnl::deconvolution_forward;
 
   static void compute(const tensor& src,
-                      const tensor& weights,
+                      const tensor& weights, // dim: {i, o[, d], h, w}
                       const tensor& bias,
                       const dims& dst_dims,
                       tensor& dst,
@@ -27,7 +27,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
   }
 
   static void compute(const tensor& src,
-                      const tensor& weights,
+                      const tensor& weights, // dim: {i, o[, d], h, w}
                       const dims& dst_dims,
                       tensor& dst,
                       const dims& strides,
@@ -46,7 +46,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
   }
 
   static tensor::desc expected_weights_desc(
-      const dims& weights_dims,   // iohw
+      const dims& weights_dims,   // [i, o, ...]
       data_type dtype = data_type::f32,
       const dims& strides = {1, 1},
       const dims& padding_l = {0, 0},
@@ -94,10 +94,10 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
     // embed group info into weights_desc
     if (grouped) {
-      // g, o, i/g, h, w -> g, i/g, o, h, w
+      // [g, o, i/g, ...] -> [g, i/g, o, ...]
       return tensor::desc(pd.weights_desc(), groups).transpose(1, 2);
     } else {
-      // o, i/g, h, w -> i/g, o, h, w
+      // [o, i, ...] -> [i, o, ...]
       return tensor::desc(pd.weights_desc(), groups).transpose(0, 1);
     } 
   }
@@ -188,7 +188,7 @@ struct convolution_transpose_backward_data
   using super = dnnl::deconvolution_backward_data;
 
   static void compute(const tensor& diff_dst,
-                      const tensor& weights,
+                      const tensor& weights, // dim: {i, o[, d], h, w}
                       const dims& diff_src_dims,
                       tensor& diff_src,
                       const dims& strides,
@@ -269,7 +269,7 @@ private:
   template <bool with_diff_bias>
   static void compute_impl(const tensor& src,
                            const tensor& diff_dst,
-                           const dims& diff_weights_dims, // dim: iohw
+                           const dims& diff_weights_dims, // [i, o, ...]
                            tensor& diff_weights,
                            tensor& diff_bias,
                            const dims& strides,
@@ -282,16 +282,18 @@ private:
 
     // make diff_weights and dilates compatible with DNNL
     auto dilates_ = utils::get_compatible_dilates(dilates);
-    // TODO: simplify the following logic once DNNL has giodhw (acbdef) format
-    // oihw dim, iohw format
-    auto diff_weights_desc_usr = 
-        tensor::desc(diff_weights_dims, diff_dst.get_data_type())
-            .transpose(0, 1);
-    // goihw dim
-    auto diff_weights_desc = groups > 1
-        ? diff_weights_desc_usr
-            .transpose(0, 1).to_grouped(groups).transpose(1, 2).to_format_any()
-        : diff_weights_desc_usr.to_format_any();
+
+    // dim: [i, o, ...]
+    auto diff_weights_desc = 
+        tensor::desc(diff_weights_dims, diff_dst.get_data_type(), tag::any);
+
+    if (groups > 1) {
+      // dim: [g, o, i/g, ...]
+      diff_weights_desc = diff_weights_desc.to_grouped(groups).transpose(1, 2);
+    } else {
+      // dim: [o, i, ...]
+      diff_weights_desc = diff_weights_desc.transpose(0, 1);
+    }
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto src_desc = src.get_desc().to_format_any();
@@ -317,7 +319,10 @@ private:
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
-    diff_weights.reinit_if_possible(pd.diff_weights_desc());
+    // embed group info into diff_weights_desc
+    auto expected_diff_weights_desc =
+        tensor::desc(pd.diff_weights_desc(), groups);
+    diff_weights.reinit_if_possible(expected_diff_weights_desc);
 
     if (with_diff_bias) {
       diff_bias.reinit_if_possible(pd.diff_bias_desc());
@@ -333,16 +338,14 @@ private:
                          {DNNL_ARG_DIFF_WEIGHTS, diff_weights}});
     }
 
+    // recover output dims to align with pytorch
     if (groups > 1) {
-      // In 5d cases the expected format of diff_weights DNNL chooses for us
-      // could be aCBde8b8c or other non-plain formats. But only when it is of
-      // format acbde (giohw) can we directly recover it to a ungrouped weights
-      // by overwriting its desc with diff_weights_desc_usr which is of iohw
-      diff_weights.to_format(format_tag::acbde);
-      diff_weights.set_desc(diff_weights_desc_usr);
+      // [g, o, i/g, ...] -> [g, i/g, o, ...]
+      diff_weights.transpose_(1, 2);
+    } else {
+      // [o, i, ...] -> [i, o, ...]
+      diff_weights.transpose_(0, 1);
     }
-    // output dims is in iohw order
-    diff_weights.transpose_(0, 1);
   }
 };
 }  // namespace ideep

@@ -896,23 +896,6 @@ class tensor : public memory {
     *this = std::move(src.permute(perms));
   }
 
-  /// Set a descriptor into tensor to replace the older one, keep buffer
-  /// It is caller's responsibility to make sure the original buffer is large
-  /// enough for specified descriptor
-  tensor& set_desc(const desc &new_desc) {
-    // Keep the original management
-    auto buf = std::move(buffer_);
-    auto ws = std::move(workspace_);
-    auto scale = std::move(scale_);
-    auto zp = std::move(zero_point_);
-    init(new_desc, get_data_handle(), get_engine());
-    buffer_ = std::move(buf);
-    workspace_ = std::move(ws);
-    scale_ = std::move(scale);
-    zero_point_ = std::move(zp);
-    return *this;
-  }
-
  private:
   void reset_internal(const desc &adesc, const engine &aengine, void *ahandle) {
     dnnl_memory_t result;
@@ -937,6 +920,23 @@ class tensor : public memory {
     auto volume_new = std::accumulate(new_dims.begin(), new_dims.end(), 1,
                                       std::multiplies<dim_t>());
     return volume_old == volume_new;
+  }
+
+  /// Set a descriptor into tensor to replace the older one, keep buffer
+  /// It is caller's responsibility to make sure the original buffer is large
+  /// enough for specified descriptor
+  tensor& set_desc(const desc &new_desc) {
+    // Keep the original management
+    auto buf = std::move(buffer_);
+    auto ws = std::move(workspace_);
+    auto scale = std::move(scale_);
+    auto zp = std::move(zero_point_);
+    init(new_desc, get_data_handle(), get_engine());
+    buffer_ = std::move(buf);
+    workspace_ = std::move(ws);
+    scale_ = std::move(scale);
+    zero_point_ = std::move(zp);
+    return *this;
   }
 
   std::shared_ptr<tensor> workspace_;

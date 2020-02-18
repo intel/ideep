@@ -133,15 +133,15 @@ private:
                           : dst_scales;
      auto src_zero_point = src.has_zero_point()
                            ? src.get_zero_point() : std::vector<int32_t>(1);
-     auto src_zero_point_size = src_zero_point.size();
+     auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
      auto dst_zero_point = dst.has_zero_point()
                            ? dst.get_zero_point() : std::vector<int32_t>(1);
-     auto dst_zero_point_size = dst_zero_point.size();
+     auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
      IDEEP_ENFORCE(src_zero_point_size ==1 && dst_zero_point_size == 1, 
                    "DNNL only support 1-dim zero_point");
      auto wei_zero_point = weights.has_zero_point()
                            ? weights.get_zero_point() : std::vector<int32_t>(1);
-     size_t wei_zero_point_size = 1;
+     dim wei_zero_point_size = 1;
     
      if (attr.has_op_kind(kind::sum)) {
          float sum_scale = 

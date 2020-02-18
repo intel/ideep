@@ -16,7 +16,7 @@ struct channel_shuffle_forward: public dnnl::shuffle_forward {
     IDEEP_ENFORCE(src.get_dim(axis) % group == 0, "Invalid channel and group");
     IDEEP_ENFORCE(src.get_data_type() == data_type::f32, "invalid data type");
 
-    auto group_size = src.get_dim(axis) / group;
+    auto group_size = static_cast<int>(src.get_dim(axis) / group);
     auto pd =
         primitive_desc({aprop_kind, src.get_desc(), axis, group_size}, aengine);
 
@@ -37,7 +37,7 @@ struct channel_shuffle_backward : public dnnl::shuffle_backward {
                       const int group,
                       const int axis = 1,
                       const engine& aengine = engine::cpu_engine()) {
-    auto group_size = diff_dst.get_dim(axis) / group;
+    auto group_size = static_cast<int>(diff_dst.get_dim(axis) / group);
     auto data_desc = diff_dst.get_desc();
 
     auto forward_hints = dnnl::shuffle_forward::primitive_desc(

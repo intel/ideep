@@ -112,7 +112,7 @@ private:
        src_attr = {0, src_scales_in};
      }
 
-     int scale_size = (weights_scales_in.size() > 1) ? weights.get_dim(0) : 1;
+     int scale_size = (weights_scales_in.size() > 1) ? weights.get_dim(1) : 1;
      weights_desc = weights.get_desc();
      if (weights.get_data_type() == data_type::f32) {
        weights_attr = {utils::tensor_scale_mask(scale_size, false), 
@@ -137,23 +137,23 @@ private:
      auto dst_zero_point = dst.has_zero_point()
                            ? dst.get_zero_point() : std::vector<int32_t>(1);
      auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
-     IDEEP_ENFORCE(src_zero_point_size ==1 && dst_zero_point_size == 1, 
+     IDEEP_ENFORCE(src_zero_point_size == 1 && dst_zero_point_size == 1, 
                    "DNNL only support 1-dim zero_point");
      auto wei_zero_point = weights.has_zero_point()
                            ? weights.get_zero_point() : std::vector<int32_t>(1);
      dim wei_zero_point_size = 1;
     
      if (attr.has_op_kind(kind::sum)) {
-         float sum_scale = 
-             sum_coeff * dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f); 
-         op_attr = attr_t::fuse_sum(sum_scale);
+       float sum_scale = 
+           sum_coeff * dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f); 
+       op_attr = attr_t::fuse_sum(sum_scale);
      }
 
      auto bias_scales_in =
          bias.has_scale() ? bias.get_scale() : IDEEP_DEF_SCALE;
      bias_scales_in = bias_scales_in.size() == 1 ? 
 	     std::vector<float>(scale_size, bias_scales_in[0]) : bias_scales_in; 
-     bool flag_runtime = true;
+     bool flag_runtime = false;
      if (flag_runtime) {
        op_attr.set_output_scales(utils::op_scale_mask(scale_size), {DNNL_RUNTIME_F32_VAL});
        tensor::desc scales_desc = {{scale_size}, data_type::f32, {1}};
@@ -189,10 +189,11 @@ private:
        }
      } else {
        for (int i = 0; i < scale_size; i++) {
-         bias_scales[i] = bias_coeff * src_scales_in[0] * weights_scales_in[i] / dst_coeff;
+         bias_scales[i] = bias_coeff * src_scales_in[0] * weights_scales_in[i] 
+		 / (dst_coeff * bias_scales_in[i]);
          op_scales[i] = dst_coeff * dst_scales_in[0] / (src_scales_in[0] * weights_scales_in[i]);
        }
-       op_attr.set_output_scales(utils::tensor_scale_mask(scale_size, false), op_scales);
+       op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
        op_attr.set_zero_points(DNNL_ARG_SRC, 
                                utils::tensor_zp_mask(src_zero_point.size()), src_zero_point);
        op_attr.set_zero_points(DNNL_ARG_WEIGHTS, 
@@ -204,9 +205,12 @@ private:
      }
 
      if (with_bias) {
-       bias_desc = {bias.get_dims(), data_type::s32, tag::any};
+       tag bia_tag = bias.get_dims().size() == 2 ? tag::ab : tag::abc;
+       bias_desc = {bias.get_dims(), data_type::s32, bia_tag};
        if (bias.get_data_type() != data_type::s32) {
-         bias_attr = {utils::tensor_scale_mask(scale_size, false), bias_scales};
+         auto ndims = bias.get_dims().size(); 
+         int mask = scale_size > 1 ? 1 << (ndims - 1) : 0;
+         bias_attr = {mask, bias_scales};
        }
      }
    } else {
@@ -245,10 +249,10 @@ private:
      }
 
      if (attr.has_op_kind(kind::sum)) {
-         op_attr = attr_t::fuse_sum(sum_coeff);
+       op_attr = attr_t::fuse_sum(sum_coeff);
      }
      int scale_size = 1;
-     op_attr.set_output_scales(utils::tensor_scale_mask(scale_size, false), 
+     op_attr.set_output_scales(utils::op_scale_mask(scale_size), 
 		               std::vector<float>(1, dst_coeff));
    }
    
@@ -258,9 +262,9 @@ private:
                          op_attr, aengine)
        : primitive_desc({src_desc, weights_desc, dst_desc},
                          op_attr, aengine);
-    auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
-    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-    dst.reinit_if_possible(pd.dst_desc());
+   auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
+   auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
+   dst.reinit_if_possible(pd.dst_desc());
    if (!dst_scales.empty() && dst_data_type != data_type::f32) {
      dst.set_scale(dst_scales_in);
    }

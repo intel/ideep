@@ -34,7 +34,7 @@ static void bernoulli_generate(const long n, const double p, int* r) {
 #ifndef IDEEP_USE_MKL
   IDEEP_ENFORCE(0, "can not use bernoulli_generate without MKL support");
 #else
-  std::srand(std::time(0));
+  std::srand(time(nullptr));
   const int seed = 17 + std::rand() % 4096;
 
   int nthr = omp_get_max_threads();

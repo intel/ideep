@@ -444,7 +444,8 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto weights_desc =
         weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
 
-    tensor::desc diff_src_desc(diff_src_dims, diff_dst_desc.get_data_type());
+    auto diff_src_desc = 
+        tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), tag::any);
 
     auto forward_hints =
         convolution_forward::get_primitive_desc</*with_bias=*/false>(

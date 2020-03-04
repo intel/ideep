@@ -53,15 +53,14 @@ struct eltwise_backward : public dnnl::eltwise_backward {
                       float beta = 0.0,
                       const engine& aengine = engine::cpu_engine()) {
   auto src_desc = src.get_desc();
-  auto diff_dst_ = diff_dst.reorder_if_differ_in(src_desc);
 
   auto forward_hints = eltwise_forward::primitive_desc(
       {prop_kind::forward, aalgorithm, src_desc, alpha, beta}, aengine);
   auto pd =
-      primitive_desc({aalgorithm, diff_dst.get_desc(), src_desc, alpha, beta},
+      primitive_desc({aalgorithm, forward_hints.dst_desc(), src_desc, alpha, beta},
                      aengine, forward_hints);
 
-  auto expected_diff_dst = diff_dst_.reorder_if_differ_in(pd.diff_dst_desc());
+  auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
   auto expected_src = src.reorder_if_differ_in(pd.src_desc());
   diff_src.reinit_if_possible(pd.diff_src_desc());
 

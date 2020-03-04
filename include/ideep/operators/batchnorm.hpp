@@ -156,10 +156,9 @@ struct batch_normalization_backward
     auto src_desc = src.get_desc();
     auto forward_hints = dnnl::batch_normalization_forward::primitive_desc(
         {prop_kind::forward_training, src_desc, epsilon, flags}, aengine);
-    auto diff_src_desc = diff_dst.get_desc();
 
     auto pd = primitive_desc(
-        {prop_kind::backward, diff_src_desc, src_desc, epsilon, flags},
+        {prop_kind::backward, forward_hints.dst_desc(), src_desc, epsilon, flags},
         aengine, forward_hints);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());

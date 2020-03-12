@@ -13,7 +13,6 @@ struct matmul_forward : public dnnl::matmul {
       const tensor& bias,
       tensor& dst,
       const float dst_coeff = 1.0f,
-      const float bias_coeff = 1.0f,
       const float sum_coeff = 1.0f,
       const scale_t& src_scales = scale_t(),
       const scale_t& weights_scales = scale_t(),
@@ -21,8 +20,8 @@ struct matmul_forward : public dnnl::matmul {
       const attr_t& attr = attr_t(),
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, bias_coeff,
-                                     sum_coeff, src_scales, weights_scales, dst_scales,
+    compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
+                                     src_scales, weights_scales, dst_scales,
                                      attr, alowp_kind, aengine);
   }
 
@@ -31,7 +30,6 @@ struct matmul_forward : public dnnl::matmul {
       const tensor& weights,
       tensor& dst,
       const float dst_coeff = 1.0f,
-      const float bias_coeff = 1.0f,
       const float sum_coeff = 1.0f,
       const scale_t& src_scales = scale_t(),
       const scale_t& weights_scales = scale_t(),
@@ -41,7 +39,7 @@ struct matmul_forward : public dnnl::matmul {
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, dst_coeff,
-                                      bias_coeff, sum_coeff, src_scales, weights_scales,
+                                      sum_coeff, src_scales, weights_scales,
                                       dst_scales, attr, alowp_kind, aengine);
   }
 
@@ -75,7 +73,6 @@ private:
                           const tensor& bias,
                           tensor& dst,
                           const float dst_coeff = 1.0f,
-                          const float bias_coeff = 1.0f,
                           const float sum_coeff = 1.0f,
                           const scale_t& src_scales = scale_t(),
                           const scale_t& weights_scales = scale_t(),
@@ -160,7 +157,7 @@ private:
        scales_m.init(scales_desc, aengine);
        auto s = reinterpret_cast<float *>(scales_m.get_data_handle());
        for (memory::dim i = 0; i < scale_size; ++i) {
-         bias_scales[i] = bias_coeff * src_scales_in[0] * weights_scales_in[i] 
+         bias_scales[i] = src_scales_in[0] * weights_scales_in[i] 
 		 / (dst_coeff * bias_scales_in[i]);
          s[i] = dst_coeff * dst_scales_in[0] / (src_scales_in[0] * weights_scales_in[i]);
        }
@@ -189,7 +186,7 @@ private:
        }
      } else {
        for (int i = 0; i < scale_size; i++) {
-         bias_scales[i] = bias_coeff * src_scales_in[0] * weights_scales_in[i] 
+         bias_scales[i] = src_scales_in[0] * weights_scales_in[i] 
 		 / (dst_coeff * bias_scales_in[i]);
          op_scales[i] = dst_coeff * dst_scales_in[0] / (src_scales_in[0] * weights_scales_in[i]);
        }
@@ -232,7 +229,7 @@ private:
 		   weights.get_data_type() == data_type::bf16,
                    "Incorrect data type in weights");
      if (src.get_data_type() == data_type::bf16) {
-       dst_data_type == data_type::bf16;
+       dst_data_type = data_type::bf16;
        src_desc = {src.get_dims(), data_type::bf16};
        weights_desc = {weights.get_dims(), data_type::bf16};
      } else {
@@ -244,7 +241,7 @@ private:
 		     bias.get_data_type() == data_type::bf16,
                      "Incorrect data type in bias");
        bias_desc = bias.get_desc().to_format_any();
-       auto bias_scales = scale_t(1, bias_coeff / dst_coeff);
+       auto bias_scales = scale_t(1, 1.0 / dst_coeff);
        bias_attr = {utils::tensor_scale_mask(1, false), bias_scales};
      }
 

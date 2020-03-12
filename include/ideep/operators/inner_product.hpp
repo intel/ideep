@@ -180,11 +180,6 @@ private:
                                                              : data_type::f32;
       src_desc = src.get_desc().to_type(dst_data_type);
       weights_desc = weights.get_desc().to_type(dst_data_type);
-      // Don't set weight to format any in case DNNL brings in extra reorders.
-      // Reordering huge weights during inference might cause performance loss
-      if (dst_data_type != data_type::f32) {
-        weights_desc = weights_desc.to_format_any();
-      }
       if (with_bias) {
         IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
                                     data_type::f32, data_type::bf16),

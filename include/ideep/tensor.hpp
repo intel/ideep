@@ -680,14 +680,14 @@ class tensor : public memory {
     auto actual_rank = [](const dims &shape) {
       auto cnt = 0;
       for (auto d : shape) if (d > 1) cnt++;
-      return cnt > 1;
+      return cnt;
     };
 
     auto old_dims = get_dims();
     if (adims != old_dims) {
       // Since we are going to set the desc to new dims with default format,
-      // so we first make sure current tensor is already the default format.
-      // Specifically, the format does not matter if the actual rank <= 1
+      // we have to make sure it's already in default format. In particular,
+      // tensor format does not matter if actual rank <= 1
       if (!get_desc().is_default() && actual_rank(old_dims) > 1) {
         to_default_format();
       }

@@ -228,14 +228,10 @@ private:
      IDEEP_ENFORCE(weights.get_data_type() == data_type::f32 ||
 		   weights.get_data_type() == data_type::bf16,
                    "Incorrect data type in weights");
-     if (src.get_data_type() == data_type::bf16) {
-       dst_data_type = data_type::bf16;
-       src_desc = {src.get_dims(), data_type::bf16};
-       weights_desc = {weights.get_dims(), data_type::bf16};
-     } else {
-       src_desc = {src.get_dims(), data_type::f32};
-       weights_desc = {weights.get_dims(), data_type::f32};
-     }
+     dst_data_type = src.get_data_type() == data_type::bf16 ? 
+                     data_type::bf16 : data_type::f32;
+     src_desc = src.get_desc().to_type(dst_data_type);
+     weights_desc = weights.get_desc().to_type(dst_data_type);
      if (with_bias) {
        IDEEP_ENFORCE(bias.get_data_type() == data_type::f32 ||
 		     bias.get_data_type() == data_type::bf16,

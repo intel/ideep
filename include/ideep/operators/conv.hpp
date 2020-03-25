@@ -157,6 +157,7 @@ struct convolution_forward : public dnnl::convolution_forward {
       const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
 
+    auto src_size =  strides.size() + 2; // we should give the stride to make check 2d or 3d conv
     auto grouped = groups > 1;
     auto weights_dims_g =
         grouped ? utils::group_dims(weights_dims, groups) : weights_dims;
@@ -164,32 +165,46 @@ struct convolution_forward : public dnnl::convolution_forward {
 
     auto dims_in = weights_desc.get_dims();
     auto ndims = dims_in.size();
-    auto dilates_ = utils::get_compatible_dilates(dilates);
+    auto dilates_ = utils::get_compatible_dilates(dilates, src_size);
 
     IDEEP_ENFORCE(
         !(aalgorithm == algorithm::convolution_winograd && src_dims.empty()),
         "Incorrect src_dims");
+    dims x_dims, y_dims, kernel_size;
     auto ic = groups * dims_in[1 + grouped];
     auto oc = groups * dims_in[0 + grouped];
-    auto kh = dims_in[ndims - 2];
-    auto kw = dims_in[ndims - 1];
-    int mb, h, w;
+    if (5 == src_size) {
+      kernel_size.push_back(dims_in[ndims - 3]);
+    }
+    kernel_size.push_back(dims_in[ndims - 2]);
+    kernel_size.push_back(dims_in[ndims - 1]);
     if (src_dims.empty()) {
       // Construct a dummy case
-      mb = 1;
-      h = 2 * kh;
-      w = 4 * kw;
+      x_dims.push_back(1);
+      x_dims.push_back(ic);
+      y_dims.push_back(1);
+      y_dims.push_back(oc);
+      if (4 == src_size) {
+        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[1]);
+      } else {
+        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[1]);
+        x_dims.push_back(8 * kernel_size[2]);
+      }
     } else {
       // Use the real data
-      mb = src_dims[0];
-      h = src_dims[2];
-      w = src_dims[3];
+      for (auto i=0; i < src_size; ++i) {
+        x_dims.push_back(src_dims[i]);
+      }
+      y_dims.push_back(src_dims[0]);
+      y_dims.push_back(oc);
     }
-    auto oh = (h - ((kh - 1) * (dilates_[0] + 1) + 1) + (padding_l[0] + padding_r[0])) / strides[0] + 1;
-    auto ow = (w - ((kw - 1) * (dilates_[1] + 1) + 1) + (padding_l[1] + padding_r[1])) / strides[1] + 1;
-
-    dims x_dims = { mb, ic, h, w };
-    dims y_dims = { mb, oc, oh, ow };
+    for (auto d = 2; d < src_size; ++d) {
+      auto out_size = (x_dims[d] - ((kernel_size[d-2] - 1) * (dilates_[d-2] + 1) + 1)
+          + (padding_l[d-2] + padding_r[d-2])) / strides[d-2] + 1;
+      y_dims.push_back(out_size);
+    }
     x_dtype = dtype == data_type::bf16 ? dtype : x_dtype;
     auto y_dtype = dtype != data_type::s8 ? dtype : data_type::s32;
     tensor::desc src_desc(x_dims, x_dtype);

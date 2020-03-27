@@ -157,7 +157,7 @@ struct convolution_forward : public dnnl::convolution_forward {
       const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
 
-    auto src_size =  strides.size() + 2; // we should give the stride to make check 2d or 3d conv
+    auto src_size = weights_dims.size(); // weights_dims is 4 for conv2d and 5 for conv3d
     auto grouped = groups > 1;
     auto weights_dims_g =
         grouped ? utils::group_dims(weights_dims, groups) : weights_dims;

@@ -18,11 +18,12 @@ struct matmul_forward : public dnnl::matmul {
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type(),
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
                                      src_scales, weights_scales, dst_scales,
-                                     attr, alowp_kind, aengine);
+                                     attr, dst_type, alowp_kind, aengine);
   }
 
   static void compute(
@@ -35,12 +36,13 @@ struct matmul_forward : public dnnl::matmul {
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type(),
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, dst_coeff,
                                       sum_coeff, src_scales, weights_scales,
-                                      dst_scales, attr, alowp_kind, aengine);
+                                      dst_scales, attr, dst_type, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -78,6 +80,7 @@ private:
                           const scale_t& weights_scales = scale_t(),
                           const scale_t& dst_scales = scale_t(),
                           const attr_t& attr = attr_t(),
+                          const data_type dst_type = data_type(),
                           const lowp_kind alowp_kind = u8s8,
                           const engine& aengine = engine::cpu_engine()) {
    IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
@@ -248,7 +251,8 @@ private:
      op_attr.set_output_scales(utils::op_scale_mask(scale_size), 
 		               std::vector<float>(1, dst_coeff));
    }
-   
+
+   dst_data_type = dst_type == data_type() ? dst_data_type : dst_type;   
    tensor::desc dst_desc(dst_dims, dst_data_type, tag::any);
    auto pd = with_bias
        ? primitive_desc({src_desc, weights_desc, bias_desc, dst_desc},

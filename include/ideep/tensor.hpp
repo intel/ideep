@@ -522,19 +522,19 @@ class tensor : public memory {
   /// Copy constructor
   tensor(const tensor &t)
       : memory(t),
-        buffer_(t.buffer_),
+        workspace_(t.workspace_),
         scale_(t.scale_),
         zero_point_(t.zero_point_),
-        workspace_(t.workspace_),
+        buffer_(t.buffer_),
         eng_(t.eng_) {}
 
   /// Move constructor
   tensor(tensor &&t)
       : memory(std::move(t)),
-        buffer_(std::move(t.buffer_)),
+        workspace_(std::move(t.workspace_)),
         scale_(std::move(t.scale_)),
         zero_point_(std::move(t.zero_point_)),
-        workspace_(std::move(t.workspace_)),
+        buffer_(std::move(t.buffer_)),
         eng_(std::move(t.eng_)) {}
 
   /// Assignment operator

@@ -542,8 +542,9 @@ struct convolution_backward_weights
 
     // make diff_weights and dilates compatible with DNNL
     auto dilates_ = utils::get_compatible_dilates(dilates);
+    data_type diff_dst_type = diff_dst.get_data_type();
     data_type diff_weight_type_in = data_type::undef == diff_weight_type ?
-                                    diff_dst.get_data_type() : diff_weight_type;
+                                    diff_dst_type : diff_weight_type;
     auto diff_weights_desc =
         tensor::desc(diff_weights_dims, diff_weight_type_in, tag::any);
     if (groups > 1) {
@@ -556,9 +557,15 @@ struct convolution_backward_weights
     auto diff_bias_desc =     
         tensor::desc({diff_dst.get_dim(1)}, diff_weight_type_in, tag::any);
 
+    // for forward hint, weights_desc should have same data_type
+    // with other input desc, expect for bias_desc
+    auto weights_desc = diff_weights_desc;
+    if (diff_weight_type_in != diff_dst_type) {
+      weights_desc = weights_desc.to_type(diff_dst_type);
+    }
     auto forward_hints =
         convolution_forward::get_primitive_desc<with_diff_bias>(
-            src_desc, diff_weights_desc, diff_bias_desc, diff_dst_desc, strides,
+            src_desc, weights_desc, diff_bias_desc, diff_dst_desc, strides,
             dilates_, padding_l, padding_r, attr_t(), aalgorithm,
             prop_kind::forward, aengine);
 

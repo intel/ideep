@@ -307,19 +307,26 @@ private:
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto diff_weights_dims = src.get_dims();
     diff_weights_dims[0] = diff_dst.get_dim(1);
+    data_type diff_dst_type = diff_dst.get_data_type();
     data_type diff_weight_type_in = data_type::undef== diff_weight_type ?
-                                    diff_dst.get_data_type() : diff_weight_type;
+                                    diff_dst_type : diff_weight_type;
     auto diff_weights_desc =
         tensor::desc(diff_weights_dims, diff_weight_type_in, tag::any);
 
     auto diff_bias_desc =
         tensor::desc({diff_dst.get_dim(1)}, diff_weight_type_in, tag::any);
 
+    // for forward hint, weights_desc should have same data_type
+    // with other input desc, expect for bias_desc
+    auto weights_desc = diff_weights_desc;
+    if (diff_weight_type_in != diff_dst_type) {
+      weights_desc = weights_desc.to_type(diff_dst_type);
+    }
     auto forward_hints = with_diff_bias
         ? inner_product_forward::primitive_desc({prop_kind::forward, src_desc,
-            diff_weights_desc, diff_bias_desc, diff_dst_desc}, aengine)
+            weights_desc, diff_bias_desc, diff_dst_desc}, aengine)
         : inner_product_forward::primitive_desc({prop_kind::forward, src_desc,
-            diff_weights_desc, diff_dst_desc}, aengine);
+            weights_desc, diff_dst_desc}, aengine);
     auto pd = with_diff_bias
         ? primitive_desc({src_desc, diff_weights_desc, diff_bias_desc,
                           diff_dst_desc}, aengine, forward_hints)

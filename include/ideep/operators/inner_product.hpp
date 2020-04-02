@@ -284,18 +284,20 @@ struct inner_product_backward_weights
                       const tensor& diff_dst,
                       tensor& diff_weights,
                       tensor& diff_bias,
+                      const data_type diff_weight_type = data_type::undef,
                       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_diff_bias=*/true>(
-        src, diff_dst, diff_weights, diff_bias);
+        src, diff_dst, diff_weights, diff_bias, diff_weight_type);
   }
 
   static void compute(const tensor& src,
                       const tensor& diff_dst,
                       tensor& diff_weights,
+                      const data_type diff_weight_type = data_type::undef,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
-        src, diff_dst, diff_weights, dummy_diff_bias);
+        src, diff_dst, diff_weights, dummy_diff_bias, diff_weight_type);
   }
 
 private:
@@ -304,17 +306,19 @@ private:
                            const tensor& diff_dst,
                            tensor& diff_weights,
                            tensor& diff_bias,
+                           const data_type diff_weight_type,
                            const engine& aengine = engine::cpu_engine()) {
     auto src_desc = src.get_desc().to_format_any();
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto diff_weights_dims = src.get_dims();
     diff_weights_dims[0] = diff_dst.get_dim(1);
+    data_type diff_weight_type_in = data_type::undef== diff_weight_type ?
+                                    diff_dst.get_data_type() : diff_weight_type;
     auto diff_weights_desc =
-        tensor::desc(diff_weights_dims, diff_dst.get_data_type(), tag::any);
+        tensor::desc(diff_weights_dims, diff_weight_type_in, tag::any);
 
-    // TODO: bf16 diff_bias
     auto diff_bias_desc =
-        tensor::desc({diff_dst.get_dim(1)}, data_type::f32, tag::any);
+        tensor::desc({diff_dst.get_dim(1)}, diff_weight_type_in, tag::any);
 
     auto forward_hints = with_diff_bias
         ? inner_product_forward::primitive_desc({prop_kind::forward, src_desc,

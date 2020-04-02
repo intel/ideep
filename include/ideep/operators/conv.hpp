@@ -498,11 +498,12 @@ struct convolution_backward_weights
                       const dims& padding_l,
                       const dims& padding_r,
                       const int groups,
+                      const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_diff_bias=*/true>(
         src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
-        strides, dilates, padding_l, padding_r, groups, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, diff_weight_type, aalgorithm, aengine);
   }
 
   static void compute(const tensor& src,
@@ -514,12 +515,13 @@ struct convolution_backward_weights
                       const dims& padding_l,
                       const dims& padding_r,
                       const int groups,
+                      const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
         src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
-        strides, dilates, padding_l, padding_r, groups, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, diff_weight_type, aalgorithm, aengine);
   }
 
  private:
@@ -534,13 +536,16 @@ struct convolution_backward_weights
                            const dims& padding_l,
                            const dims& padding_r,
                            const int groups,
+                           const data_type diff_weight_type,
                            algorithm aalgorithm,
                            const engine& aengine) {
 
     // make diff_weights and dilates compatible with DNNL
     auto dilates_ = utils::get_compatible_dilates(dilates);
+    data_type diff_weight_type_in = data_type::undef == diff_weight_type ?
+                                    diff_dst.get_data_type() : diff_weight_type;
     auto diff_weights_desc =
-        tensor::desc(diff_weights_dims, diff_dst.get_data_type(), tag::any);
+        tensor::desc(diff_weights_dims, diff_weight_type_in, tag::any);
     if (groups > 1) {
         diff_weights_desc = diff_weights_desc.to_grouped(groups);
     }
@@ -548,9 +553,8 @@ struct convolution_backward_weights
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto src_desc = src.get_desc().to_format_any();
 
-    // TODO: bf16 diff_bias
     auto diff_bias_desc =     
-        tensor::desc({diff_dst.get_dim(1)}, data_type::f32, tag::any);
+        tensor::desc({diff_dst.get_dim(1)}, diff_weight_type_in, tag::any);
 
     auto forward_hints =
         convolution_forward::get_primitive_desc<with_diff_bias>(

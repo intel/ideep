@@ -18,7 +18,7 @@ struct matmul_forward : public dnnl::matmul {
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(),
-      const data_type dst_type = data_type(),
+      const data_type dst_type = data_type::undef,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
@@ -36,7 +36,7 @@ struct matmul_forward : public dnnl::matmul {
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(),
-      const data_type dst_type = data_type(),
+      const data_type dst_type = data_type::undef,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
@@ -80,7 +80,7 @@ private:
                           const scale_t& weights_scales = scale_t(),
                           const scale_t& dst_scales = scale_t(),
                           const attr_t& attr = attr_t(),
-                          const data_type dst_type = data_type(),
+                          const data_type dst_type = data_type::undef,
                           const lowp_kind alowp_kind = u8s8,
                           const engine& aengine = engine::cpu_engine()) {
    IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
@@ -252,7 +252,7 @@ private:
 		               std::vector<float>(1, dst_coeff));
    }
 
-   dst_data_type = dst_type == data_type() ? dst_data_type : dst_type;   
+   dst_data_type = dst_type == data_type::undef ? dst_data_type : dst_type;   
    tensor::desc dst_desc(dst_dims, dst_data_type, tag::any);
    auto pd = with_bias
        ? primitive_desc({src_desc, weights_desc, bias_desc, dst_desc},

@@ -548,7 +548,7 @@ struct convolution_backward_weights
     auto diff_weights_desc =
         tensor::desc(diff_weights_dims, diff_weight_type_in, tag::any);
     if (groups > 1) {
-        diff_weights_desc = diff_weights_desc.to_grouped(groups);
+        diff_weights_desc = diff_weights_desc.to_grouped(groups).to_format_any();
     }
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();

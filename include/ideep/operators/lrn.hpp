@@ -16,7 +16,10 @@ struct lrn_forward : public dnnl::lrn_forward {
                       algorithm aalgorithm = algorithm::lrn_across_channels,
                       prop_kind aprop_kind = prop_kind::forward_training,
                       const engine& aengine = engine::cpu_engine()) {
-    auto src_desc = src.get_desc();
+
+    // workaround: use src.get_desc() once issue intel/mkl-dnn#588 is resolved
+    auto src_desc = src._get_unblocked_desc_if_4c_blocked();
+    // auto src_desc = src.get_desc();
     auto pd = primitive_desc(
         {aprop_kind, aalgorithm, src_desc, local_size, alpha, beta, k},
         aengine);
@@ -71,9 +74,7 @@ struct lrn_backward : public dnnl::lrn_backward {
                     {DNNL_ARG_DIFF_SRC, diff_src}};
 
     if (dst.has_workspace()) {
-      auto expected_workspace =
-          dst.get_workspace().reorder_if_differ_in(pd.workspace_desc());
-      args.insert({DNNL_ARG_WORKSPACE, expected_workspace});
+      args.insert({DNNL_ARG_WORKSPACE, dst.get_workspace()});
     }
     super(pd).execute(stream::default_stream(), args);
   }

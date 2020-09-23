@@ -659,6 +659,24 @@ class tensor : public memory {
         is_deconv
             ? old_desc.transpose(0, 1).to_grouped(groups).transpose(1, 2)
             : old_desc.to_grouped(groups);
+
+    // handle channels last with groups
+    if (is_deconv) {
+      // deconv: judge whether is channels last on iohw format
+      auto is_channels_last = old_desc.transpose(0, 1).is_nhwc();
+      if (is_channels_last) {
+        // giohw (acbde) => gihwo (acdeb)
+        grouped_desc = grouped_desc.to_format(format_tag::acdeb);
+      }
+    } else {
+      // conv: judge whether is channels last on oihw format
+      auto is_channels_last = old_desc.is_nhwc();
+      if (is_channels_last) {
+        // goihw (abcde) => gohwi (abdec)
+        grouped_desc = grouped_desc.to_format(format_tag::abdec);
+      }
+    }
+
     auto this_copy = *this;
     return this_copy.set_desc(grouped_desc);
   }

@@ -245,19 +245,24 @@ struct convolution_forward : public dnnl::convolution_forward {
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const engine& aengine = engine::cpu_engine()) {
-    auto src_desc_any = src_desc.to_format_any();
-    auto weights_desc_any = weights_desc.to_format_any();
-    auto bias_desc_any = with_bias ? bias_desc.to_format_any() : tensor::desc();
-    auto dst_desc_any = dst_desc.to_format_any();
+    // TODO: 3d channels last support
+    // For nhwc path, weight uses format_tag::any,
+    // while activation uses format_tag::nhwc
+    bool is_nhwc = src_desc.is_nhwc() || weights_desc.is_nhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    auto src_desc_query = src_desc.to_format(format_tag);
+    auto weights_desc_query = weights_desc.to_format_any();
+    auto bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
+    auto dst_desc_query = dst_desc.to_format(format_tag);
 
     if (with_bias) {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_any,
-                             weights_desc_any, bias_desc_any, dst_desc_any,
+      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                             weights_desc_query, bias_desc_query, dst_desc_query,
                              strides, dilates, padding_l, padding_r},
                             attr, aengine);
     } else {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_any,
-                             weights_desc_any, dst_desc_any,
+      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                             weights_desc_query, dst_desc_query,
                              strides, dilates, padding_l, padding_r},
                             attr, aengine);
     }
@@ -373,8 +378,8 @@ private:
       // align weights data type with src
       dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
                                                              : data_type::f32;
-      src_desc = src.get_desc().to_format_any().to_type(dst_data_type);
-      weights_desc = weights_.get_desc().to_format_any().to_type(dst_data_type);
+      src_desc = src.get_desc().to_type(dst_data_type);
+      weights_desc = weights_.get_desc().to_type(dst_data_type);
 
       if (with_bias) {
         IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
@@ -454,13 +459,15 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto weights_ = weights.make_grouped_weights(groups);
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
-    auto diff_dst_desc = diff_dst.get_desc().to_format_any();
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     // align weight data type with diff_dst for bf16
     auto weights_desc =
         weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
 
     auto diff_src_desc = 
-        tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), tag::any);
+        tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
 
     auto forward_hints =
         convolution_forward::get_primitive_desc</*with_bias=*/false>(
@@ -551,8 +558,10 @@ struct convolution_backward_weights
         diff_weights_desc = diff_weights_desc.to_grouped(groups).to_format_any();
     }
 
-    auto diff_dst_desc = diff_dst.get_desc().to_format_any();
-    auto src_desc = src.get_desc().to_format_any();
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
+    auto src_desc = src.get_desc().to_format(format_tag);
 
     auto diff_bias_desc =     
         tensor::desc({diff_dst.get_dim(1)}, diff_weight_type_in, tag::any);

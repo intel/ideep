@@ -59,6 +59,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
 
+    auto src_size = weights_dims.size(); // weights_dims is 4 for conv2d and 5 for conv3d
     auto grouped = groups > 1;
     auto weights_dims_g =
         grouped ? utils::group_dims(weights_dims, groups) : weights_dims;
@@ -71,17 +72,40 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     auto g = grouped ? dims_in[0] : 1;
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
+    dims x_dims, y_dims, kernel_size;
     auto ic = g * dims_in[1 + grouped];
     auto oc = g * dims_in[0 + grouped];
-    auto kh = dims_in[ndims - 2];
-    auto kw = dims_in[ndims - 1];
-    auto h = 8 * kh;
-    auto w = 8 * kw;
-    auto oh = (h - 1) * strides[0] + (1 + (kh - 1) * (dilates[0])) - padding_l[0] - padding_r[0];
-    auto ow = (w - 1) * strides[1] + (1 + (kw - 1) * (dilates[1])) - padding_l[1] - padding_r[1];
-
-    dims x_dims = {1, ic, h, w};
-    dims y_dims = {1, oc, oh, ow};
+    if (5 == src_size) {
+      kernel_size.push_back(dims_in[ndims - 3]);
+    }
+    kernel_size.push_back(dims_in[ndims - 2]);
+    kernel_size.push_back(dims_in[ndims - 1]);
+    if (src_dims.empty()) {
+      // Construct a dummy case
+      x_dims.push_back(1);
+      x_dims.push_back(ic);
+      y_dims.push_back(1);
+      y_dims.push_back(oc);
+      if (4 == src_size) {
+        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[1]);
+      } else {
+        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[1]);
+        x_dims.push_back(8 * kernel_size[2]);
+      }
+    } else {
+      // Use the real data
+      for (auto i=0; i < src_size; ++i) {
+        x_dims.push_back(src_dims[i]);
+      }
+      y_dims.push_back(src_dims[0]);
+      y_dims.push_back(oc);
+    }
+    for (auto d = 2; d < src_size; ++d) {
+      auto out_size = (x_dims[d] - 1) * strides[d-2] + (1 + (kernel_size[d-2] - 1) * (dilates[d-2])) - padding_l[d-2] - padding_r[d-2];
+      y_dims.push_back(out_size);
+    }
     auto x_dtype = (dtype != data_type::s8) ? dtype : data_type::u8;
     auto y_dtype = (dtype != data_type::s8) ? dtype : data_type::s32;
 
@@ -116,19 +140,23 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       algorithm aalgorithm = algorithm::deconvolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const engine& aengine = engine::cpu_engine()) {
-    auto src_desc_any = src_desc.to_format_any();
-    auto weights_desc_any = weights_desc.to_format_any();
-    auto bias_desc_any = with_bias ? bias_desc.to_format_any() : tensor::desc();
-    auto dst_desc_any = dst_desc.to_format_any();
+    // For nhwc path, weight uses format_tag::any,
+    // while activation uses format_tag::nhwc
+    bool is_nhwc = src_desc.is_nhwc() || weights_desc.is_nhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    auto src_desc_query = src_desc.to_format(format_tag);
+    auto weights_desc_query = weights_desc.to_format_any();
+    auto bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
+    auto dst_desc_query = dst_desc.to_format(format_tag);
 
     if (with_bias) {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_any,
-                             weights_desc_any, bias_desc_any, dst_desc_any,
+      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                             weights_desc_query, bias_desc_query, dst_desc_query,
                              strides, dilates, padding_l, padding_r},
                             attr, aengine);
     } else {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_any,
-                             weights_desc_any, dst_desc_any,
+      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                             weights_desc_query, dst_desc_query,
                              strides, dilates, padding_l, padding_r},
                             attr, aengine);
     }
@@ -202,10 +230,12 @@ struct convolution_transpose_backward_data
     auto weights_ = weights.make_grouped_weights(groups, true);
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
-    auto diff_dst_desc = diff_dst.get_desc().to_format_any();
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     auto weights_desc = weights_.get_desc().to_format_any();
 
-    tensor::desc diff_src_desc(diff_src_dims, diff_dst_desc.get_data_type());
+    tensor::desc diff_src_desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
 
     auto forward_hints =
         convolution_transpose_forward::get_primitive_desc</*with_bias=*/false>(
@@ -295,8 +325,10 @@ private:
       diff_weights_desc = diff_weights_desc.transpose(0, 1);
     }
 
-    auto diff_dst_desc = diff_dst.get_desc().to_format_any();
-    auto src_desc = src.get_desc().to_format_any();
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
+    auto src_desc = src.get_desc().to_format(format_tag);
 
     auto diff_bias_desc = with_diff_bias
         ? tensor::desc({diff_dst.get_dim(1)}, diff_dst.get_data_type())

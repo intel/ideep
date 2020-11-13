@@ -49,6 +49,33 @@ class tensor : public memory {
     desc(const dims &adims, data_type adata_type, const dims &astrides)
         : memory::desc(adims, adata_type, astrides) { set_g(1); }
 
+    void to_bytes(utils::bytestring& bytes) const {
+      utils::to_bytes(bytes, data_type());
+      utils::to_bytes(bytes, format_kind());
+      utils::to_bytes(bytes, offset0());
+
+      auto& paddim = padded_dims();
+      auto& padoff = padded_offsets();
+
+      for (int i = 0; i < data.ndims; i++) {
+        utils::to_bytes(bytes, data.dims[i]);
+        utils::to_bytes(bytes, paddim[i]);
+        utils::to_bytes(bytes, padoff[i]);
+      }
+
+      if (is_blocking_desc()) {
+        auto& blk = blocking_desc();
+        auto& stride = blocking_strides();
+        for (int i = 0; i < data.ndims; i++) {
+          utils::to_bytes(bytes, stride[i]);
+        }
+        for (int i = 0; i < blk.inner_nblks; i++) {
+          utils::to_bytes(bytes, blk.inner_idxs[i]);
+          utils::to_bytes(bytes, blk.inner_blks[i]);
+        }
+      }
+    }
+
     /// public ndims
     inline int get_ndims() const {
       return is_grouped() ? data.ndims - 1 : data.ndims;

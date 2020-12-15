@@ -66,6 +66,14 @@ enum rnn_kind {
   GRU = 3
 };
 
+static bool has_bf16_type_support() {
+  // for v1.8
+  // static bool support_bf16 = isa >= dnnl::cpu_isa::avx512_core
+  //                           && isa != dnnl::cpu_isa::avx2_vnni;
+  static bool support_bf16 = dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core;
+  return support_bf16;
+}
+
 /// cpu execution engine only.
 struct engine : public dnnl::engine {
   friend class tensor;

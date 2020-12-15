@@ -50,7 +50,7 @@ class tensor : public memory {
         : memory::desc(adims, adata_type, astrides) { set_g(1); }
 
     void to_bytes(utils::bytestring& bytes) const {
-      utils::to_bytes(bytes, data_type());
+      utils::to_bytes(bytes, get_data_type());
       utils::to_bytes(bytes, format_kind());
       utils::to_bytes(bytes, offset0());
 

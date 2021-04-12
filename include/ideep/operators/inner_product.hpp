@@ -11,6 +11,7 @@ struct inner_product_forward : public dnnl::inner_product_forward {
                       const tensor& weights,
                       const tensor& bias,
                       tensor& dst,
+                      const bool all_plain = true,
                       const scale_t& src_scales = scale_t(),
                       const scale_t& weights_scales = scale_t(),
                       const scale_t& dst_scales = scale_t(),
@@ -18,14 +19,15 @@ struct inner_product_forward : public dnnl::inner_product_forward {
                       const prop_kind aprop_kind = prop_kind::forward,
                       const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(src, weights, bias, dst, src_scales,
-                                     weights_scales, dst_scales, attr,
-                                     aprop_kind, alowp_kind, aengine);
+    compute_impl</*with_bias=*/true>(src, weights, bias, dst, all_plain,
+                                     src_scales, weights_scales, dst_scales,
+                                     attr, aprop_kind, alowp_kind, aengine);
   }
 
   static void compute(const tensor& src,
                       const tensor& weights,
                       tensor& dst,
+                      const bool all_plain = true,
                       const scale_t& src_scales = scale_t(),
                       const scale_t& weights_scales = scale_t(),
                       const scale_t& dst_scales = scale_t(),
@@ -34,9 +36,9 @@ struct inner_product_forward : public dnnl::inner_product_forward {
                       const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, src_scales,
-                                      weights_scales, dst_scales, attr,
-                                      aprop_kind, alowp_kind, aengine);
+    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, all_plain,
+                                      src_scales, weights_scales, dst_scales,
+                                      attr, aprop_kind, alowp_kind, aengine);
   }
 
 
@@ -69,6 +71,7 @@ private:
                            const tensor& weights,
                            const tensor& bias,
                            tensor& dst,
+                           const bool all_plain,
                            const scale_t& src_scales,
                            const scale_t& weights_scales,
                            const scale_t& dst_scales,
@@ -84,7 +87,7 @@ private:
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
     }
-    compute_impl_<with_bias>(src_, weights, bias, dst, src_scales,
+    compute_impl_<with_bias>(src_, weights, bias, dst, all_plain, src_scales,
                              weights_scales, dst_scales, attr, aprop_kind,
                              alowp_kind, aengine);
   }
@@ -94,6 +97,7 @@ private:
                             const tensor& weights,
                             const tensor& bias,
                             tensor& dst,
+                            const bool all_plain,
                             const scale_t& src_scales,
                             const scale_t& weights_scales,
                             const scale_t& dst_scales,
@@ -101,7 +105,7 @@ private:
                             const prop_kind aprop_kind,
                             const lowp_kind alowp_kind,
                             const engine& aengine) {
-    tensor::desc src_desc, weights_desc, bias_desc;
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     scale_t dst_scales_in;
     data_type dst_data_type;
@@ -188,7 +192,12 @@ private:
       }
     }
 
-    tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
+    dst_desc = dst.get_desc().to_type(dst_data_type);
+    if (!all_plain){
+      src_desc = src_desc.to_format_any();
+      weights_desc = weights_desc.to_format_any();
+      dst_desc = dst_desc.to_format_any();
+    }
     auto pd = with_bias
        ? primitive_desc({aprop_kind, src_desc, weights_desc, bias_desc,
                          dst_desc}, op_attr, aengine)

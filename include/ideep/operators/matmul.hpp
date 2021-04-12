@@ -18,12 +18,13 @@ struct matmul_forward : public dnnl::matmul {
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(),
+      const bool all_plain = true,
       const data_type dst_type = data_type::undef,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
                                      src_scales, weights_scales, dst_scales,
-                                     attr, dst_type, alowp_kind, aengine);
+                                     attr, all_plain, dst_type, alowp_kind, aengine);
   }
 
   static void compute(
@@ -36,13 +37,14 @@ struct matmul_forward : public dnnl::matmul {
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
       const attr_t& attr = attr_t(),
+      const bool all_plain = true,
       const data_type dst_type = data_type::undef,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, dst_coeff,
-                                      sum_coeff, src_scales, weights_scales,
-                                      dst_scales, attr, dst_type, alowp_kind, aengine);
+                                      sum_coeff, src_scales, weights_scales, dst_scales, 
+                                      attr, all_plain, dst_type, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -80,12 +82,13 @@ private:
                           const scale_t& weights_scales = scale_t(),
                           const scale_t& dst_scales = scale_t(),
                           const attr_t& attr = attr_t(),
+                          const bool all_plain = true,
                           const data_type dst_type = data_type::undef,
                           const lowp_kind alowp_kind = u8s8,
                           const engine& aengine = engine::cpu_engine()) {
    IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
 
-   tensor::desc src_desc, weights_desc, bias_desc;
+   tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
    attr_t op_attr, src_attr, weights_attr, bias_attr;
    scale_t dst_scales_in;
    auto dst_data_type = data_type::f32;
@@ -253,7 +256,12 @@ private:
    }
 
    dst_data_type = dst_type == data_type::undef ? dst_data_type : dst_type;   
-   tensor::desc dst_desc(dst_dims, dst_data_type, tag::any);
+   dst_desc = dst.get_desc().to_type(dst_data_type);
+   if (!all_plain){
+     src_desc = src_desc.to_format_any();
+     weights_desc = weights_desc.to_format_any();
+     dst_desc = dst_desc.to_format_any();
+   }
    auto pd = with_bias
        ? primitive_desc({src_desc, weights_desc, bias_desc, dst_desc},
                          op_attr, aengine)

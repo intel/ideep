@@ -277,17 +277,17 @@ struct convolution_forward
                                  weights_desc_query, with_bias, strides,
                                  dilates, padding_l, padding_r, attr);
     return fetch_or_create(key, [&]() {
-    if (with_bias) {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
-                             weights_desc_query, bias_desc_query, dst_desc_query,
-                             strides, dilates, padding_l, padding_r},
-                            attr, aengine);
-    } else {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
-                             weights_desc_query, dst_desc_query,
-                             strides, dilates, padding_l, padding_r},
-                            attr, aengine);
-    }
+      if (with_bias) {
+        return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                              weights_desc_query, bias_desc_query, dst_desc_query,
+                              strides, dilates, padding_l, padding_r},
+                              attr, aengine);
+      } else {
+        return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                              weights_desc_query, dst_desc_query,
+                              strides, dilates, padding_l, padding_r},
+                              attr, aengine);
+      }
     });
   }
 
@@ -406,7 +406,7 @@ private:
                           : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
 
       // determine dst data type
-      if (attr.has_op_kind(kind::sum)) {
+      if (attr.has_op_kind(kind::sum) || dst.get_data_type() != data_type::undef) {
         dst_data_type = dst.get_data_type();
       } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
         dst_data_type = data_type::f32;
@@ -420,6 +420,12 @@ private:
       dst_scales_in = dst_scales.empty() || dst_data_type == data_type::f32
                           ? IDEEP_DEF_SCALE
                           : dst_scales;
+      auto dst_zero_point = dst.get_zero_point();
+      auto src_zero_point = src.get_zero_point();
+      auto weights_zero_point = weights_.get_zero_point();
+      auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
+      auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
+      auto weights_zero_point_size = static_cast<dim>(weights_zero_point.size());
 
       scale_t bias_scales, op_scales;
       std::tie(bias_scales, op_scales) = utils::compute_scales(
@@ -437,6 +443,21 @@ private:
         op_attr = attr_t::fuse_relu();
       }
       op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
+      if (src_zero_point_size) {
+        op_attr.set_zero_points(DNNL_ARG_SRC,
+                                ideep::utils::tensor_zp_mask(src_zero_point.size()),
+                                src_zero_point);
+      }
+      if (weights_zero_point_size) {
+        op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
+                                ideep::utils::tensor_zp_mask(weights_zero_point.size()),
+                                weights_zero_point);
+      }
+      if (dst_data_type != data_type::f32 && dst_zero_point_size) {
+        op_attr.set_zero_points(DNNL_ARG_DST,
+                                ideep::utils::tensor_zp_mask(dst_zero_point.size()),
+                                dst_zero_point);
+      }
 
       src_desc = {src.get_dims(),
                   alowp_kind == u8s8 ? data_type::u8 : data_type::s8, tag::any};
@@ -451,7 +472,7 @@ private:
       }
 
       if (with_bias) {
-        bias_desc = {bias.get_dims(), data_type::s32, tag::any};
+        bias_desc = {bias.get_dims(), data_type::f32, tag::any}; // Use f32 instead of s32 to improve accuracy
         if (bias.get_data_type() == data_type::f32) {
           bias_attr = {utils::tensor_scale_mask(scale_size, false),
                        bias_scales};
@@ -516,8 +537,9 @@ private:
     }
 
     if (with_bias) {
-      auto expected_bias =
-          bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr);
+      ideep::tensor expected_bias;
+      expected_bias.init(pd.bias_desc());
+      bias.reorder_to(expected_bias, param.bias_attr); // reorder_if_differ_in does not check attr
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},

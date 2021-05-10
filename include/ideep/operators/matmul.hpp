@@ -120,7 +120,9 @@ private:
      }
      
      // determine dst data type
-     if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
+     if (dst.get_data_type() != data_type::undef) {
+       dst_data_type = dst.get_data_type();
+     } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
        dst_data_type = data_type::f32;
      } else {
        dst_data_type = data_type::u8;
@@ -206,7 +208,7 @@ private:
 
      if (with_bias) {
        tag bia_tag = bias.get_dims().size() == 2 ? tag::ab : tag::abc;
-       bias_desc = {bias.get_dims(), data_type::s32, bia_tag};
+       bias_desc = {bias.get_dims(), data_type::f32, bia_tag}; // Use f32 instead of s32 to improve accuracy
        if (bias.get_data_type() != data_type::s32) {
          auto ndims = bias.get_dims().size(); 
          int mask = scale_size > 1 ? 1 << (ndims - 1) : 0;
@@ -266,7 +268,9 @@ private:
      dst.set_scale(dst_scales_in);
    }
    if (with_bias){
-     auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
+     ideep::tensor expected_bias;
+     expected_bias.init(pd.bias_desc());
+     bias.reorder_to(expected_bias, bias_attr); // reorder_if_differ_in does not check attr
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},

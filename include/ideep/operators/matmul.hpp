@@ -221,20 +221,15 @@ private:
        src_attr = {0, src_scale};
      }
 
-     // We intentionally didn't set weight desc to format `any` so DNNL wouldn't
-     // have to determine weight format for us. Because the weight tensor from
-     // pytorch may have a transposed format (say `ba`). However, DNNL would
-     // choose plain format for it by default (`ab` in this case), which would
-     // introduces *an extra reorder* afterwards. Here we keep the weight format
-     // untouched thanks to optimizations for both plain and transposed formats
-     // in DNNL.
+     // We always set tag "any" to all input desc, and assume it's DNNL's duty to find best solution
+     // (which means minimize the execution times (include gemm computation and tensor format conversion))
      IDEEP_ENFORCE(weights.get_data_type() == data_type::f32 ||
 		   weights.get_data_type() == data_type::bf16,
                    "Incorrect data type in weights");
      dst_data_type = src.get_data_type() == data_type::bf16 ? 
                      data_type::bf16 : data_type::f32;
-     src_desc = src.get_desc().to_type(dst_data_type);
-     weights_desc = weights.get_desc().to_type(dst_data_type);
+     src_desc = src.get_desc().to_type(dst_data_type).to_format_any();
+     weights_desc = weights.get_desc().to_type(dst_data_type).to_format_any();
      if (with_bias) {
        IDEEP_ENFORCE(bias.get_data_type() == data_type::f32 ||
 		     bias.get_data_type() == data_type::bf16,
@@ -259,19 +254,29 @@ private:
                          op_attr, aengine)
        : primitive_desc({src_desc, weights_desc, dst_desc},
                          op_attr, aengine);
+   // reorder src, weight, dst if needed
    auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-   dst.reinit_if_possible(pd.dst_desc());
-   if (!dst_scales.empty() && dst_data_type != data_type::f32) {
-     dst.set_scale(dst_scales_in);
-   }
+
+    // [ Note output buffer]
+    // In this case, dst is an empty ideep tensor, can be re-init
+    // If dst is not empty, ideep must wirte result to dst's memory and it is caller's duty to 
+    // make sure dst is big enough to hold the result 
+    if (dst.is_empty())
+      dst.reinit_if_possible(pd.dst_desc());
+    auto expected_dst = dst.reorder_if_differ_in(pd.dst_desc());
+    if (!dst_scales.empty() && (dst.get_data_type() != data_type::f32 || dst.get_data_type() != data_type::bf16)) {
+      expected_dst.set_scale(dst_scales_in);
+    }
+
    if (with_bias){
+     // reorder bias if needed
      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},
                         {DNNL_ARG_BIAS, expected_bias},
-                        {DNNL_ARG_DST, dst},
+                        {DNNL_ARG_DST, expected_dst},
                         {DNNL_ARG_ATTR_OUTPUT_SCALES, scales_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, wei_zero_point_m},
@@ -280,12 +285,14 @@ private:
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},
-                        {DNNL_ARG_DST, dst},
+                        {DNNL_ARG_DST, expected_dst},
                         {DNNL_ARG_ATTR_OUTPUT_SCALES, scales_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, wei_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_point_m}});
    }
+    // reorder back to dst's buffer if needed
+    expected_dst.reorder_to_if_differ_from(dst);
   }
 };
 

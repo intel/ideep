@@ -663,6 +663,7 @@ class tensor : public memory {
     }
   }
 
+  // Copy data from *this to dst if dst's memory desc(size, stride, format, etc) is different from *this;
   void reorder_to_if_differ_from(tensor &dst, const attr_t &aattr = attr_t()) const {
     if (dst.get_desc() != get_desc()) {
       this->reorder_to(dst, aattr);

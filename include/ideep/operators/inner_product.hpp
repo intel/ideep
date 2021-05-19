@@ -204,7 +204,7 @@ private:
     // If dst is not empty, ideep must write result to dst's memory and it is caller's duty to 
     // make sure dst is big enough to hold the result 
     if (dst.is_empty())
-      dst.reinit_if_possible(pd.dst_desc());
+      dst.init(pd.dst_desc());
     auto expected_dst = dst.reorder_if_differ_in(pd.dst_desc());
     if (!dst_scales.empty() && utils::one_of(dst.get_data_type(), data_type::u8, data_type::s8)) {
       expected_dst.set_scale(dst_scales_in);
@@ -275,7 +275,7 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
     // see [Notes output buffer]
     if (diff_src.is_empty())
-      diff_src.reinit_if_possible(pd.diff_src_desc());
+      diff_src.init(pd.diff_src_desc());
     auto expected_diff_src = diff_src.reorder_if_differ_in(pd.diff_src_desc());
 
     super(pd).execute(stream::default_stream(),
@@ -353,7 +353,7 @@ private:
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     if (diff_weights.is_empty())
-      diff_weights.reinit_if_possible(pd.diff_weights_desc());
+      diff_weights.init(pd.diff_weights_desc());
     auto expected_diff_weights = diff_weights.reorder_if_differ_in(pd.diff_weights_desc());
 
     exec_args args {{DNNL_ARG_DIFF_DST, expected_diff_dst},
@@ -364,7 +364,7 @@ private:
     if (with_diff_bias) {
       // reorder diff_bias(grad_b)
       if (diff_bias.is_empty())
-        diff_bias.reinit_if_possible(pd.diff_bias_desc());
+        diff_bias.init(pd.diff_bias_desc());
       expected_diff_bias = diff_bias.reorder_if_differ_in(pd.diff_bias_desc());
       args.insert({DNNL_ARG_DIFF_BIAS, expected_diff_bias});
     }

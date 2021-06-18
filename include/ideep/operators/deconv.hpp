@@ -8,7 +8,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
   using super = dnnl::deconvolution_forward;
 
   static void compute(const tensor& src,
-                      const tensor& weights, // dim: {i, o[, d], h, w}
+                      const tensor& weights, // dim: {o, i[, d], h, w}
                       const tensor& bias,
                       const dims& dst_dims,
                       tensor& dst,
@@ -17,17 +17,22 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                       const dims& padding_r,
                       const dims& dilates = {1, 1},
                       int groups = 1,
+                      const scale_t& src_scales = scale_t(),
+                      const scale_t& weights_scales = scale_t(),
+                      const scale_t& dst_scales = scale_t(),
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_bias=*/true>(
         src, weights, bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   static void compute(const tensor& src,
-                      const tensor& weights, // dim: {i, o[, d], h, w}
+                      const tensor& weights, // dim: {o, i[, d], h, w}
                       const dims& dst_dims,
                       tensor& dst,
                       const dims& strides,
@@ -35,14 +40,19 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                       const dims& padding_r,
                       const dims& dilates = {1, 1},
                       int groups = 1,
+                      const scale_t& src_scales = scale_t(),
+                      const scale_t& weights_scales = scale_t(),
+                      const scale_t& dst_scales = scale_t(),
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     compute_impl</*with_bias=*/false>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -114,7 +124,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_desc, weights_desc, tensor::desc(), dst_desc, strides, dilates_,
-        padding_l, padding_r, attr_t(), aalgorithm, aprop_kind);
+        padding_l, padding_r, attr, aalgorithm, aprop_kind);
 
     // embed group info into weights_desc
     if (grouped) {
@@ -174,38 +184,55 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                            const dims& padding_l,
                            const dims& padding_r,
                            int groups,
+                           const scale_t& src_scales,
+                           const scale_t& weights_scales,
+                           const scale_t& dst_scales,
                            const attr_t& attr,
                            algorithm aalgorithm,
                            prop_kind aprop_kind,
+                           const lowp_kind alowp_kind,
                            const engine& aengine) {
+    scale_t dst_scales_in;
+    data_type dst_data_type;
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
+    tensor weights_grouped;
+    dims dil_compatible;
 
-    // make weights and dilates compatible with DNNL
-    auto weights_ = weights.make_grouped_weights(groups, true);
-    auto dilates_ = utils::get_compatible_dilates(dilates);
-
-    tensor::desc dst_desc(dst_dims, src.get_data_type());
+    conv_deconv_utils::prepare_parameters(
+        src, weights, bias, dst_dims, dst, dilates, groups,
+        src_scales, weights_scales, dst_scales, attr, alowp_kind, with_bias, true,
+        weights_grouped, dil_compatible, op_attr, src_attr, weights_attr, bias_attr,
+        src_desc, weights_desc, bias_desc, dst_desc);
 
     auto pd = get_primitive_desc<with_bias>(
-        src.get_desc(), weights_.get_desc(), bias.get_desc(), dst_desc,
-        strides, dilates_, padding_l, padding_r, attr, aalgorithm,
+        src_desc, weights_desc, bias_desc, dst_desc,
+        strides, dil_compatible, padding_l, padding_r, op_attr, aalgorithm,
         aprop_kind, aengine);
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
-    auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
+    auto expected_weights = weights_grouped.reorder_if_differ_in(pd.weights_desc());
     dst.reinit_if_possible(pd.dst_desc());
 
+    tensor src_zero_point_m;
+    conv_deconv_utils::obtain_runtime_zero_point(src, DNNL_ARG_SRC, op_attr, aengine, src_zero_point_m);
+
     if (with_bias) {
-      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc());
+      ideep::tensor expected_bias;
+      expected_bias.init(pd.bias_desc());
+      bias.reorder_to(expected_bias, bias_attr); // reorder_if_differ_in does not check attr
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst}});
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m}});
     } else {
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, dst}});
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m}});
     }
   }
 };

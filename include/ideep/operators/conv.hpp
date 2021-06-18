@@ -12,6 +12,191 @@ struct convolution_forward_params {
   tensor scratchpad;
 };
 
+struct conv_deconv_utils {
+  /// Common logic to prepare parameters for conv/deconv.
+  static void prepare_parameters(const tensor& src,
+                                 const tensor& weights,
+                                 const tensor& bias,
+                                 const dims& dst_dims,
+                                 const tensor& dst,
+                                 const dims& dilates,
+                                 int groups,
+                                 const scale_t& src_scales,
+                                 const scale_t& weights_scales,
+                                 const scale_t& dst_scales,
+                                 const attr_t& attr,
+                                 const lowp_kind alowp_kind,
+                                 bool with_bias,
+                                 bool is_deconv,
+                                 tensor& weight_grouped, /* Output */
+                                 dims& dil_compatible, /* Output */
+                                 attr_t& op_attr, /* Output */
+                                 attr_t& src_attr, /* Output */
+                                 attr_t& weights_attr, /* Output */
+                                 attr_t& bias_attr, /* Output */
+                                 tensor::desc& src_desc, /* Output */
+                                 tensor::desc& weights_desc, /* Output */
+                                 tensor::desc& bias_desc, /* Output */
+                                 tensor::desc& dst_desc /* Output */) {
+    scale_t dst_scales_in;
+    data_type dst_data_type;
+    op_attr = attr;
+
+    // make weights and dilates compatible with DNNL
+    weight_grouped = weights.make_grouped_weights(groups, is_deconv);
+    dil_compatible = utils::get_compatible_dilates(dilates);
+
+    auto& weights_scales_in =
+        weight_grouped.has_scale() ? weight_grouped.get_scale() : weights_scales;
+    if (!weights_scales_in.empty()) {
+      IDEEP_ENFORCE(alowp_kind == u8s8 || alowp_kind == s8s8,
+                    "Unsupported lowp kind");
+      int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
+      auto src_scales_in =
+          src.has_scale() ? src.get_scale()
+                          : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
+
+      // determine dst data type
+      if (dst.get_data_type() != data_type::undef) {
+        dst_data_type = dst.get_data_type();
+      } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
+        dst_data_type = data_type::f32;
+      } else if (attr.non_negitive_output()) {
+        dst_data_type = data_type::u8;
+      } else {
+        dst_data_type = data_type::s8;
+      }
+
+      // fill primitive attr
+      dst_scales_in = dst_scales.empty() || dst_data_type == data_type::f32
+                          ? IDEEP_DEF_SCALE
+                          : dst_scales;
+      auto src_zero_point = src.has_zero_point() ? src.get_zero_point() : std::vector<int32_t>(1);
+      auto weights_zero_point = weight_grouped.has_zero_point() ? weight_grouped.get_zero_point() : std::vector<int32_t>(1);
+      auto dst_zero_point = dst.has_zero_point() ? dst.get_zero_point() : std::vector<int32_t>(1);
+      auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
+      auto weights_zero_point_size = 1;
+      auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
+      IDEEP_ENFORCE(src_zero_point_size == 1 && dst_zero_point_size == 1,
+                    "DNNL only support 1-dim zero_point");
+
+      scale_t bias_scales, op_scales;
+      std::tie(bias_scales, op_scales) = utils::compute_scales(
+          src_scales_in[0], dst_scales_in[0], weights_scales_in);
+
+      if (attr.has_op_kind(kind::sum)) {
+        float sum_scale =
+            dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+        if (attr.has_op_kind(kind::eltwise)) {
+          op_attr = attr_t::residual(sum_scale);
+        } else {
+          op_attr = attr_t::fuse_sum(sum_scale);
+        }
+      } else if (attr.has_op_kind(kind::eltwise)) {
+        op_attr = attr_t::fuse_relu();
+      }
+      op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
+      std::vector<int32_t> src_zero_point_in_attr;
+      int zp_mask = utils::tensor_zp_mask(1);
+      attr.get_zero_points(DNNL_ARG_SRC, zp_mask, src_zero_point_in_attr);
+      if (src_zero_point_in_attr == std::vector<int32_t>({DNNL_RUNTIME_S32_VAL})) { // runtime src zero point
+        op_attr.set_zero_points(DNNL_ARG_SRC,
+                                zp_mask,
+                                src_zero_point_in_attr);
+      } else {
+        op_attr.set_zero_points(DNNL_ARG_SRC,
+                                ideep::utils::tensor_zp_mask(src_zero_point_size),
+                                src_zero_point);
+      }
+      op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
+                              ideep::utils::tensor_zp_mask(weights_zero_point_size),
+                              std::vector<int32_t>(1, weights_zero_point[0]));
+      if (dst_data_type != data_type::f32) {
+        op_attr.set_zero_points(DNNL_ARG_DST,
+                                ideep::utils::tensor_zp_mask(dst_zero_point_size),
+                                dst_zero_point);
+      }
+
+      src_desc = {src.get_dims(),
+                  alowp_kind == u8s8 ? data_type::u8 : data_type::s8, tag::any};
+      if (src.get_data_type() == data_type::f32) {
+        src_attr = {0, src_scales_in};
+      }
+
+      weights_desc = weight_grouped.get_desc().to_type(data_type::s8);
+      if (weight_grouped.get_data_type() == data_type::f32) {
+        weights_attr = {utils::tensor_scale_mask(scale_size, groups > 1),
+                        weights_scales_in};
+      }
+
+      if (with_bias) {
+        bias_desc = {bias.get_dims(), data_type::f32, tag::any}; // Use f32 instead of s32 to improve accuracy
+        if (bias.get_data_type() == data_type::f32) {
+          bias_attr = {utils::tensor_scale_mask(scale_size, false),
+                        bias_scales};
+        }
+      }
+    } else {
+      if (src.has_scale()) {
+        auto src_scale = src.get_scale();
+        src_scale[0] = 1.0f / src_scale[0];
+        src_attr = {0, src_scale};
+      }
+
+      IDEEP_ENFORCE(utils::one_of(weight_grouped.get_data_type(),
+                                  data_type::f32, data_type::bf16),
+                    "Incorrect data type in weights");
+
+      // align weights data type with src
+      dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                              : data_type::f32;
+      src_desc = src.get_desc().to_type(dst_data_type);
+      weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
+
+      if (with_bias) {
+        IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
+                                    data_type::f32, data_type::bf16),
+                      "Incorrect data type in bias");
+        bias_desc = bias.get_desc();
+      }
+    }
+    if (!is_deconv) {
+      op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    }
+
+    dst_desc = attr.has_op_kind(kind::sum)
+                    ? dst.get_desc()
+                    : tensor::desc(dst_dims, dst_data_type);
+  }
+
+  /// If runtime zero point is set in op_attr, get true zero point from input tensor.
+  ///
+  /// @param input Get the true zero point from this tensor.
+  /// @param arg_idx Parameter argument index as passed to the
+  ///     primitive::execute() call. Such as DNNL_ARG_SRC.
+  /// @param op_attr Attr of the conv/deconv operation.
+  /// @param aengine Cpu execution engine.
+  /// @param zero_point Output tensor of zero points.
+  static void obtain_runtime_zero_point(const tensor& input, int arg_idx,
+                                        const dnnl::primitive_attr& op_attr,
+                                        const engine& aengine,
+                                        tensor& zero_point /* Output */) {
+    if (input.has_zero_point()) {
+      auto src_zero_point_size = static_cast<dim>(input.get_zero_point().size());
+      std::vector<int32_t> src_zero_point_in_attr;
+      int zp_mask = utils::tensor_zp_mask(1);
+      op_attr.get_zero_points(arg_idx, zp_mask, src_zero_point_in_attr);
+      if (src_zero_point_in_attr == std::vector<int32_t>({DNNL_RUNTIME_S32_VAL})) { // runtime zero point of input
+        tensor::desc src_zero_point_desc = {{src_zero_point_size}, data_type::s32, {1}};
+        zero_point.init(src_zero_point_desc, aengine);
+        auto src_z = reinterpret_cast<int32_t *>(zero_point.get_data_handle());
+        for (memory::dim i = 0; i < src_zero_point_size; ++i) // fill in zero point data
+          src_z[i] = input.get_zero_point()[i];
+      }
+    }
+  }
+};
+
 struct convolution_forward
     : public dnnl::convolution_forward,
       utils::computation_cache<dnnl::convolution_forward::primitive_desc> {
@@ -225,7 +410,7 @@ struct convolution_forward
 
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_desc, weights_desc, tensor::desc(), dst_desc, strides, dilates_,
-        padding_l, padding_r, attr_t(), aalgorithm, apkind);
+        padding_l, padding_r, attr, aalgorithm, apkind);
 
     // embed group info into weights_desc
     return tensor::desc(pd.weights_desc(), groups);
@@ -277,17 +462,17 @@ struct convolution_forward
                                  weights_desc_query, with_bias, strides,
                                  dilates, padding_l, padding_r, attr);
     return fetch_or_create(key, [&]() {
-    if (with_bias) {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
-                             weights_desc_query, bias_desc_query, dst_desc_query,
-                             strides, dilates, padding_l, padding_r},
-                            attr, aengine);
-    } else {
-      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
-                             weights_desc_query, dst_desc_query,
-                             strides, dilates, padding_l, padding_r},
-                            attr, aengine);
-    }
+      if (with_bias) {
+        return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                              weights_desc_query, bias_desc_query, dst_desc_query,
+                              strides, dilates, padding_l, padding_r},
+                              attr, aengine);
+      } else {
+        return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                              weights_desc_query, dst_desc_query,
+                              strides, dilates, padding_l, padding_r},
+                              attr, aengine);
+      }
     });
   }
 
@@ -388,110 +573,19 @@ private:
 
     scale_t dst_scales_in;
     data_type dst_data_type;
-    tensor::desc src_desc, weights_desc, bias_desc;
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
+    tensor weights_grouped;
+    dims dil_compatible;
 
-    // make weights and dilates compatible with DNNL
-    auto weights_ = weights.make_grouped_weights(groups);
-    auto dilates_ = utils::get_compatible_dilates(dilates);
-
-    auto& weights_scales_in =
-        weights_.has_scale() ? weights_.get_scale() : weights_scales;
-    if (!weights_scales_in.empty()) {
-      IDEEP_ENFORCE(alowp_kind == u8s8 || alowp_kind == s8s8,
-                    "Unsupported lowp kind");
-      int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
-      auto src_scales_in =
-          src.has_scale() ? src.get_scale()
-                          : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
-
-      // determine dst data type
-      if (attr.has_op_kind(kind::sum)) {
-        dst_data_type = dst.get_data_type();
-      } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
-        dst_data_type = data_type::f32;
-      } else if (attr.non_negitive_output()) {
-        dst_data_type = data_type::u8;
-      } else {
-        dst_data_type = data_type::s8;
-      }
-
-      // fill primitive attr
-      dst_scales_in = dst_scales.empty() || dst_data_type == data_type::f32
-                          ? IDEEP_DEF_SCALE
-                          : dst_scales;
-
-      scale_t bias_scales, op_scales;
-      std::tie(bias_scales, op_scales) = utils::compute_scales(
-          src_scales_in[0], dst_scales_in[0], weights_scales_in);
-
-      if (attr.has_op_kind(kind::sum)) {
-        float sum_scale =
-            dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
-        if (attr.has_op_kind(kind::eltwise)) {
-          op_attr = attr_t::residual(sum_scale);
-        } else {
-          op_attr = attr_t::fuse_sum(sum_scale);
-        }
-      } else if (attr.has_op_kind(kind::eltwise)) {
-        op_attr = attr_t::fuse_relu();
-      }
-      op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
-
-      src_desc = {src.get_dims(),
-                  alowp_kind == u8s8 ? data_type::u8 : data_type::s8, tag::any};
-      if (src.get_data_type() == data_type::f32) {
-        src_attr = {0, src_scales_in};
-      }
-
-      weights_desc = weights_.get_desc().to_type(data_type::s8);
-      if (weights_.get_data_type() == data_type::f32) {
-        weights_attr = {utils::tensor_scale_mask(scale_size, groups > 1),
-                        weights_scales_in};
-      }
-
-      if (with_bias) {
-        bias_desc = {bias.get_dims(), data_type::s32, tag::any};
-        if (bias.get_data_type() == data_type::f32) {
-          bias_attr = {utils::tensor_scale_mask(scale_size, false),
-                       bias_scales};
-        }
-      }
-    } else {
-      op_attr = attr;
-
-      if (src.has_scale()) {
-        auto src_scale = src.get_scale();
-        src_scale[0] = 1.0f / src_scale[0];
-        src_attr = {0, src_scale};
-      }
-
-      IDEEP_ENFORCE(utils::one_of(weights_.get_data_type(),
-                                  data_type::f32, data_type::bf16),
-                    "Incorrect data type in weights");
-
-      // align weights data type with src
-      dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
-                                                             : data_type::f32;
-      src_desc = src.get_desc().to_type(dst_data_type);
-      weights_desc = weights_.get_desc().to_type(dst_data_type);
-
-      if (with_bias) {
-        IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
-                                    data_type::f32, data_type::bf16),
-                      "Incorrect data type in bias");
-        bias_desc = bias.get_desc();
-      }
-    }
-
-    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-
-    auto dst_desc = attr.has_op_kind(kind::sum)
-                        ? dst.get_desc()
-                        : tensor::desc(dst_dims, dst_data_type);
+    conv_deconv_utils::prepare_parameters(
+        src, weights, bias, dst_dims, dst, dilates, groups,
+        src_scales, weights_scales, dst_scales, attr, alowp_kind, with_bias, false,
+        weights_grouped, dil_compatible, op_attr, src_attr, weights_attr, bias_attr,
+        src_desc, weights_desc, bias_desc, dst_desc);
 
     auto pd = get_primitive_desc<with_bias, keep_format>(
-        src_desc, weights_desc, bias_desc, dst_desc, strides, dilates_,
+        src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
         padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
 
     // allocate scratchpad
@@ -515,21 +609,28 @@ private:
       dst.set_scale(param.dst_scales);
     }
 
+    tensor src_zero_point_m;
+    conv_deconv_utils::obtain_runtime_zero_point(
+        src, DNNL_ARG_SRC, pd.get_primitive_attr(),
+        ideep::engine(pd.get_engine().get_kind()), src_zero_point_m);
     if (with_bias) {
-      auto expected_bias =
-          bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr);
+      ideep::tensor expected_bias;
+      expected_bias.init(pd.bias_desc());
+      bias.reorder_to(expected_bias, param.bias_attr); // reorder_if_differ_in does not check attr
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_BIAS, expected_bias},
                          {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m}});
     } else {
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m}});
     }
   }
 };

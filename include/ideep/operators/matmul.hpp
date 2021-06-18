@@ -86,7 +86,7 @@ private:
    IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
 
    tensor::desc src_desc, weights_desc, bias_desc;
-   attr_t op_attr, src_attr, weights_attr, bias_attr;
+   attr_t op_attr = attr, src_attr, weights_attr, bias_attr;
    scale_t dst_scales_in;
    auto dst_data_type = data_type::f32;
 
@@ -120,7 +120,9 @@ private:
      }
      
      // determine dst data type
-     if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
+     if (dst.get_data_type() != data_type::undef) {
+       dst_data_type = dst.get_data_type();
+     } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
        dst_data_type = data_type::f32;
      } else {
        dst_data_type = data_type::u8;
@@ -196,6 +198,11 @@ private:
        op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
        op_attr.set_zero_points(DNNL_ARG_SRC, 
                                utils::tensor_zp_mask(src_zero_point.size()), src_zero_point);
+       if (src.get_data_type() == data_type::f32) {
+         // Set zero point for reorder (quantization). 1st arg should be DNNL_ARG_DST rather than DNNL_ARG_SRC
+         src_attr.set_zero_points(DNNL_ARG_DST,
+                                  utils::tensor_zp_mask(src_zero_point.size()), src_zero_point);
+       }
        op_attr.set_zero_points(DNNL_ARG_WEIGHTS, 
                                utils::tensor_zp_mask(1), std::vector<int32_t>(1,wei_zero_point[0]));
        if (dst_data_type != data_type::f32) {
@@ -206,7 +213,7 @@ private:
 
      if (with_bias) {
        tag bia_tag = bias.get_dims().size() == 2 ? tag::ab : tag::abc;
-       bias_desc = {bias.get_dims(), data_type::s32, bia_tag};
+       bias_desc = {bias.get_dims(), data_type::f32, bia_tag}; // Use f32 instead of s32 to improve accuracy
        if (bias.get_data_type() != data_type::s32) {
          auto ndims = bias.get_dims().size(); 
          int mask = scale_size > 1 ? 1 << (ndims - 1) : 0;
@@ -214,7 +221,6 @@ private:
        }
      }
    } else {
-     op_attr = attr;
      if (src.has_scale()) {
        auto src_scale = src.get_scale();
        src_scale[0] = 1.0f / src_scale[0];
@@ -266,7 +272,9 @@ private:
      dst.set_scale(dst_scales_in);
    }
    if (with_bias){
-     auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
+     ideep::tensor expected_bias;
+     expected_bias.init(pd.bias_desc());
+     bias.reorder_to(expected_bias, bias_attr); // reorder_if_differ_in does not check attr
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},

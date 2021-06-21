@@ -19,6 +19,7 @@
 #include "operators/lstm.hpp"
 #include "operators/matmul.hpp"
 #include "operators/pool.hpp"
+#include "operators/prelu.hpp"
 #include "operators/softmax.hpp"
 #include "operators/spliter.hpp"
 #include "operators/sum.hpp"

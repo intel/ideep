@@ -1,0 +1,93 @@
+#ifndef IDEEP_OPERATORS_PRELU_HPP
+#define IDEEP_OPERATORS_PRELU_HPP
+
+namespace ideep {
+
+struct prelu_forward : public dnnl::prelu_forward {
+
+  using super = dnnl::prelu_forward;
+
+  static void compute(const tensor& src,
+                      const tensor& weight,
+                      tensor& dst,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    auto src_in = src;
+    auto weight_in = weight;
+
+    // Reshape weight to src dimension
+    auto new_dims = src.get_dims();
+    if (src.ndims() != weight.ndims()) {
+      std::vector<dim> dim_w(src.ndims(), 1);
+      dim_w[1] = weight.get_dim(0);
+      weight_in.reshape(dim_w);
+    }
+
+    auto src_desc = src_in.get_desc();
+    auto weight_desc = weight_in.get_desc().to_format_any();
+    auto pd = primitive_desc({aprop_kind, src_desc, weight_desc}, aengine);
+    auto expected_weights = weight_in.reorder_if_differ_in(pd.weights_desc());
+    dst.reinit_if_possible(pd.dst_desc());
+
+    super(pd).execute(stream::default_stream(),
+                      {{DNNL_ARG_SRC, src_in}, {DNNL_ARG_WEIGHTS, expected_weights}, {DNNL_ARG_DST, dst}});
+  }
+};
+
+struct prelu_backward : public dnnl::prelu_backward {
+
+  using super = dnnl::prelu_backward;
+
+  static void compute(const tensor& src,
+                      const tensor& weight,
+                      const tensor& diff_dst,
+                      tensor& diff_src,
+                      tensor& diff_weight,
+                      prop_kind aprop_kind = prop_kind::backward,
+                      const engine& aengine = engine::cpu_engine()) {
+    auto src_in = src;
+    auto weight_in = weight;
+    auto diff_dst_in = diff_dst;
+    auto weight_dims = weight_in.get_dims();
+
+    // Reshape wieght to src dimension
+    auto new_dims = src.get_dims();
+    if (src.ndims() != weight.ndims()) {
+      std::vector<dim> dim_w(src.ndims(), 1);
+      dim_w[1] = weight.get_dim(0);
+      weight_in.reshape(dim_w);
+    }
+
+    auto src_desc = src_in.get_desc();
+    auto weight_desc = weight_in.get_desc().to_format_any();
+    auto diff_dst_desc = diff_dst_in.get_desc();
+    auto diff_weights_desc =
+        tensor::desc(weight_in.get_dims(), diff_dst_in.get_data_type(), tag::any).to_format_any();
+    auto forward_hints = prelu_forward::primitive_desc(
+        {prop_kind::forward, src_desc, weight_desc}, aengine);
+    auto pd = primitive_desc(
+        {src_desc, weight_desc, diff_dst_desc, diff_weights_desc}, aengine, forward_hints);
+
+    auto expected_diff_dst = diff_dst_in.reorder_if_differ_in(pd.diff_dst_desc());
+    auto expected_src = src_in.reorder_if_differ_in(pd.src_desc());
+    auto expected_weights = weight_in.reorder_if_differ_in(pd.weights_desc());
+    diff_src.reinit_if_possible(pd.diff_src_desc());
+    diff_weight.reinit_if_possible(pd.diff_weights_desc());
+
+    super(pd).execute(stream::default_stream(),
+                    {{DNNL_ARG_DIFF_DST, expected_diff_dst},
+                    {DNNL_ARG_SRC, expected_src},
+                    {DNNL_ARG_WEIGHTS, expected_weights},
+                    {DNNL_ARG_DIFF_SRC, diff_src},
+                    {DNNL_ARG_DIFF_WEIGHTS ,diff_weight}});
+
+    // Reshape weight back to original dimension
+    if (diff_weight.get_dims() != weight_dims) {
+      diff_weight.reshape(weight_dims);
+    }
+  }
+};
+
+}  // namespace ideep
+
+#endif

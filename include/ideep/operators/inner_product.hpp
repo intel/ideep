@@ -166,7 +166,6 @@ private:
       }
     } else {
       op_attr = attr;
-      src_desc = {src.get_dims(), data_type::f32, format_tag::any};
       if (src.has_scale()) {
         auto src_scale = src.get_scale();
         src_scale[0] = 1.f / src_scale[0];
@@ -180,8 +179,8 @@ private:
       // align weights data type with src
       dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
                                                              : data_type::f32;
-      src_desc = src.get_desc().to_type(dst_data_type);
-      weights_desc = weights.get_desc().to_type(dst_data_type);
+      src_desc = {src.get_dims(), dst_data_type, format_tag::any};
+      weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
       if (with_bias) {
         IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
                                     data_type::f32, data_type::bf16),
@@ -199,9 +198,23 @@ private:
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
     auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-    dst.reinit_if_possible(pd.dst_desc());
-    if (!dst_scales.empty() && dst.get_data_type() != data_type::f32) {
-      dst.set_scale(dst_scales_in);
+  
+    tensor expected_dst;
+    if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
+      // If dst buffer are not given by user or user given dst buffer are not under expected format
+      // We need init a new one
+      expected_dst.init(pd.dst_desc());
+      if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
+        // We need copy the content of given buffer if ip is fused with sum
+        expected_dst.feed_from(dst);
+      }
+    } else {
+      // The format of given dst buffer is expected
+      expected_dst = dst;
+    }
+
+    if (!dst_scales.empty() && utils::one_of(dst.get_data_type(), data_type::u8, data_type::s8)) {  
+      expected_dst.set_scale(dst_scales_in);
     }
 
     if (with_bias){
@@ -210,16 +223,24 @@ private:
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst}});
+                         {DNNL_ARG_DST, expected_dst}});
     } else {
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, dst}});
+                         {DNNL_ARG_DST, expected_dst}});
     }
 
-    if (attr.non_negitive_output() && dst.get_data_type() == data_type::s8) {
-      dst.to_type(data_type::u8);
+    if (attr.non_negitive_output() && expected_dst.get_data_type() == data_type::s8) {
+      expected_dst.to_type(data_type::u8);
+    }
+    // reorder back to dst's buffer if needed
+    if (dst.is_empty() || 
+         dst.get_desc() == expected_dst.get_desc() || 
+         !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+      dst =  expected_dst;
+    } else {
+      dst.feed_from(expected_dst);
     }
   }
 };
@@ -263,12 +284,28 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
-    diff_src.reinit_if_possible(pd.diff_src_desc());
+    tensor expected_diff_src;
+    if (diff_src.is_empty() || diff_src.get_desc() != pd.diff_src_desc()){
+      // If diff_src buffer are not given by user or user given diff_src buffer are not under expected format
+      // We need init a new one
+      expected_diff_src.init(pd.diff_src_desc());
+    } else {
+      // The format of given diff_src buffer is expected
+      expected_diff_src = diff_src;
+    }
 
     super(pd).execute(stream::default_stream(),
                       {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                        {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_DIFF_SRC, diff_src}});
+                       {DNNL_ARG_DIFF_SRC, expected_diff_src}});
+    // reorder back to diff_src's buffer if needed
+    if (diff_src.is_empty() || 
+         diff_src.get_desc() == expected_diff_src.get_desc() || 
+         !diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc())){
+      diff_src = expected_diff_src;
+    } else {
+      diff_src.feed_from(expected_diff_src);
+    }
   }
 };
 
@@ -337,11 +374,19 @@ private:
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
-    diff_weights.reinit_if_possible(pd.diff_weights_desc());
+    tensor expected_diff_weights;
+    if (diff_weights.is_empty() || diff_weights.get_desc() != pd.diff_weights_desc()){
+      // If diff_weights buffer are not given by user or user given diff_weights buffer are not under expected format
+      // We need init a new one
+      expected_diff_weights.init(pd.diff_weights_desc());
+    } else {
+      // The format of given diff_weights buffer is expected
+      expected_diff_weights = diff_weights;
+    }
 
     exec_args args {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                     {DNNL_ARG_SRC, expected_src},
-                    {DNNL_ARG_DIFF_WEIGHTS ,diff_weights}};
+                    {DNNL_ARG_DIFF_WEIGHTS ,expected_diff_weights}};
 
     if (with_diff_bias) {
       diff_bias.reinit_if_possible(pd.diff_bias_desc());
@@ -349,6 +394,14 @@ private:
     }
 
     super(pd).execute(stream::default_stream(), args);
+      // reorder back to diff_weights's buffer if needed
+    if (diff_weights.is_empty() || 
+         diff_weights.get_desc() == expected_diff_weights.get_desc() || 
+         !diff_weights.get_desc().has_same_shape_as(expected_diff_weights.get_desc())){
+      diff_weights = expected_diff_weights;
+    } else {
+      diff_weights.feed_from(expected_diff_weights);
+    }
   }
 };
 

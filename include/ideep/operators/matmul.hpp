@@ -267,9 +267,22 @@ private:
                          op_attr, aengine);
    auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-   dst.reinit_if_possible(pd.dst_desc());
-   if (!dst_scales.empty() && dst_data_type != data_type::f32) {
-     dst.set_scale(dst_scales_in);
+   tensor expected_dst;
+   if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
+     // If dst buffer are not given by user or user given dst buffer are not under expected format
+     // We need init a new one
+     expected_dst.init(pd.dst_desc());
+     if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
+       // We need copy the content of given buffer if matmul is fused with sum
+       expected_dst.feed_from(dst);
+     }
+   } else {
+     // The format of given dst buffer is expected
+     expected_dst = dst;
+   }
+ 
+   if (!dst_scales.empty() && utils::one_of(dst.get_data_type(), data_type::u8, data_type::s8)) {  
+     expected_dst.set_scale(dst_scales_in);
    }
    if (with_bias){
      ideep::tensor expected_bias;
@@ -279,7 +292,7 @@ private:
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},
                         {DNNL_ARG_BIAS, expected_bias},
-                        {DNNL_ARG_DST, dst},
+                        {DNNL_ARG_DST, expected_dst},
                         {DNNL_ARG_ATTR_OUTPUT_SCALES, scales_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, wei_zero_point_m},
@@ -288,11 +301,19 @@ private:
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},
-                        {DNNL_ARG_DST, dst},
+                        {DNNL_ARG_DST, expected_dst},
                         {DNNL_ARG_ATTR_OUTPUT_SCALES, scales_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, wei_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_point_m}});
+   }
+   // reorder back to dst's buffer if needed
+   if (dst.is_empty() || 
+         dst.get_desc() == expected_dst.get_desc() || 
+         !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+     dst =  expected_dst;
+   } else {
+     dst.feed_from(expected_dst);
    }
   }
 };

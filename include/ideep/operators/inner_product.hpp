@@ -202,7 +202,8 @@ private:
     tensor expected_dst;
     if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
       // If dst buffer are not given by user or user given dst buffer are not under expected format
-      // We need init a new one
+      // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for 
+      // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect) 
       expected_dst.init(pd.dst_desc());
       if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
         // We need copy the content of given buffer if ip is fused with sum
@@ -236,8 +237,11 @@ private:
     }
     // reorder back to dst's buffer if needed
     if (dst.is_empty() || 
-         dst.get_desc() == expected_dst.get_desc() || 
-         !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+        // when dst is empty, expect return buffer allocate by ideep  
+        dst.get_desc() == expected_dst.get_desc() || 
+        // dst and expected_dst is the same under this case
+        !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+        // for caffe2 caller, get an uncorrect size dst from caller, can return buffer allocate by ideep
       dst =  expected_dst;
     } else {
       dst.feed_from(expected_dst);

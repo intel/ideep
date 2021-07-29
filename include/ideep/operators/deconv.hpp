@@ -20,6 +20,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                       const scale_t& src_scales = scale_t(),
                       const scale_t& weights_scales = scale_t(),
                       const scale_t& dst_scales = scale_t(),
+                      const zero_point_t& src_zero_point = zero_point_t(),
+                      const zero_point_t& dst_zero_point = zero_point_t(),
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -28,7 +30,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     compute_impl</*with_bias=*/true>(
         src, weights, bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   static void compute(const tensor& src,
@@ -43,6 +45,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                       const scale_t& src_scales = scale_t(),
                       const scale_t& weights_scales = scale_t(),
                       const scale_t& dst_scales = scale_t(),
+                      const zero_point_t& src_zero_point = zero_point_t(),
+                      const zero_point_t& dst_zero_point = zero_point_t(),
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -52,7 +56,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     compute_impl</*with_bias=*/false>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -96,13 +100,17 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       x_dims.push_back(ic);
       y_dims.push_back(1);
       y_dims.push_back(oc);
+      auto valid_x_dim = [=](int idx) {
+          return std::max((padding_l[idx] + padding_r[idx] - (1 + (kernel_size[idx] - 1) * dilates[idx])) / strides[idx] + 2,
+                          2 * kernel_size[idx]);
+      };
       if (4 == src_size) {
-        x_dims.push_back(2 * kernel_size[0]);
-        x_dims.push_back(4 * kernel_size[1]);
+        x_dims.push_back(valid_x_dim(0));
+        x_dims.push_back(valid_x_dim(1));
       } else {
-        x_dims.push_back(2 * kernel_size[0]);
-        x_dims.push_back(4 * kernel_size[1]);
-        x_dims.push_back(8 * kernel_size[2]);
+        x_dims.push_back(valid_x_dim(0));
+        x_dims.push_back(valid_x_dim(1));
+        x_dims.push_back(valid_x_dim(2));
       }
     } else {
       // Use the real data
@@ -187,6 +195,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                            const scale_t& src_scales,
                            const scale_t& weights_scales,
                            const scale_t& dst_scales,
+                           const zero_point_t& src_zero_point,
+                           const zero_point_t& dst_zero_point,
                            const attr_t& attr,
                            algorithm aalgorithm,
                            prop_kind aprop_kind,
@@ -201,7 +211,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
     conv_deconv_utils::prepare_parameters(
         src, weights, bias, dst_dims, dst, dilates, groups,
-        src_scales, weights_scales, dst_scales, attr, alowp_kind, with_bias, true,
+        src_scales, weights_scales, dst_scales, src_zero_point, dst_zero_point,
+        attr, alowp_kind, with_bias, true,
         weights_grouped, dil_compatible, op_attr, src_attr, weights_attr, bias_attr,
         src_desc, weights_desc, bias_desc, dst_desc);
 
@@ -215,7 +226,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     dst.reinit_if_possible(pd.dst_desc());
 
     tensor src_zero_point_m;
-    conv_deconv_utils::obtain_runtime_zero_point(src, DNNL_ARG_SRC, op_attr, aengine, src_zero_point_m);
+    conv_deconv_utils::obtain_runtime_zero_point(src, src_zero_point, DNNL_ARG_SRC,
+                                                 op_attr, aengine, src_zero_point_m);
 
     if (with_bias) {
       ideep::tensor expected_bias;

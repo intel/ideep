@@ -305,6 +305,7 @@ class tensor : public memory {
         new_inner_idxs[i] = perms[old_inner_idxs[i]];
         new_inner_blks[i] = old_inner_blks[i];
       }
+      new_desc.data.extra = data.extra;
 
       return new_desc;
     }
@@ -901,10 +902,10 @@ class tensor : public memory {
   bool has_zero_point() const { return zero_point_ != nullptr && !zero_point_->empty(); }
   
   /// Return the zero_point of this param.
-  const std::vector<int32_t> &get_zero_point() const { return *zero_point_.get(); }
+  const zero_point_t &get_zero_point() const { return *zero_point_.get(); }
 
   /// Set new scale into param
-  void set_zero_point(const std::vector<int32_t> &zp) { zero_point_.reset(new std::vector<int32_t>(zp)); }
+  void set_zero_point(const zero_point_t &zp) { zero_point_.reset(new zero_point_t(zp)); }
 
   /// Need reorder if current param used by non DNNL routines.
   // legacy API for caffe2
@@ -986,7 +987,7 @@ class tensor : public memory {
 
   std::shared_ptr<tensor> workspace_;
   std::shared_ptr<scale_t> scale_;
-  std::shared_ptr<std::vector<int32_t>> zero_point_;
+  std::shared_ptr<zero_point_t> zero_point_;
   std::shared_ptr<void> buffer_;
   engine eng_;
 };

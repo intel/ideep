@@ -614,9 +614,7 @@ private:
         src, DNNL_ARG_SRC, pd.get_primitive_attr(),
         ideep::engine(pd.get_engine().get_kind()), src_zero_point_m);
     if (with_bias) {
-      ideep::tensor expected_bias;
-      expected_bias.init(pd.bias_desc());
-      bias.reorder_to(expected_bias, param.bias_attr); // reorder_if_differ_in does not check attr
+      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr);
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},

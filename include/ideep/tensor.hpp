@@ -654,7 +654,10 @@ class tensor : public memory {
   }
 
   tensor reorder_if_differ_in(const desc &expected_desc, const attr_t &aattr = attr_t()) const {
-    if (expected_desc == get_desc()) {
+    auto output_scales = std::get<0>(aattr.get_output_scales());
+    auto is_empty_or_ones = output_scales.empty()
+        || std::all_of(output_scales.begin(), output_scales.end(), [](float i){return 1.0==i;});
+    if (expected_desc == get_desc() && is_empty_or_ones) {
       return *this;
     } else {
       tensor dst{expected_desc};

@@ -285,9 +285,7 @@ private:
      expected_dst.set_scale(dst_scales_in);
    }
    if (with_bias){
-     ideep::tensor expected_bias;
-     expected_bias.init(pd.bias_desc());
-     bias.reorder_to(expected_bias, bias_attr); // reorder_if_differ_in does not check attr
+     auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
                         {DNNL_ARG_WEIGHTS, expected_weights},

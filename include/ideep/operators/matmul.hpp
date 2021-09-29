@@ -7,6 +7,55 @@ struct matmul_forward : public dnnl::matmul {
 
   using super = dnnl::matmul;
 
+  // With bias
+  // Zero points are passed explicitly as arguments for quantization
+  static void compute_v2(
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const float sum_coeff = 1.0f,
+      const scale_t& src_scales = scale_t(),
+      const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(),
+      const zero_point_t& src_zero_points = zero_point_t(),
+      const zero_point_t& dst_zero_points = zero_point_t(),
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+    compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
+                                     src_scales, weights_scales, dst_scales,
+                                     src_zero_points, dst_zero_points,
+                                     attr, dst_type, alowp_kind, aengine);
+  }
+
+  // Without bias
+  // Zero points are passed explicitly as arguments for quantization
+  static void compute_v2(
+      const tensor& src,
+      const tensor& weights,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const float sum_coeff = 1.0f,
+      const scale_t& src_scales = scale_t(),
+      const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(),
+      const zero_point_t& src_zero_points = zero_point_t(),
+      const zero_point_t& dst_zero_points = zero_point_t(),
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, dst_coeff,
+                                      sum_coeff, src_scales, weights_scales, dst_scales,
+                                      src_zero_points, dst_zero_points,
+                                      attr, dst_type, alowp_kind, aengine);
+  }
+
+  // Deprecated. With bias. Set zero points to tensors for quantization.
   static void compute(
       const tensor& src,
       const tensor& weights,
@@ -23,9 +72,11 @@ struct matmul_forward : public dnnl::matmul {
       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
                                      src_scales, weights_scales, dst_scales,
+                                     zero_point_t(), zero_point_t(),
                                      attr, dst_type, alowp_kind, aengine);
   }
 
+  // Deprecated. Without bias. Set zero points to tensors for quantization.
   static void compute(
       const tensor& src,
       const tensor& weights,
@@ -41,8 +92,9 @@ struct matmul_forward : public dnnl::matmul {
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, dst_coeff,
-                                      sum_coeff, src_scales, weights_scales,
-                                      dst_scales, attr, dst_type, alowp_kind, aengine);
+                                      sum_coeff, src_scales, weights_scales, dst_scales,
+                                      zero_point_t(), zero_point_t(),
+                                      attr, dst_type, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -79,6 +131,8 @@ private:
                           const scale_t& src_scales = scale_t(),
                           const scale_t& weights_scales = scale_t(),
                           const scale_t& dst_scales = scale_t(),
+                          const zero_point_t& src_zero_points = zero_point_t(),
+                          const zero_point_t& dst_zero_points = zero_point_t(),
                           const attr_t& attr = attr_t(),
                           const data_type dst_type = data_type::undef,
                           const lowp_kind alowp_kind = u8s8,
@@ -95,7 +149,7 @@ private:
    if (ndims == 3) 
        dst_dims = {src.get_dim(0), src.get_dim(1), weights.get_dim(2)};
 
-   auto weights_scales_in =
+   auto& weights_scales_in =
        weights.has_scale() ? weights.get_scale() : weights_scales;
    tensor scales_m, src_zero_point_m, wei_zero_point_m, dst_zero_point_m;
    if (!weights_scales_in.empty()) {
@@ -133,17 +187,18 @@ private:
      dst_scales_in = (dst_scales.empty() || dst_data_type == data_type::f32) 
                           ? IDEEP_DEF_SCALE 
                           : dst_scales;
-     auto src_zero_point = src.has_zero_point()
-                           ? src.get_zero_point() : std::vector<int32_t>(1);
-     auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
-     auto dst_zero_point = dst.has_zero_point()
-                           ? dst.get_zero_point() : std::vector<int32_t>(1);
-     auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
+     const zero_point_t default_zero_points = zero_point_t(1);
+     const auto& src_zero_point = src.has_zero_point() ? src.get_zero_point() :
+                                  src_zero_points.empty() ? default_zero_points : src_zero_points;
+     const auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
+     const auto& dst_zero_point = dst.has_zero_point() ? dst.get_zero_point() :
+         dst_zero_points.empty() ? default_zero_points : dst_zero_points;
+     const auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
      IDEEP_ENFORCE(src_zero_point_size == 1 && dst_zero_point_size == 1, 
                    "DNNL only support 1-dim zero_point");
-     auto wei_zero_point = weights.has_zero_point()
-                           ? weights.get_zero_point() : std::vector<int32_t>(1);
-     dim wei_zero_point_size = 1;
+     const auto& wei_zero_point = weights.has_zero_point() ?
+                                  weights.get_zero_point() : default_zero_points;
+     const dim wei_zero_point_size = 1;
     
      if (attr.has_op_kind(kind::sum)) {
        float sum_scale = 
@@ -204,7 +259,7 @@ private:
                                   utils::tensor_zp_mask(src_zero_point.size()), src_zero_point);
        }
        op_attr.set_zero_points(DNNL_ARG_WEIGHTS, 
-                               utils::tensor_zp_mask(1), std::vector<int32_t>(1,wei_zero_point[0]));
+                               utils::tensor_zp_mask(1), zero_point_t(1,wei_zero_point[0]));
        if (dst_data_type != data_type::f32) {
          op_attr.set_zero_points(DNNL_ARG_DST, 
                                  utils::tensor_zp_mask(dst_zero_point.size()), dst_zero_point);

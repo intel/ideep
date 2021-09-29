@@ -8,6 +8,7 @@ struct convolution_forward_params {
   // bias_attr contains requantization scales for bias
   attr_t bias_attr;
   scale_t dst_scales;
+  zero_point_t src_zero_point;
   int groups;
   tensor scratchpad;
 };
@@ -24,6 +25,8 @@ struct conv_deconv_utils {
                                  const scale_t& src_scales,
                                  const scale_t& weights_scales,
                                  const scale_t& dst_scales,
+                                 const zero_point_t& src_zero_points,
+                                 const zero_point_t& dst_zero_points,
                                  const attr_t& attr,
                                  const lowp_kind alowp_kind,
                                  bool with_bias,
@@ -52,7 +55,7 @@ struct conv_deconv_utils {
       IDEEP_ENFORCE(alowp_kind == u8s8 || alowp_kind == s8s8,
                     "Unsupported lowp kind");
       int scale_size = (weights_scales_in.size() > 1) ? dst_dims[1] : 1;
-      auto src_scales_in =
+      auto& src_scales_in =
           src.has_scale() ? src.get_scale()
                           : (src_scales.empty() ? IDEEP_DEF_SCALE : src_scales);
 
@@ -71,12 +74,15 @@ struct conv_deconv_utils {
       dst_scales_in = dst_scales.empty() || dst_data_type == data_type::f32
                           ? IDEEP_DEF_SCALE
                           : dst_scales;
-      auto src_zero_point = src.has_zero_point() ? src.get_zero_point() : std::vector<int32_t>(1);
-      auto weights_zero_point = weight_grouped.has_zero_point() ? weight_grouped.get_zero_point() : std::vector<int32_t>(1);
-      auto dst_zero_point = dst.has_zero_point() ? dst.get_zero_point() : std::vector<int32_t>(1);
-      auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
-      auto weights_zero_point_size = 1;
-      auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
+      const auto default_zero_point = zero_point_t(1);
+      const auto& src_zero_point = src.has_zero_point() ? src.get_zero_point() :
+                                   src_zero_points.empty() ? default_zero_point : src_zero_points;
+      const auto& weights_zero_point = weight_grouped.has_zero_point() ? weight_grouped.get_zero_point() : default_zero_point;
+      const auto& dst_zero_point = dst.has_zero_point() ? dst.get_zero_point() :
+                                   dst_zero_points.empty() ? default_zero_point : dst_zero_points;
+      const auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
+      const auto weights_zero_point_size = 1;
+      const auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
       IDEEP_ENFORCE(src_zero_point_size == 1 && dst_zero_point_size == 1,
                     "DNNL only support 1-dim zero_point");
 
@@ -96,10 +102,10 @@ struct conv_deconv_utils {
         op_attr = attr_t::fuse_relu();
       }
       op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
-      std::vector<int32_t> src_zero_point_in_attr;
+      zero_point_t src_zero_point_in_attr;
       int zp_mask = utils::tensor_zp_mask(1);
       attr.get_zero_points(DNNL_ARG_SRC, zp_mask, src_zero_point_in_attr);
-      if (src_zero_point_in_attr == std::vector<int32_t>({DNNL_RUNTIME_S32_VAL})) { // runtime src zero point
+      if (src_zero_point_in_attr == zero_point_t({DNNL_RUNTIME_S32_VAL})) { // runtime src zero point
         op_attr.set_zero_points(DNNL_ARG_SRC,
                                 zp_mask,
                                 src_zero_point_in_attr);
@@ -110,7 +116,7 @@ struct conv_deconv_utils {
       }
       op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
                               ideep::utils::tensor_zp_mask(weights_zero_point_size),
-                              std::vector<int32_t>(1, weights_zero_point[0]));
+                              zero_point_t(1, weights_zero_point[0]));
       if (dst_data_type != data_type::f32) {
         op_attr.set_zero_points(DNNL_ARG_DST,
                                 ideep::utils::tensor_zp_mask(dst_zero_point_size),
@@ -169,7 +175,8 @@ struct conv_deconv_utils {
                     : tensor::desc(dst_dims, dst_data_type);
   }
 
-  /// If runtime zero point is set in op_attr, get true zero point from input tensor.
+  /// Get true zero point from input tensor, specified zero point or op attr
+  /// Priority: input.get_zero_point() > input_zero_point > op_attr > default
   ///
   /// @param input Get the true zero point from this tensor.
   /// @param arg_idx Parameter argument index as passed to the
@@ -177,23 +184,38 @@ struct conv_deconv_utils {
   /// @param op_attr Attr of the conv/deconv operation.
   /// @param aengine Cpu execution engine.
   /// @param zero_point Output tensor of zero points.
-  static void obtain_runtime_zero_point(const tensor& input, int arg_idx,
+  static void obtain_runtime_zero_point(const tensor& input,
+                                        const zero_point_t& input_zero_point,
+                                        const int& arg_idx,
                                         const dnnl::primitive_attr& op_attr,
                                         const engine& aengine,
                                         tensor& zero_point /* Output */) {
+    zero_point_t src_zero_point_in_attr;
+    int zp_mask = utils::tensor_zp_mask(1);
+    op_attr.get_zero_points(arg_idx, zp_mask, src_zero_point_in_attr);
+    dim src_zero_point_size = 1;
+    const zero_point_t* zero_point_data = NULL;
+    const zero_point_t default_zero_point = {0};
     if (input.has_zero_point()) {
-      auto src_zero_point_size = static_cast<dim>(input.get_zero_point().size());
-      std::vector<int32_t> src_zero_point_in_attr;
-      int zp_mask = utils::tensor_zp_mask(1);
-      op_attr.get_zero_points(arg_idx, zp_mask, src_zero_point_in_attr);
-      if (src_zero_point_in_attr == std::vector<int32_t>({DNNL_RUNTIME_S32_VAL})) { // runtime zero point of input
-        tensor::desc src_zero_point_desc = {{src_zero_point_size}, data_type::s32, {1}};
-        zero_point.init(src_zero_point_desc, aengine);
-        auto src_z = reinterpret_cast<int32_t *>(zero_point.get_data_handle());
-        for (memory::dim i = 0; i < src_zero_point_size; ++i) // fill in zero point data
-          src_z[i] = input.get_zero_point()[i];
-      }
+      src_zero_point_size = static_cast<dim>(input.get_zero_point().size());
+      zero_point_data = &input.get_zero_point();
+    } else if (!input_zero_point.empty()) {
+      src_zero_point_size = static_cast<dim>(input_zero_point.size());
+      zero_point_data = &input_zero_point;
+    } else if (src_zero_point_in_attr == zero_point_t({DNNL_RUNTIME_S32_VAL}) ||
+        src_zero_point_in_attr.empty()) { // runtime zero point of input
+      src_zero_point_size = static_cast<dim>(default_zero_point.size());
+      zero_point_data = &default_zero_point;
+    } else {
+      src_zero_point_size = static_cast<dim>(src_zero_point_in_attr.size());
+      zero_point_data = &src_zero_point_in_attr;
     }
+    tensor::desc src_zero_point_desc = {{src_zero_point_size}, data_type::s32, {1}};
+    zero_point.init(src_zero_point_desc, aengine);
+    auto src_z = reinterpret_cast<int32_t *>(zero_point.get_data_handle());
+    for (memory::dim i = 0; i < src_zero_point_size; ++i) // fill in zero point data
+      src_z[i] = (*zero_point_data)[i];
+
   }
 };
 
@@ -203,7 +225,66 @@ struct convolution_forward
 
   using super = dnnl::convolution_forward;
 
-  // prepare with bias
+  // 2-in-1 compute (prepare & compute) with bias
+  // Zero points are passed explicitly as arguments for quantization
+  template <bool plain_format = false>
+  static void compute_v2(const tensor& src,
+                         const tensor& weights,
+                         const tensor& bias,
+                         const dims& dst_dims,
+                         tensor& dst,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         const scale_t& src_scales = scale_t(),
+                         const scale_t& weights_scales = scale_t(),
+                         const scale_t& dst_scales = scale_t(),
+                         const zero_point_t& src_zero_point = zero_point_t(),
+                         const zero_point_t& dst_zero_point = zero_point_t(),
+                         const attr_t& attr = attr_t(),
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                         prop_kind aprop_kind = prop_kind::forward,
+                         const lowp_kind alowp_kind = u8s8,
+                         const engine& aengine = engine::cpu_engine()) {
+    compute_dispatch</*with_bias=*/true, plain_format>(
+        src, weights, bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // 2-in-1 compute (prepare & compute) without bias
+  // Zero points are passed explicitly as arguments for quantization
+  template <bool plain_format = false>
+  static void compute_v2(const tensor& src,
+                         const tensor& weights,
+                         const dims& dst_dims,
+                         tensor& dst,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         const scale_t& src_scales = scale_t(),
+                         const scale_t& weights_scales = scale_t(),
+                         const scale_t& dst_scales = scale_t(),
+                         const zero_point_t& src_zero_point = zero_point_t(),
+                         const zero_point_t& dst_zero_point = zero_point_t(),
+                         const attr_t& attr = attr_t(),
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                         prop_kind aprop_kind = prop_kind::forward,
+                         const lowp_kind alowp_kind = u8s8,
+                         const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_dispatch</*with_bias=*/false, plain_format>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // Deprecated. Prepare with bias.
+  // Zero points are set to tensor for quantization
   static void prepare(
       convolution_forward_params& param,
       const tensor& src,
@@ -227,10 +308,11 @@ struct convolution_forward
     do_prepare</*with_bias=*/true, /*keep_format=*/false>(
         param, src, weights, bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  // prepare without bias
+  // Deprecated. Prepare without bias.
+  // Zero points are set to tensor for quantization
   static void prepare(
       convolution_forward_params& param,
       const tensor& src,
@@ -254,10 +336,10 @@ struct convolution_forward
     do_prepare</*with_bias=*/false, /*keep_format=*/false>(
         param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  // compute with bias
+  // Compute with bias
   static void compute(const convolution_forward_params& param,
                       const tensor& src,
                       const tensor& weights,
@@ -266,7 +348,7 @@ struct convolution_forward
     do_compute</*with_bias=*/true>(param, src, weights, bias, dst);
   }
 
-  // compute without bias
+  // Compute without bias
   static void compute(const convolution_forward_params& param,
                       const tensor& src,
                       const tensor& weights,
@@ -275,7 +357,8 @@ struct convolution_forward
     do_compute</*with_bias=*/false>(param, src, weights, dummy_bias, dst);
   }
 
-  // 2-in-1 compute (prepare & compute) with bias
+  // Deprecated. 2-in-1 compute (prepare & compute) with bias
+  // Zero points are set to tensor for quantization
   template <bool plain_format = false>
   static void compute(const tensor& src,
                       const tensor& weights,
@@ -298,10 +381,11 @@ struct convolution_forward
     compute_dispatch</*with_bias=*/true, plain_format>(
         src, weights, bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  // 2-in-1 compute (prepare & compute) without bias
+  // Deprecated. 2-in-1 compute (prepare & compute) without bias
+  // Zero points are set to tensor for quantization
   template <bool plain_format = false>
   static void compute(const tensor& src,
                       const tensor& weights,
@@ -324,7 +408,7 @@ struct convolution_forward
     compute_dispatch</*with_bias=*/false, plain_format>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -370,11 +454,11 @@ struct convolution_forward
       y_dims.push_back(1);
       y_dims.push_back(oc);
       if (4 == src_size) {
-        x_dims.push_back(2 * kernel_size[0]);
+        x_dims.push_back(4 * kernel_size[0]);
         x_dims.push_back(4 * kernel_size[1]);
       } else {
-        x_dims.push_back(2 * kernel_size[0]);
-        x_dims.push_back(4 * kernel_size[1]);
+        x_dims.push_back(8 * kernel_size[0]);
+        x_dims.push_back(8 * kernel_size[1]);
         x_dims.push_back(8 * kernel_size[2]);
       }
     } else {
@@ -458,22 +542,17 @@ struct convolution_forward
       dst_desc_query = dst_desc.to_format(tag::nhwc);
     }
 
-    auto key = utils::create_key(aprop_kind, aalgorithm, src_desc_query,
-                                 weights_desc_query, with_bias, strides,
-                                 dilates, padding_l, padding_r, attr);
-    return fetch_or_create(key, [&]() {
-      if (with_bias) {
-        return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
-                              weights_desc_query, bias_desc_query, dst_desc_query,
-                              strides, dilates, padding_l, padding_r},
-                              attr, aengine);
-      } else {
-        return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
-                              weights_desc_query, dst_desc_query,
-                              strides, dilates, padding_l, padding_r},
-                              attr, aengine);
-      }
-    });
+    if (with_bias) {
+      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                            weights_desc_query, bias_desc_query, dst_desc_query,
+                            strides, dilates, padding_l, padding_r},
+                            attr, aengine);
+    } else {
+      return primitive_desc({aprop_kind, aalgorithm, src_desc_query,
+                            weights_desc_query, dst_desc_query,
+                            strides, dilates, padding_l, padding_r},
+                            attr, aengine);
+    }
   }
 
 private:
@@ -512,6 +591,8 @@ private:
       const scale_t& src_scales = scale_t(),
       const scale_t& weights_scales = scale_t(),
       const scale_t& dst_scales = scale_t(),
+      const zero_point_t& src_zero_point = zero_point_t(),
+      const zero_point_t& dst_zero_point = zero_point_t(),
       const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -528,14 +609,14 @@ private:
         do_prepare<with_bias, /*keep_format=*/true>(
             params, src, weights, bias, dst_dims, dst, strides, dilates,
             padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-            attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+            src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
         do_compute<with_bias>(params, src, weights, bias, dst);
       } else {
         tensor dst_blocked;
         do_prepare<with_bias, /*keep_format=*/false>(
             params, src, weights, bias, dst_dims, dst_blocked, strides, dilates,
             padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-            attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+            src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
         do_compute<with_bias>(params, src, weights, bias, dst_blocked);
         dst.feed_from(dst_blocked);
       }
@@ -544,7 +625,7 @@ private:
       do_prepare<with_bias, /*keep_format=*/false>(
           params, src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
       do_compute<with_bias>(params, src, weights, bias, dst);
     }
   }
@@ -565,6 +646,8 @@ private:
       const scale_t& src_scales,
       const scale_t& weights_scales,
       const scale_t& dst_scales,
+      const zero_point_t& src_zero_point,
+      const zero_point_t& dst_zero_point,
       const attr_t& attr,
       algorithm aalgorithm,
       prop_kind aprop_kind,
@@ -580,10 +663,10 @@ private:
 
     conv_deconv_utils::prepare_parameters(
         src, weights, bias, dst_dims, dst, dilates, groups,
-        src_scales, weights_scales, dst_scales, attr, alowp_kind, with_bias, false,
+        src_scales, weights_scales, dst_scales, src_zero_point, dst_zero_point,
+        attr, alowp_kind, with_bias, false,
         weights_grouped, dil_compatible, op_attr, src_attr, weights_attr, bias_attr,
         src_desc, weights_desc, bias_desc, dst_desc);
-
     auto pd = get_primitive_desc<with_bias, keep_format>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
         padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
@@ -591,7 +674,8 @@ private:
     // allocate scratchpad
     tensor scratchpad(pd.scratchpad_desc());
 
-    param = {pd, bias_attr, dst_scales, groups, scratchpad};
+    param = {std::move(pd), bias_attr, std::move(dst_scales), std::move(src_zero_point),
+             groups, std::move(scratchpad)};
   }
 
   template <bool with_bias>
@@ -599,7 +683,7 @@ private:
                          const tensor& src, const tensor& weights,
                          const tensor& bias, tensor& dst) {
     auto& pd = param.pd;
-    auto scratchpad = param.scratchpad;
+    auto& scratchpad = param.scratchpad;
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     auto expected_weights = weights.make_grouped_weights(param.groups)
                                 .reorder_if_differ_in(pd.weights_desc());
@@ -611,7 +695,7 @@ private:
 
     tensor src_zero_point_m;
     conv_deconv_utils::obtain_runtime_zero_point(
-        src, DNNL_ARG_SRC, pd.get_primitive_attr(),
+        src, param.src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
         ideep::engine(pd.get_engine().get_kind()), src_zero_point_m);
     if (with_bias) {
       auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr);

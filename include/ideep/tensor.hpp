@@ -372,6 +372,12 @@ class tensor : public memory {
       return desc(md);
     }
 
+    const blocking_desc_t &blocking_desc() const {
+      IDEEP_ENFORCE(is_blocking_desc(),
+                    "Cannot get blocking desc on a non-blocking desc");
+      return data.format_desc.blocking;
+    }
+
    private:
 
     /// Returns dimension vector
@@ -393,12 +399,6 @@ class tensor : public memory {
 
     bool is_rnn_packed_desc() const {
       return format_kind() == dnnl_format_kind_rnn_packed;
-    }
-
-    const blocking_desc_t &blocking_desc() const {
-      IDEEP_ENFORCE(is_blocking_desc(),
-                    "Cannot get blocking desc on a non-blocking desc");
-      return data.format_desc.blocking;
     }
 
     dims_t& blocking_strides() const {
@@ -724,20 +724,42 @@ class tensor : public memory {
   tensor &reshape(const dims &adims) {
     IDEEP_ENFORCE(has_same_volume(adims), "reshape to incompatible shape");
 
-    // count the number of non-one dimensions
-    // e.g. the actual rank of shape [1, 1, 35, 1] is one
-    auto actual_rank = [](const dims &shape) {
-      auto cnt = 0;
-      for (auto d : shape) if (d > 1) cnt++;
-      return cnt;
+    auto need_convert_to_default_format = [](const desc &src_desc,
+                                             const dims &shape) {
+      // if src_desc is default format, do not need to conver format.
+      if (src_desc.is_default()) {
+        return false;
+      } else {
+        // count the number of non-one dimensions
+        // e.g. the squeezed_ndims of shape [1, 1, 35, 1] is one.
+        auto squeezed_ndims = 0;
+        for (auto d : shape)
+          if (d > 1)
+            squeezed_ndims++;
+        if (squeezed_ndims == 0)
+          return false; // [1, 1, ...]
+        // For squeezed_ndims is one, src_desc is plain format
+        // or src_desc is block format, but the blocking dim's size is not one,
+        // for example, aBcd16b, the shape is [1, 2048, 1, 1], the blocking dim
+        // is the second dimension, the strid is one for the blockind dim, the
+        // format does not matter for data idexing. But for aBc16b with shape
+        // [1, 1, 7], we need do format change even the squeezed_ndims is one,
+        // because the last dimension is not contiguous, the stride is 16.
+        if (squeezed_ndims == 1) {
+          if (src_desc.is_plain())
+            return false;
+          // block format, only one dim is blocked, and the size of blocked dim > 1.
+          auto block_desc = src_desc.blocking_desc();
+          if (block_desc.inner_nblks == 1 && shape[block_desc.inner_idxs[0]] > 1) {
+            return false;
+          }
+        }
+        return true;
+      }
     };
-
     auto old_dims = get_dims();
     if (adims != old_dims) {
-      // Since we are going to set the desc to new dims with default format,
-      // we have to make sure it's already in default format. In particular,
-      // tensor format does not matter if actual rank <= 1
-      if (!get_desc().is_default() && actual_rank(old_dims) > 1) {
+      if (need_convert_to_default_format(get_desc(), old_dims)) {
         to_default_format();
       }
       // set desc with default format

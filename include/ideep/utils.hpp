@@ -26,6 +26,9 @@
 #define omp_get_thread_num()  0
 #define omp_in_parallel()     0
 #endif
+#if defined(__AVX2__) && !defined(_MSC_VER)
+#include <immintrin.h>
+#endif
 
 namespace ideep {
 namespace utils {
@@ -303,6 +306,51 @@ inline int set_verbose(int level) {
   return ret == dnnl::status::success;
 }
 
+inline void find_min_max(const float* a, float* min, float* max, int len) {
+  if (len <= 0) {
+    *min = 0.0f;
+    *max = 0.0f;
+    return;
+  }
+
+  float temp_min = *a, temp_max = *a;
+  int i = 0;
+
+#if defined(__AVX2__) && !defined(_MSC_VER)
+  __m256 min_v = _mm256_set1_ps(*a), max_v = _mm256_set1_ps(*a);
+  constexpr int VLEN = 8;
+  const int vectorized_len = len / VLEN * VLEN;
+  for (; i < vectorized_len; i += VLEN) {
+    __m256 loaded_v = _mm256_loadu_ps(a + i);
+    min_v = _mm256_min_ps(min_v, loaded_v);
+    max_v = _mm256_max_ps(max_v, loaded_v);
+  }
+
+  if (i < len) {
+    __mmask8 mask = (1 << (len - i)) - 1;
+    __m256 loaded_v = _mm256_mask_loadu_ps(min_v, mask, a + i);
+    min_v = _mm256_mask_min_ps(min_v, mask, min_v, loaded_v);
+    max_v = _mm256_mask_max_ps(max_v, mask, max_v, loaded_v);
+    i = len;
+  }
+  
+  float min_buf[VLEN], max_buf[VLEN];
+  _mm256_storeu_ps(min_buf, min_v);
+  _mm256_storeu_ps(max_buf, max_v);
+  for (int j = 0; j < VLEN; ++j) {
+    temp_min = std::min(temp_min, min_buf[j]);
+    temp_max = std::max(temp_max, max_buf[j]);
+  }
+#endif
+
+  for (; i < len; i++) {
+    temp_min = std::min(temp_min, a[i]);
+    temp_max = std::max(temp_max, a[i]);
+  }
+  *min = temp_min;
+  *max = temp_max;
 }
-}
+
+} // namespace utils
+} // namespace ideep
 #endif

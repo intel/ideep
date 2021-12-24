@@ -3,8 +3,9 @@
 
 namespace ideep {
 
-struct inner_product_forward : public dnnl::inner_product_forward {
-
+struct inner_product_forward
+    : public dnnl::inner_product_forward,
+      utils::computation_cache<dnnl::inner_product_forward::primitive_desc> {
   using super = dnnl::inner_product_forward;
 
   static void compute(const tensor& src,
@@ -62,6 +63,37 @@ struct inner_product_forward : public dnnl::inner_product_forward {
         primitive_desc({aprop_kind, src_desc, weights_desc, dst_desc}, aengine);
     return pd.weights_desc();
   }
+
+  static primitive_desc get_primitive_desc(
+      const tensor::desc& src_desc,
+      const tensor::desc& weights_desc,
+      const tensor::desc& dst_desc,
+      const tensor::desc& bias_desc = tensor::desc(),
+      const bool with_bias = false,
+      const attr_t& attr = attr_t(),
+      const prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
+    auto key = utils::create_key(
+        aprop_kind,
+        src_desc,
+        weights_desc,
+        bias_desc,
+        dst_desc,
+        attr,
+        with_bias,
+        omp_get_max_threads());
+    return fetch_or_create(key, [&]() {
+      if (with_bias) {
+        return primitive_desc(
+            {aprop_kind, src_desc, weights_desc, bias_desc, dst_desc},
+            attr,
+            aengine);
+      } else {
+        return primitive_desc(
+            {aprop_kind, src_desc, weights_desc, dst_desc}, attr, aengine);
+      }
+    });
+  };
 
 private:
   template <bool with_bias>
@@ -190,11 +222,14 @@ private:
     }
 
     tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
-    auto pd = with_bias
-       ? primitive_desc({aprop_kind, src_desc, weights_desc, bias_desc,
-                         dst_desc}, op_attr, aengine)
-       : primitive_desc({aprop_kind, src_desc, weights_desc, dst_desc},
-                        op_attr, aengine);
+    auto pd = get_primitive_desc(
+        src_desc,
+        weights_desc,
+        dst_desc,
+        bias_desc,
+        with_bias,
+        op_attr,
+        aprop_kind);
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
     auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
@@ -278,10 +313,8 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     auto diff_src_desc =
         tensor::desc(diff_src_dims, diff_dst.get_data_type(), tag::any);
 
-    auto forward_hints =
-        inner_product_forward::primitive_desc(
-            {prop_kind::forward, diff_src_desc, weights_desc, diff_dst_desc},
-            aengine);
+    auto forward_hints = inner_product_forward::get_primitive_desc(
+        diff_src_desc, weights_desc, diff_dst_desc);
 
     auto pd = primitive_desc(
         {diff_src_desc, weights_desc, diff_dst_desc}, aengine, forward_hints);
@@ -365,11 +398,8 @@ private:
     if (diff_weight_type_in != diff_dst_type) {
       weights_desc = weights_desc.to_type(diff_dst_type);
     }
-    auto forward_hints = with_diff_bias
-        ? inner_product_forward::primitive_desc({prop_kind::forward, src_desc,
-            weights_desc, diff_bias_desc, diff_dst_desc}, aengine)
-        : inner_product_forward::primitive_desc({prop_kind::forward, src_desc,
-            weights_desc, diff_dst_desc}, aengine);
+    auto forward_hints = inner_product_forward::get_primitive_desc(
+        src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias);
     auto pd = with_diff_bias
         ? primitive_desc({src_desc, diff_weights_desc, diff_bias_desc,
                           diff_dst_desc}, aengine, forward_hints)

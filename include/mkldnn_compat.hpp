@@ -3,6 +3,10 @@
 
 #include "ideep.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace ideep {
   struct EnvSetter {
     // oneDNN will only accept runtime flags which start with "DNNL_/ONEDNN_" from version v2.5.
@@ -20,7 +24,11 @@ namespace ideep {
       if (getenv_user(name, value)){
         std::string dnnl_name = "DNNL_";
         dnnl_name += std::string(name);
+#ifdef _WIN32
+        SetEnvironmentVariable(dnnl_name.c_str(), value.c_str());
+#else
         setenv(dnnl_name.c_str(), value.c_str(), 1);
+#endif
       }
     }
 

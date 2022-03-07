@@ -98,8 +98,6 @@ struct conv_deconv_utils {
         } else {
           op_attr = attr_t::fuse_sum(sum_scale);
         }
-      } else if (attr.has_op_kind(kind::eltwise)) {
-        op_attr = attr_t::fuse_relu();
       }
       op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
       zero_point_t src_zero_point_in_attr;

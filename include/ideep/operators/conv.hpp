@@ -532,12 +532,23 @@ struct convolution_forward
 
     // For nhwc path, weight uses format_tag::any,
     // while activation uses format_tag::nhwc.
-    bool is_nhwc = src_desc.is_nhwc() || weights_desc.is_nhwc();
-    if (is_nhwc) {
-      src_desc_query = src_desc.to_format(tag::nhwc);
-      weights_desc_query = weights_desc.to_format_any();
-      bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
-      dst_desc_query = dst_desc.to_format(tag::nhwc);
+    auto ndims = src_desc.get_dims().size();
+    if (ndims == 4) {
+      bool is_channels_last = src_desc.is_nhwc() || weights_desc.is_nhwc();
+      if (is_channels_last) {
+        src_desc_query = src_desc.to_format(tag::nhwc);
+        weights_desc_query = weights_desc.to_format_any();
+        bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
+        dst_desc_query = dst_desc.to_format(tag::nhwc);
+      }
+    } else if (ndims == 5) {
+      bool is_channels_last = src_desc.is_ndhwc() || weights_desc.is_ndhwc();
+      if (is_channels_last) {
+        src_desc_query = src_desc.to_format(tag::ndhwc);
+        weights_desc_query = weights_desc.to_format_any();
+        bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
+        dst_desc_query = dst_desc.to_format(tag::ndhwc);
+      }
     }
 
     auto key = utils::create_key(
@@ -767,7 +778,8 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
     bool is_nhwc = diff_dst.get_desc().is_nhwc();
-    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     // align weight data type with diff_dst for bf16
     auto weights_desc =
@@ -866,7 +878,8 @@ struct convolution_backward_weights
     }
 
     bool is_nhwc = diff_dst.get_desc().is_nhwc();
-    auto format_tag = is_nhwc ? tag::nhwc : tag::any;
+    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     auto src_desc = src.get_desc().to_format(format_tag);
 

@@ -108,7 +108,7 @@ struct pooling_backward : public dnnl::pooling_backward {
                       const dims& padding_r,
                       algorithm aalgorithm,
                       const engine& aengine = engine::cpu_engine()) {
-    auto src_desc = src.get_desc().to_format_any();
+    auto src_desc = src.get_desc();
     auto dst_desc = dst.get_desc();
 
     auto forward_hints =

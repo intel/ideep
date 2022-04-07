@@ -150,7 +150,7 @@ struct pooling_v2_backward : public dnnl::pooling_v2_backward {
                       const dims& padding_r,
                       algorithm aalgorithm,
                       const engine& aengine = engine::cpu_engine()) {
-    auto src_desc = src.get_desc().to_format_any();
+    auto src_desc = src.get_desc();
     auto dst_desc = dst.get_desc();
     auto dil_compatible = utils::get_compatible_dilates(dilation);
 

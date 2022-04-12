@@ -22,16 +22,22 @@ struct eltwise_forward : public dnnl::eltwise_forward {
     }
     auto src_desc = src_in.get_desc();
 
+    auto op_attr = dnnl::primitive_attr();
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto pd = primitive_desc(
-        {aprop_kind, aalgorithm, src_desc, alpha, beta}, aengine);
+        {aprop_kind, aalgorithm, src_desc, alpha, beta}, op_attr, aengine);
 
     dst.reinit_if_possible(pd.dst_desc());
     if (src_in.has_scale()) {
       dst.set_scale(src_in.get_scale());
     }
+    tensor scratchpad(pd.scratchpad_desc());
 
     super(pd).execute(stream::default_stream(),
-                      {{DNNL_ARG_SRC, src_in}, {DNNL_ARG_DST, dst}});
+                      {{DNNL_ARG_SRC, src_in},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
 
     // xpz: ???
     if (dst.has_scale() && aalgorithm == algorithm::eltwise_relu &&
@@ -56,9 +62,13 @@ struct eltwise_backward : public dnnl::eltwise_backward {
 
   auto forward_hints = eltwise_forward::primitive_desc(
       {prop_kind::forward, aalgorithm, src_desc, alpha, beta}, aengine);
+
+  auto op_attr = dnnl::primitive_attr();
+  op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
   auto pd =
       primitive_desc({aalgorithm, forward_hints.dst_desc(), src_desc, alpha, beta},
-                     aengine, forward_hints);
+                     op_attr, aengine, forward_hints);
 
   auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
   auto expected_src = src.reorder_if_differ_in(pd.src_desc());
@@ -73,10 +83,12 @@ struct eltwise_backward : public dnnl::eltwise_backward {
                                algorithm::eltwise_exp_use_dst_for_bwd);
   auto src_dst_arg = use_dst ? DNNL_ARG_DST : DNNL_ARG_SRC;
 
+  tensor scratchpad(pd.scratchpad_desc());
   super(pd).execute(stream::default_stream(),
                     {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                     {src_dst_arg, expected_src},
-                    {DNNL_ARG_DIFF_SRC, diff_src}});
+                    {DNNL_ARG_DIFF_SRC, diff_src},
+                    {DNNL_ARG_SCRATCHPAD, scratchpad}});
   }
 };
 }  // namespace ideep

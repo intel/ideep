@@ -54,10 +54,12 @@ struct batch_normalization_forward_inference
 
     bool fuse_norm_relu = (bool) (flags & batch_normalization_flag::fuse_norm_relu);
     attr_t attr = fuse_norm_relu ? attr_t::fuse_relu() : attr_t();
+    attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto pd = primitive_desc(
         {prop_kind::forward_inference, src_desc, epsilon, pd_flags}, attr, aengine);
 
     tensor scale_shift {pd.weights_desc()};
+    tensor scratchpad(pd.scratchpad_desc());
     auto* scale_shift_buf = static_cast<char *>(scale_shift.get_data_handle());
     std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
     std::memcpy(scale_shift_buf + scale.get_size(),
@@ -73,12 +75,14 @@ struct batch_normalization_forward_inference
                          {DNNL_ARG_SCALE_SHIFT, scale_shift},
                          {DNNL_ARG_VARIANCE, expected_var},
                          {DNNL_ARG_MEAN, expected_mean},
-                         {DNNL_ARG_DST, dst}});
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     } else {
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_SCALE_SHIFT, scale_shift},
-                         {DNNL_ARG_DST, dst}});
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
   }
 };
@@ -105,10 +109,16 @@ struct batch_normalization_forward_training
     auto src_desc = src._get_unblocked_desc_if_4c_blocked();
     // auto src_desc = src.get_desc();
 
+    auto op_attr = dnnl::primitive_attr();
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto pd = primitive_desc(
-        {prop_kind::forward_training, src_desc, epsilon, pd_flags}, aengine);
+        {prop_kind::forward_training, src_desc, epsilon, pd_flags},
+        op_attr,
+        aengine);
 
     tensor scale_shift {pd.weights_desc()};
+    tensor scratchpad(pd.scratchpad_desc());
     auto* scale_shift_buf = static_cast<char *>(scale_shift.get_data_handle());
     std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
     std::memcpy(scale_shift_buf + scale.get_size(),
@@ -122,7 +132,8 @@ struct batch_normalization_forward_training
                     {DNNL_ARG_SCALE_SHIFT, scale_shift},
                     {DNNL_ARG_MEAN, mean},
                     {DNNL_ARG_VARIANCE, variance},
-                    {DNNL_ARG_DST, dst}};
+                    {DNNL_ARG_DST, dst},
+                    {DNNL_ARG_SCRATCHPAD, scratchpad}};
     if (with_workspace) {
       dst.init_workspace(pd.workspace_desc());
       args.insert({DNNL_ARG_WORKSPACE, dst.get_workspace()});
@@ -174,9 +185,12 @@ struct batch_normalization_backward
     auto forward_hints = dnnl::batch_normalization_forward::primitive_desc(
         {prop_kind::forward_training, src_desc, epsilon, pd_flags}, aengine);
 
+    auto op_attr = dnnl::primitive_attr();
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto pd = primitive_desc(
         {prop_kind::backward, forward_hints.dst_desc(), src_desc, epsilon, pd_flags},
-        aengine, forward_hints);
+        op_attr, aengine, forward_hints);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
@@ -185,13 +199,16 @@ struct batch_normalization_backward
     diff_src.reinit_if_possible(pd.diff_src_desc());
     diff_scale_shift.reinit_if_possible(pd.diff_weights_desc());
 
+    tensor scratchpad(pd.scratchpad_desc());
+
     exec_args args {{DNNL_ARG_SRC, expected_src},
                     {DNNL_ARG_DIFF_DST, expected_diff_dst},
                     {DNNL_ARG_SCALE_SHIFT, scale}, // only need scale
                     {DNNL_ARG_MEAN, expected_mean},
                     {DNNL_ARG_VARIANCE, expected_variance},
                     {DNNL_ARG_DIFF_SRC, diff_src},
-                    {DNNL_ARG_DIFF_SCALE_SHIFT, diff_scale_shift}};
+                    {DNNL_ARG_DIFF_SCALE_SHIFT, diff_scale_shift},
+                    {DNNL_ARG_SCRATCHPAD, scratchpad}};
     if (with_workspace) {
       args.insert({DNNL_ARG_WORKSPACE, dst.get_workspace()});
     }

@@ -276,6 +276,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         strides, dil_compatible, padding_l, padding_r, op_attr, aalgorithm,
         aprop_kind, aengine);
 
+    tensor scratchpad(pd.scratchpad_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     auto expected_weights = weights_grouped.reorder_if_differ_in(pd.weights_desc());
     dst.reinit_if_possible(pd.dst_desc());
@@ -291,13 +292,15 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_BIAS, expected_bias},
                          {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m}});
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     } else {
       super(pd).execute(stream::default_stream(), 
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m}});
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
   }
 };
@@ -335,18 +338,23 @@ struct convolution_transpose_backward_data
             diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
             dilates_, padding_l, padding_r);
 
+    auto op_attr = dnnl::primitive_attr();
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto pd = primitive_desc(
         {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
-         dilates_, padding_l, padding_r}, aengine, forward_hints);
+         dilates_, padding_l, padding_r}, op_attr, aengine, forward_hints);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());
+    tensor scratchpad(pd.scratchpad_desc());
 
     super(pd).execute(stream::default_stream(), 
                       {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                        {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_DIFF_SRC, diff_src}});
+                       {DNNL_ARG_DIFF_SRC, diff_src},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
   }
 };
 
@@ -435,13 +443,16 @@ private:
             dilates_, padding_l, padding_r, attr_t(), aalgorithm,
             prop_kind::forward, aengine);
 
+    auto op_attr = dnnl::primitive_attr();
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto pd = with_diff_bias
         ? primitive_desc({aalgorithm, src_desc, diff_weights_desc,
                           diff_bias_desc, diff_dst_desc, strides, dilates_,
-                          padding_l, padding_r}, aengine, forward_hints)
+                          padding_l, padding_r}, op_attr, aengine, forward_hints)
         : primitive_desc({aalgorithm, src_desc, diff_weights_desc,
                           diff_dst_desc, strides, dilates_,
-                          padding_l, padding_r}, aengine, forward_hints);
+                          padding_l, padding_r}, op_attr, aengine, forward_hints);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
@@ -449,6 +460,7 @@ private:
     auto expected_diff_weights_desc =
         tensor::desc(pd.diff_weights_desc(), groups);
     diff_weights.reinit_if_possible(expected_diff_weights_desc);
+    tensor scratchpad(pd.scratchpad_desc());
 
     if (with_diff_bias) {
       diff_bias.reinit_if_possible(pd.diff_bias_desc());
@@ -456,12 +468,14 @@ private:
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_DIFF_WEIGHTS, diff_weights},
-                         {DNNL_ARG_DIFF_BIAS, diff_bias}});
+                         {DNNL_ARG_DIFF_BIAS, diff_bias},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     } else {
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_DIFF_WEIGHTS, diff_weights}});
+                         {DNNL_ARG_DIFF_WEIGHTS, diff_weights},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
 
     // recover output dims to align with pytorch

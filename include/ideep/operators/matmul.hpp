@@ -313,6 +313,8 @@ private:
 		               std::vector<float>(1, dst_coeff));
    }
 
+   op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
    dst_data_type = dst_type == data_type::undef ? dst_data_type : dst_type;   
    tensor::desc dst_desc(dst_dims, dst_data_type, tag::any);
    auto key = utils::create_key(
@@ -351,6 +353,7 @@ private:
    if (!dst_scales.empty() && utils::one_of(dst.get_data_type(), data_type::u8, data_type::s8)) {  
      expected_dst.set_scale(dst_scales_in);
    }
+   tensor scratchpad(pd.scratchpad_desc());
    if (with_bias){
      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
      super(pd).execute(stream::default_stream(),
@@ -361,7 +364,8 @@ private:
                         {DNNL_ARG_ATTR_OUTPUT_SCALES, scales_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, wei_zero_point_m},
-                        {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_point_m}});
+                        {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_point_m},
+                        {DNNL_ARG_SCRATCHPAD, scratchpad}});
    } else {
      super(pd).execute(stream::default_stream(),
                        {{DNNL_ARG_SRC, expected_src},
@@ -370,7 +374,8 @@ private:
                         {DNNL_ARG_ATTR_OUTPUT_SCALES, scales_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m},
                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_WEIGHTS, wei_zero_point_m},
-                        {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_point_m}});
+                        {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zero_point_m},
+                        {DNNL_ARG_SCRATCHPAD, scratchpad}});
    }
    // reorder back to dst's buffer if needed
    if (dst.is_empty() || 

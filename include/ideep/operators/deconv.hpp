@@ -3,12 +3,18 @@
 
 namespace ideep {
 
+struct deconv_forward_params {
+  dnnl::deconvolution_forward::primitive_desc pd;
+  attr_t bias_attr;
+  tensor input_zero_point;
+  int groups;
+};
+
 struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
   using super = dnnl::deconvolution_forward;
 
-  // With bias
-  // Zero points are passed explicitly as arguments for quantization
+  // With bias. Zero points are passed explicitly as arguments for quantization
   static void compute_v2(const tensor& src,
                          const tensor& weights, // dim: {o, i[, d], h, w}
                          const tensor& bias,
@@ -35,8 +41,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  // Without bias
-  // Zero points are passed explicitly as arguments for quantization
+  // Without bias. Zero points are passed explicitly as arguments for quantization
   static void compute_v2(const tensor& src,
                          const tensor& weights, // dim: {o, i[, d], h, w}
                          const dims& dst_dims,
@@ -111,6 +116,47 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  static void prepare(deconv_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights, // dim: {o, i[, d], h, w}
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      const dims& dilates = {1, 1},
+                      int groups = 1,
+                      const scale_t& src_scales = scale_t(),
+                      const scale_t& weights_scales = scale_t(),
+                      const scale_t& dst_scales = scale_t(),
+                      const zero_point_t& src_zero_point = zero_point_t(),
+                      const zero_point_t& dst_zero_point = zero_point_t(),
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::deconvolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool with_bias = (!bias.is_empty());
+    do_prepare(param, src, weights, bias, with_bias, dst_dims, dst,
+               strides, dilates, padding_l, padding_r, groups,
+               src_scales, weights_scales, dst_scales,
+               src_zero_point, dst_zero_point, attr,
+               aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  static void compute(const super& primitive,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& expected_bias,
+                      tensor& dst,
+                      const tensor& src_zero_point,
+                      int groups) {
+    bool with_bias = (!expected_bias.is_empty());
+    do_compute(primitive, src, weights, expected_bias,
+               with_bias, dst, src_zero_point, groups);
   }
 
   static tensor::desc expected_weights_desc(
@@ -303,6 +349,91 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
   }
+
+  static void do_prepare(deconv_forward_params& param,
+                         const tensor& src,
+                         const tensor& weights,
+                         const tensor& bias,
+                         bool with_bias,
+                         const dims& dst_dims,
+                         tensor& dst,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         const scale_t& src_scales,
+                         const scale_t& weights_scales,
+                         const scale_t& dst_scales,
+                         const zero_point_t& src_zero_point,
+                         const zero_point_t& dst_zero_point,
+                         const attr_t& attr,
+                         algorithm aalgorithm,
+                         prop_kind aprop_kind,
+                         const lowp_kind alowp_kind,
+                         const engine& aengine) {
+    scale_t dst_scales_in;
+    data_type dst_data_type;
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
+    tensor weights_grouped;
+    dims dil_compatible;
+
+    conv_deconv_utils::prepare_parameters(
+        src, weights, bias, dst_dims, dst, dilates, groups,
+        src_scales, weights_scales, dst_scales, src_zero_point, dst_zero_point,
+        attr, alowp_kind, with_bias, true,
+        weights_grouped, dil_compatible, op_attr, src_attr, weights_attr, bias_attr,
+        src_desc, weights_desc, bias_desc, dst_desc);
+
+    auto pd = with_bias ?
+              get_primitive_desc</*with_bias=*/true>(
+                  src_desc, weights_desc, bias_desc, dst_desc,
+                  strides, dil_compatible, padding_l, padding_r, op_attr, aalgorithm,
+                  aprop_kind, aengine) :
+              get_primitive_desc</*with_bias=*/false>(
+                  src_desc, weights_desc, bias_desc, dst_desc,
+                  strides, dil_compatible, padding_l, padding_r, op_attr, aalgorithm,
+                  aprop_kind, aengine);
+
+    auto expected_src = src.reorder_if_differ_in(pd.src_desc());
+    auto expected_weights = weights_grouped.reorder_if_differ_in(pd.weights_desc());
+    dst.reinit_if_possible(pd.dst_desc());
+
+    tensor src_zero_point_m;
+    conv_deconv_utils::obtain_runtime_zero_point(src, src_zero_point, DNNL_ARG_SRC,
+                                                 op_attr, aengine, src_zero_point_m);
+    param.pd = std::move(pd);
+    param.bias_attr = bias_attr;
+    param.input_zero_point = std::move(src_zero_point_m);
+    param.groups = groups;
+  }
+
+  static void do_compute(const super& primitive,
+                         const tensor& src,
+                         const tensor& weights,
+                         const tensor& expected_bias,
+                         bool with_bias,
+                         tensor& dst,
+                         const tensor& src_zero_point,
+                         int groups) {
+    auto expected_weights = weights.make_grouped_weights(groups);
+    if (with_bias) {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+    } else {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+    }
+  }
+
 };
 
 struct convolution_transpose_backward_data

@@ -69,6 +69,14 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
+  static attr_t fuse_clamp(float lower_bound = -1.0, float upper_bound = 1.0) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(1.0, algorithm::eltwise_clip, lower_bound, upper_bound);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t attr_post_ops(post_ops po) {
     attr_t attr;
     attr.set_post_ops(po);

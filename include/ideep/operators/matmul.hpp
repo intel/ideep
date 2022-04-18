@@ -25,6 +25,7 @@ struct matmul_forward : public dnnl::matmul,
   using super = dnnl::matmul;
 
   // With bias. Zero points are passed explicitly as arguments for quantization
+  // Bias is not used if it is empty.
   static void compute_v2(
       const tensor& src,
       const tensor& weights,
@@ -41,10 +42,17 @@ struct matmul_forward : public dnnl::matmul,
       const data_type dst_type = data_type::undef,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
-                                     src_scales, weights_scales, dst_scales,
-                                     src_zero_points, dst_zero_points,
-                                     attr, dst_type, alowp_kind, aengine);
+    if (bias.is_empty()) {
+      compute_impl</*with_bias=*/false>(src, weights, bias, dst, dst_coeff, sum_coeff,
+                                        src_scales, weights_scales, dst_scales,
+                                        src_zero_points, dst_zero_points,
+                                        attr, dst_type, alowp_kind, aengine);
+    } else {
+      compute_impl</*with_bias=*/true>(src, weights, bias, dst, dst_coeff, sum_coeff,
+                                       src_scales, weights_scales, dst_scales,
+                                       src_zero_points, dst_zero_points,
+                                       attr, dst_type, alowp_kind, aengine);
+    }
   }
 
   // Without bias. Zero points are passed explicitly as arguments for quantization
@@ -112,6 +120,7 @@ struct matmul_forward : public dnnl::matmul,
                                       attr, dst_type, alowp_kind, aengine);
   }
 
+  // Bias is not used if it is empty.
   template <bool is_dynamic>
   static void prepare(matmul_forward_params& param,
                       const tensor& src,
@@ -136,6 +145,7 @@ struct matmul_forward : public dnnl::matmul,
         attr, dst_type, alowp_kind, aengine);
   }
 
+  // Bias is not used if it is empty.
   static void compute(const matmul_forward_params& param,
                       const tensor& src,
                       const tensor& weights,
@@ -145,6 +155,7 @@ struct matmul_forward : public dnnl::matmul,
     do_compute(param, type_compute_static, src, weights, bias, with_bias, dst);
   }
 
+  // Bias is not used if it is empty.
   static void compute_dynamic(
       const matmul_forward_params& param,
       const tensor& src,

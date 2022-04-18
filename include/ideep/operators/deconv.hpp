@@ -15,6 +15,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
   using super = dnnl::deconvolution_forward;
 
   // With bias. Zero points are passed explicitly as arguments for quantization
+  // Bias is not used if it is empty.
   static void compute_v2(const tensor& src,
                          const tensor& weights, // dim: {o, i[, d], h, w}
                          const tensor& bias,
@@ -35,10 +36,17 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          prop_kind aprop_kind = prop_kind::forward,
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(
-        src, weights, bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    if (bias.is_empty()) {
+      compute_impl</*with_bias=*/false>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      compute_impl</*with_bias=*/true>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
   }
 
   // Without bias. Zero points are passed explicitly as arguments for quantization
@@ -118,6 +126,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
+  // Bias is not used if it is empty.
   static void prepare(deconv_forward_params& param,
                       const tensor& src,
                       const tensor& weights, // dim: {o, i[, d], h, w}
@@ -147,7 +156,9 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  static void compute(const super& primitive,
+  // Bias is not used if it is empty.
+  static void compute(const super::primitive_desc& pd,
+                      const super& primitive,
                       const tensor& src,
                       const tensor& weights,
                       const tensor& expected_bias,
@@ -155,7 +166,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                       const tensor& src_zero_point,
                       int groups) {
     bool with_bias = (!expected_bias.is_empty());
-    do_compute(primitive, src, weights, expected_bias,
+    do_compute(pd, primitive, src, weights, expected_bias,
                with_bias, dst, src_zero_point, groups);
   }
 
@@ -409,7 +420,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     param.groups = groups;
   }
 
-  static void do_compute(const super& primitive,
+  static void do_compute(const super::primitive_desc& pd,
+                         const super& primitive,
                          const tensor& src,
                          const tensor& weights,
                          const tensor& expected_bias,
@@ -417,6 +429,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          tensor& dst,
                          const tensor& src_zero_point,
                          int groups) {
+    tensor scratchpad(pd.scratchpad_desc());
     auto expected_weights = weights.make_grouped_weights(groups);
     if (with_bias) {
       primitive.execute(stream::default_stream(),
@@ -424,13 +437,15 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_BIAS, expected_bias},
                          {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     } else {
       primitive.execute(stream::default_stream(),
                         {{DNNL_ARG_SRC, src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
   }
 

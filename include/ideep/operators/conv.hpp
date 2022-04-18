@@ -223,6 +223,7 @@ struct convolution_forward
   using super = dnnl::convolution_forward;
 
   // 2-in-1 compute (prepare & compute) with bias
+  // Bias is not used if it is empty.
   // Zero points are passed explicitly as arguments for quantization
   template <bool plain_format = false>
   static void compute_v2(const tensor& src,
@@ -245,10 +246,17 @@ struct convolution_forward
                          prop_kind aprop_kind = prop_kind::forward,
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
-    compute_dispatch</*with_bias=*/true, plain_format>(
-        src, weights, bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    if (bias.is_empty()) {
+      compute_dispatch</*with_bias=*/false, plain_format>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      compute_dispatch</*with_bias=*/true, plain_format>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
   }
 
   // 2-in-1 compute (prepare & compute) without bias
@@ -281,6 +289,7 @@ struct convolution_forward
   }
 
   // Prepare with bias.
+  // Bias is not used if it is empty.
   // Zero points are set to tensor for quantization
   static void prepare(
       convolution_forward_params& param,
@@ -302,10 +311,17 @@ struct convolution_forward
       prop_kind aprop_kind = prop_kind::forward,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
-    do_prepare</*with_bias=*/true, /*keep_format=*/false>(
-        param, src, weights, bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    if (bias.is_empty()) {
+      do_prepare</*with_bias=*/false, /*keep_format=*/false>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      do_prepare</*with_bias=*/true, /*keep_format=*/false>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
   }
 
   // Prepare without bias.
@@ -337,12 +353,17 @@ struct convolution_forward
   }
 
   // Compute with bias
+  // Bias is not used if it is empty.
   static void compute(const convolution_forward_params& param,
                       const tensor& src,
                       const tensor& weights,
                       const tensor& bias,
                       tensor& dst) {
-    do_compute</*with_bias=*/true>(param, src, weights, bias, dst);
+    if (bias.is_empty()) {
+      do_compute</*with_bias=*/false>(param, src, weights, bias, dst);
+    } else {
+      do_compute</*with_bias=*/true>(param, src, weights, bias, dst);
+    }
   }
 
   // Compute without bias
@@ -363,11 +384,11 @@ struct convolution_forward
                       tensor& dst,
                       const tensor& src_zero_point,
                       int groups) {
-    if (!expected_bias.is_empty()) {
-      do_compute</*with_bias=*/true>(
+    if (expected_bias.is_empty()) {
+      do_compute</*with_bias=*/false>(
           pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
     } else {
-      do_compute</*with_bias=*/false>(
+      do_compute</*with_bias=*/true>(
           pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
     }
   }

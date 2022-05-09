@@ -50,6 +50,33 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
+  static attr_t fuse_elu(float scale = 1.0, float alpha = 0.f,
+                         float beta = 1.0) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(scale, algorithm::eltwise_elu, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
+  static attr_t fuse_sigmoid(float scale = 1.0, float alpha = 1.0,
+                             float beta = 0.f) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(scale, algorithm::eltwise_logistic, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
+  static attr_t fuse_swish(float scale = 1.0, float alpha = 1.0,
+                           float beta = 0.f) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(scale, algorithm::eltwise_swish, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t fuse_tanh(float scale = 1.0, float alpha = 0.f,
                           float beta = 0.f) {
     attr_t attr;

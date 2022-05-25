@@ -460,6 +460,7 @@ struct convolution_forward
       data_type x_dtype = data_type::f32,
       const dims& src_dims = dims(),
       const attr_t& attr = attr_t(),
+      bool is_channels_last = false,
       const engine& aengine = engine::cpu_engine()) {
 
     auto src_size = weights_dims.size(); // weights_dims is 4 for conv2d and 5 for conv3d
@@ -515,6 +516,18 @@ struct convolution_forward
     tensor::desc src_desc(x_dims, x_dtype);
     tensor::desc dst_desc(y_dims, y_dtype);
 
+    auto src_query = src_desc;
+    auto dst_query = dst_desc;
+    if (is_channels_last) {
+      if (src_size == 4) {
+        src_query = src_desc.to_format(tag::nhwc);
+        dst_query = dst_desc.to_format(tag::nhwc);
+      } else if (src_size == 5) {
+        src_query = src_desc.to_format(tag::ndhwc);
+        dst_query = dst_desc.to_format(tag::ndhwc);
+      }
+    }
+
     // FIXME: workaroud winograd format issue in inference
     // If prop_kind == forward_inference, the dnnl_wino_fmt for weights is
     // required by winograd primitive. Then, in the cases of variable input
@@ -529,7 +542,7 @@ struct convolution_forward
     }
 
     auto pd = get_primitive_desc</*with_bias=*/false>(
-        src_desc, weights_desc, tensor::desc(), dst_desc, strides, dilates_,
+        src_query, weights_desc, tensor::desc(), dst_query, strides, dilates_,
         padding_l, padding_r, attr, aalgorithm, apkind);
 
     // embed group info into weights_desc

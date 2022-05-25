@@ -572,7 +572,7 @@ struct convolution_forward
     // while activation uses format_tag::nhwc.
     auto ndims = src_desc.get_dims().size();
     if (ndims == 4) {
-      bool is_channels_last = src_desc.is_nhwc() || weights_desc.is_nhwc();
+      bool is_channels_last = src_desc.is_nhwc();
       if (is_channels_last) {
         src_desc_query = src_desc.to_format(tag::nhwc);
         weights_desc_query = weights_desc.to_format_any();
@@ -580,7 +580,7 @@ struct convolution_forward
         dst_desc_query = dst_desc.to_format(tag::nhwc);
       }
     } else if (ndims == 5) {
-      bool is_channels_last = src_desc.is_ndhwc() || weights_desc.is_ndhwc();
+      bool is_channels_last = src_desc.is_ndhwc();
       if (is_channels_last) {
         src_desc_query = src_desc.to_format(tag::ndhwc);
         weights_desc_query = weights_desc.to_format_any();
@@ -681,8 +681,11 @@ private:
     if (plain_format) {
       // Used for pytorch default CPU path, i.e. plain-in-plain-out
       // see [keep_format] for more details
-      bool is_nhwc = src.get_desc().is_nhwc() || weights.get_desc().is_nhwc();
-      bool use_plain_dst = use_gemm(src.get_dims(), weights.get_dims(), dst_dims, groups) || is_nhwc;
+      bool is_channels_last =
+          src.get_desc().is_nhwc() || src.get_desc().is_ndhwc();
+      bool use_plain_dst =
+          use_gemm(src.get_dims(), weights.get_dims(), dst_dims, groups) ||
+          is_channels_last;
       if (use_plain_dst) {
         do_prepare<with_bias, /*keep_format=*/true>(
             params, src, weights, bias, dst_dims, dst, strides, dilates,

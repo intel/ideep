@@ -271,8 +271,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       const engine& aengine = engine::cpu_engine()) {
     // For nhwc path, weight uses format_tag::any,
     // while activation uses format_tag::nhwc
-    bool is_nhwc = src_desc.is_nhwc() || weights_desc.is_nhwc();
-    bool is_ndhwc = src_desc.is_ndhwc() || weights_desc.is_ndhwc();
+    bool is_nhwc = src_desc.is_nhwc();
+    bool is_ndhwc = src_desc.is_ndhwc();
     auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
     auto src_desc_query = src_desc.to_format(format_tag);
     auto weights_desc_query = weights_desc.to_format_any();

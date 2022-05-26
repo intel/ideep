@@ -42,10 +42,11 @@ struct attr_t : public dnnl::primitive_attr {
   }
 
   static attr_t fuse_gelu(float scale = 1.0, float alpha = 0.f,
-                          float beta = 0.f) {
+                          float beta = 0.f,
+                          algorithm gelu_type = algorithm::eltwise_gelu_erf) {
     attr_t attr;
     post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_gelu_erf, alpha, beta);
+    po.append_eltwise(scale, gelu_type, alpha, beta);
     attr.set_post_ops(po);
     return attr;
   }
@@ -113,6 +114,14 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
+  static attr_t fuse_binary(algorithm alg, memory::desc src_desc) {
+    attr_t attr;
+    post_ops po;
+    po.append_binary(alg, src_desc);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t attr_post_ops(post_ops po) {
     attr_t attr;
     attr.set_post_ops(po);
@@ -131,8 +140,9 @@ struct attr_t : public dnnl::primitive_attr {
     auto po = get_post_ops();
     IDEEP_ENFORCE(index < po.len(), "post_ops index is out of range");
 
-    algorithm alg;
+    algorithm alg = algorithm::undef;
     float scale = 1.0, alpha = 1.0, beta = 0.0;
+    memory::desc binary_src_desc;
 
     auto akind = po.kind(index);
     switch (akind) {
@@ -141,6 +151,9 @@ struct attr_t : public dnnl::primitive_attr {
         break;
       case kind::eltwise:
         po.get_params_eltwise(index, scale, alg, alpha, beta);
+        break;
+      case kind::binary:
+        po.get_params_binary(index, alg, binary_src_desc);
         break;
       default:
         error::wrap_c_api(dnnl_invalid_arguments, "could not get params");
@@ -171,7 +184,7 @@ struct attr_t : public dnnl::primitive_attr {
     auto num_ops = get_post_ops().len();
     for (int i = 0; i < num_ops; i ++) {
       kind akind;
-      algorithm alg;
+      algorithm alg = algorithm::undef;
       float scale = 1.0, alpha = 1.0, beta = 0.0;
       std::tie(akind, scale, alpha, beta, alg) = get_params(i);
 
@@ -189,6 +202,10 @@ struct attr_t : public dnnl::primitive_attr {
           utils::to_bytes(bytes, alpha);
           bytes.append(1, '.');
           utils::to_bytes(bytes, beta);
+          bytes.append(1, '.');
+          utils::to_bytes(bytes, alg);
+        case kind::binary:
+          utils::to_bytes(bytes, akind);
           bytes.append(1, '.');
           utils::to_bytes(bytes, alg);
         default:

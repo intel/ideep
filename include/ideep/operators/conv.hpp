@@ -1,6 +1,5 @@
 #ifndef IDEEP_OPERATORS_CONV_HPP
 #define IDEEP_OPERATORS_CONV_HPP
-
 namespace ideep {
 
 struct convolution_forward_params {
@@ -13,8 +12,38 @@ struct convolution_forward_params {
   tensor scratchpad;
 };
 
+struct convolution_forward_fast_params {
+  dnnl::convolution_forward::primitive_desc& _pd;
+  dnnl::convolution_forward& _primitive;
+  int _groups;
+  const attr_t& _bias_attr;
+  //tensor & scratchpad;
+
+  convolution_forward_fast_params(dnnl::convolution_forward::primitive_desc& pd,
+                                  dnnl::convolution_forward& primitive,
+                                  int groups,
+                                  const attr_t& bias_attr = attr_t())
+                                  : _pd(pd),
+                                    _primitive(primitive),
+                                    _groups(groups),
+                                    _bias_attr(bias_attr)
+  {}
+};
+
+struct convolution_forward_quant_params {
+  tensor& _src_zero_point;
+  const scale_t& _dst_scales;
+
+  convolution_forward_quant_params(tensor& src_zero_point,
+                                   const scale_t& dst_scales = scale_t())
+                                  : _src_zero_point(src_zero_point),
+                                    _dst_scales(dst_scales)
+  {}
+};
+
 struct conv_deconv_utils {
-  /// Common logic to prepare parameters for conv/deconv.
+  // Common logic to prepare parameters for conv/deconv
+  // quantization version
   static void prepare_parameters(const tensor& src,
                                  const tensor& weights,
                                  const tensor& bias,
@@ -172,6 +201,60 @@ struct conv_deconv_utils {
                     : tensor::desc(dst_dims, dst_data_type);
   }
 
+  // Common logic to prepare parameters for conv/deconv.
+  // non-quantization version
+  static void prepare_parameters(const tensor& src,
+                                 const tensor& weights,
+                                 const tensor& bias,
+                                 const dims& dst_dims,
+                                 const tensor& dst,
+                                 const dims& dilates,
+                                 int groups,
+                                 const attr_t& attr,
+                                 bool with_bias,
+                                 bool is_deconv,
+                                 tensor& weight_grouped, /* Output */
+                                 dims& dil_compatible, /* Output */
+                                 attr_t& op_attr, /* Output */
+                                 attr_t& src_attr, /* Output */
+                                 attr_t& weights_attr, /* Output */
+                                 attr_t& bias_attr, /* Output */
+                                 tensor::desc& src_desc, /* Output */
+                                 tensor::desc& weights_desc, /* Output */
+                                 tensor::desc& bias_desc, /* Output */
+                                 tensor::desc& dst_desc /* Output */) {
+    scale_t dst_scales_in;
+    data_type dst_data_type;
+    op_attr = attr;
+
+    // make weights and dilates compatible with DNNL
+    weight_grouped = weights.make_grouped_weights(groups, is_deconv);
+    dil_compatible = utils::get_compatible_dilates(dilates);
+
+    IDEEP_ENFORCE(utils::one_of(weight_grouped.get_data_type(),
+                                data_type::f32, data_type::bf16),
+                  "Incorrect data type in weights");
+
+    // align weights data type with src
+    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                            : data_type::f32;
+    src_desc = src.get_desc().to_type(dst_data_type);
+    weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
+
+    if (with_bias) {
+      IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
+                                  data_type::f32, data_type::bf16),
+                    "Incorrect data type in bias");
+      bias_desc = bias.get_desc();
+    }
+
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
+    dst_desc = attr.has_op_kind(kind::sum)
+                    ? dst.get_desc()
+                    : tensor::desc(dst_dims, dst_data_type);
+  }
+
   /// Get true zero point from input tensor, specified zero point or op attr
   /// Priority: input.get_zero_point() > input_zero_point > op_attr > default
   ///
@@ -222,6 +305,7 @@ struct convolution_forward
 
   using super = dnnl::convolution_forward;
 
+  // DEPRECATED
   // 2-in-1 compute (prepare & compute) with bias
   // Bias is not used if it is empty.
   // Zero points are passed explicitly as arguments for quantization
@@ -259,6 +343,7 @@ struct convolution_forward
     }
   }
 
+  // DEPRECATED
   // 2-in-1 compute (prepare & compute) without bias
   // Zero points are passed explicitly as arguments for quantization
   template <bool plain_format = false>
@@ -352,6 +437,7 @@ struct convolution_forward
         zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
+  // DEPRECATED
   // Compute with bias
   // Bias is not used if it is empty.
   static void compute(const convolution_forward_params& param,
@@ -366,6 +452,7 @@ struct convolution_forward
     }
   }
 
+  // DEPRECATED
   // Compute without bias
   static void compute(const convolution_forward_params& param,
                       const tensor& src,
@@ -375,6 +462,204 @@ struct convolution_forward
     do_compute</*with_bias=*/false>(param, src, weights, dummy_bias, dst);
   }
 
+  // Conv computation with bias
+  // reorder as true means reorder needed for src/weight/bias/dst as adapt
+  // to oneDNN recommended memory format or your simply not sure, set to
+  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
+  template <bool plain_format = false, bool reorder = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_dispatch<false, plain_format, reorder>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      compute_dispatch<true, plain_format, reorder>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+    }
+  }
+
+  // Conv computation w/o bias
+  // reorder as true means reorder needed for src/weight/bias/dst as adapt
+  // to oneDNN recommended memory format or your simply not sure, set to
+  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
+  template <bool plain_format = false, bool reorder = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_dispatch<false, plain_format, reorder>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+  }
+
+  // Quantized Conv computation with bias
+  template <bool plain_format = false, bool reorder = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales,
+                      const scale_t& weights_scales,
+                      const scale_t& dst_scales,
+                      const zero_point_t& src_zero_point,
+                      const zero_point_t& dst_zero_point,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_dispatch</*with_bias=*/false, plain_format, reorder>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      compute_dispatch</*with_bias=*/true, plain_format, reorder>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
+  }
+
+  // Quantized Conv computation w/o bias
+  template <bool plain_format = false, bool reorder = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales,
+                      const scale_t& weights_scales,
+                      const scale_t& dst_scales,
+                      const zero_point_t& src_zero_point,
+                      const zero_point_t& dst_zero_point,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_dispatch</*with_bias=*/false, plain_format, reorder>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // Conv computation with pre-prepared params, with bias
+  //   fast_params: pd, primitive, groups ...
+  // reorder as true means reorder needed for src/weight/bias/dst as adapt
+  // to oneDNN recommended memory format or your simply not sure, set to
+  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
+  template <bool reorder = true>
+  static void compute(const convolution_forward_fast_params& fast_params,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      tensor& dst) {
+    if (bias.is_empty()) {
+      do_compute</*with_bias=*/false, reorder>(
+          fast_params, src, weights, bias, dst);
+    } else {
+      do_compute</*with_bias=*/true, reorder>(
+          fast_params, src, weights, bias, dst);
+    }
+  }
+
+  // Conv computation with pre-prepared params, w/o bias
+  //   fast_params: pd, primitive, groups ...
+  // reorder as true means reorder needed for src/weight/bias/dst as adapt
+  // to oneDNN recommended memory format or your simply not sure, set to
+  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
+  template <bool reorder = true>
+  static void compute(const convolution_forward_fast_params& fast_params,
+                      const tensor& src,
+                      const tensor& weights,
+                      tensor& dst) {
+    static tensor dummy_bias;
+    do_compute</*with_bias=*/false, reorder>(
+        fast_params, src, weights, dummy_bias, dst);
+  }
+
+  // Quantized Conv computation with pre-prepared params, with bias
+  //   fast_params: pd, primitive, groups ...
+  //   quant_params: src_zero_point, dst_scale ...
+  // reorder as true means reorder needed for src/weight/bias/dst as adapt
+  // to oneDNN recommended memory format or your simply not sure, set to
+  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
+  template <bool reorder = true>
+  static void compute(const convolution_forward_fast_params& fast_params,
+                      const convolution_forward_quant_params& quant_params,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      tensor& dst) {
+    if (bias.is_empty()) {
+      do_compute</*with_bias=*/false, reorder>(
+          fast_params, quant_params, src, weights, bias, dst);
+    } else {
+      do_compute</*with_bias=*/true, reorder>(
+          fast_params, quant_params, src, weights, bias, dst);
+    }
+  }
+
+  // Quantized Conv computation with pre-prepared params, w/o bias
+  //   fast_params: pd, primitive, groups ...
+  //   quant_params: src_zero_point, dst_scale ...
+  // reorder as true means reorder needed for src/weight/bias/dst as adapt
+  // to oneDNN recommended memory format or your simply not sure, set to
+  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
+  template <bool reorder = true>
+  static void compute(const convolution_forward_fast_params& fast_params,
+                      const convolution_forward_quant_params& quant_params,
+                      const tensor& src,
+                      const tensor& weights,
+                      tensor& dst) {
+    static tensor dummy_bias;
+    do_compute</*with_bias=*/false, reorder>(
+        fast_params, quant_params, src, weights, dummy_bias, dst);
+  }
+
+  // DEPRECATED
   // Compute with given primitive & src zero point with or without bias
   static void compute(const super::primitive_desc pd,
                       const super& primitive,
@@ -391,60 +676,6 @@ struct convolution_forward
       do_compute</*with_bias=*/true>(
           pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
     }
-  }
-
-  // Deprecated. 2-in-1 compute (prepare & compute) with bias
-  // Zero points are set to tensor for quantization
-  template <bool plain_format = false>
-  static void compute(const tensor& src,
-                      const tensor& weights,
-                      const tensor& bias,
-                      const dims& dst_dims,
-                      tensor& dst,
-                      const dims& strides,
-                      const dims& dilates,
-                      const dims& padding_l,
-                      const dims& padding_r,
-                      int groups,
-                      const scale_t& src_scales = scale_t(),
-                      const scale_t& weights_scales = scale_t(),
-                      const scale_t& dst_scales = scale_t(),
-                      const attr_t& attr = attr_t(),
-                      algorithm aalgorithm = algorithm::convolution_direct,
-                      prop_kind aprop_kind = prop_kind::forward,
-                      const lowp_kind alowp_kind = u8s8,
-                      const engine& aengine = engine::cpu_engine()) {
-    compute_dispatch</*with_bias=*/true, plain_format>(
-        src, weights, bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
-  }
-
-  // Deprecated. 2-in-1 compute (prepare & compute) without bias
-  // Zero points are set to tensor for quantization
-  template <bool plain_format = false>
-  static void compute(const tensor& src,
-                      const tensor& weights,
-                      const dims& dst_dims,
-                      tensor& dst,
-                      const dims& strides,
-                      const dims& dilates,
-                      const dims& padding_l,
-                      const dims& padding_r,
-                      int groups,
-                      const scale_t& src_scales = scale_t(),
-                      const scale_t& weights_scales = scale_t(),
-                      const scale_t& dst_scales = scale_t(),
-                      const attr_t& attr = attr_t(),
-                      algorithm aalgorithm = algorithm::convolution_direct,
-                      prop_kind aprop_kind = prop_kind::forward,
-                      const lowp_kind alowp_kind = u8s8,
-                      const engine& aengine = engine::cpu_engine()) {
-    static tensor dummy_bias;
-    compute_dispatch</*with_bias=*/false, plain_format>(
-        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   static tensor::desc expected_weights_desc(
@@ -724,6 +955,153 @@ private:
     }
   }
 
+  template <bool with_bias, bool plain_format, bool reorder>
+  static void compute_dispatch(
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      const dims& dst_dims,
+      tensor& dst,
+      const dims& strides,
+      const dims& dilates,
+      const dims& padding_l,
+      const dims& padding_r,
+      int groups,
+      const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
+
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
+    tensor weights_grouped;
+    dims dil_compatible;
+
+    conv_deconv_utils::prepare_parameters(
+        src, weights, bias, dst_dims, dst, dilates, groups,
+        attr, with_bias, false, weights_grouped, dil_compatible,
+        op_attr, src_attr, weights_attr, bias_attr,
+        src_desc, weights_desc, bias_desc, dst_desc);
+
+    if (plain_format) {
+      // Used for pytorch default CPU path, i.e. plain-in-plain-out
+      // see [keep_format] for more details
+      bool is_channels_last =
+          src.get_desc().is_nhwc() || src.get_desc().is_ndhwc();
+      bool use_plain_dst =
+          use_gemm(src.get_dims(), weights.get_dims(), dst_dims, groups) || is_channels_last;
+      if (use_plain_dst) {
+        auto pd = get_primitive_desc<with_bias, /*keep_format=*/true>(
+            src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+            padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        dnnl::convolution_forward primitive(pd);
+        convolution_forward_fast_params params(pd, primitive, groups);
+        do_compute<with_bias, reorder>(params, src, weights, bias, dst);
+      } else {
+        tensor dst_blocked;
+        auto pd = get_primitive_desc<with_bias, /*keep_format=*/false>(
+            src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+            padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        dnnl::convolution_forward primitive(pd);
+        convolution_forward_fast_params params(pd, primitive, groups);
+        do_compute<with_bias, reorder>(params, src, weights, bias, dst_blocked);
+        dst.feed_from(dst_blocked);
+      }
+    } else {
+      // Used for to_mkldnn() path
+      auto pd = get_primitive_desc<with_bias, /*keep_format=*/false>(
+          src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+          padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+      dnnl::convolution_forward primitive(pd);
+      convolution_forward_fast_params params(pd, primitive, groups);
+      do_compute<with_bias, reorder>(params, src, weights, bias, dst);
+    }
+  }
+
+  template <bool with_bias, bool plain_format, bool reorder>
+  static void compute_dispatch(
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      const dims& dst_dims,
+      tensor& dst,
+      const dims& strides,
+      const dims& dilates,
+      const dims& padding_l,
+      const dims& padding_r,
+      int groups,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const zero_point_t& src_zero_point,
+      const zero_point_t& dst_zero_point,
+      const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
+    tensor weights_grouped;
+    dims dil_compatible;
+    tensor src_zp_tensor;
+
+    conv_deconv_utils::prepare_parameters(
+        src, weights, bias, dst_dims, dst, dilates, groups,
+        src_scales, weights_scales, dst_scales, src_zero_point, dst_zero_point,
+        attr, alowp_kind, with_bias, false,
+        weights_grouped, dil_compatible, op_attr, src_attr, weights_attr, bias_attr,
+        src_desc, weights_desc, bias_desc, dst_desc);
+
+    if (plain_format) {
+      // Used for pytorch default CPU path, i.e. plain-in-plain-out
+      // see [keep_format] for more details
+      bool is_channels_last =
+          src.get_desc().is_nhwc() || src.get_desc().is_ndhwc();
+      bool use_plain_dst =
+          use_gemm(src.get_dims(), weights.get_dims(), dst_dims, groups) ||
+          is_channels_last;
+      if (use_plain_dst) {
+        auto pd = get_primitive_desc<with_bias, /*keep_format=*/true>(
+            src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+            padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        dnnl::convolution_forward primitive(pd);
+        conv_deconv_utils::obtain_runtime_zero_point(
+          src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
+          ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
+        convolution_forward_fast_params params(pd, primitive, groups, bias_attr);
+        convolution_forward_quant_params quant_param(src_zp_tensor, dst_scales);
+        do_compute<with_bias, reorder>(params, quant_param, src, weights, bias, dst);
+      } else {
+        tensor dst_blocked;
+        auto pd = get_primitive_desc<with_bias, /*keep_format=*/false>(
+            src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+            padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        dnnl::convolution_forward primitive(pd);
+        conv_deconv_utils::obtain_runtime_zero_point(
+          src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
+          ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
+        convolution_forward_fast_params params(pd, primitive, groups, bias_attr);
+        convolution_forward_quant_params quant_param(src_zp_tensor, dst_scales);
+        do_compute<with_bias, reorder>(params, quant_param, src, weights, bias, dst_blocked);
+        dst.feed_from(dst_blocked);
+      }
+    } else {
+      // Used for to_mkldnn() path
+      auto pd = get_primitive_desc<with_bias, /*keep_format=*/false>(
+          src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+          padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+      dnnl::convolution_forward primitive(pd);
+      conv_deconv_utils::obtain_runtime_zero_point(
+        src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
+        ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
+      convolution_forward_fast_params params(pd, primitive, groups, bias_attr);
+      convolution_forward_quant_params quant_param(src_zp_tensor, dst_scales);
+      do_compute<with_bias, reorder>(params, quant_param, src, weights, bias, dst);
+    }
+  }
+
   template <bool with_bias, bool keep_format>
   static void do_prepare(
       convolution_forward_params& param,
@@ -772,6 +1150,7 @@ private:
              groups, std::move(scratchpad)};
   }
 
+  // DEPRECATED
   template <bool with_bias>
   static void do_compute(const convolution_forward_params& param,
                          const tensor& src, const tensor& weights,
@@ -810,6 +1189,126 @@ private:
     }
   }
 
+  // do_compute with given primitive/pd, under the precondition
+  // that whether or not src/weight/bias/dst need to be reorder
+  // non quantization version
+  template <bool with_bias, bool reorder>
+  static void do_compute(const convolution_forward_fast_params& fast_params,
+                         const tensor& src,
+                         const tensor& weights,
+                         const tensor& bias,
+                         tensor& dst) {
+    auto scratchpad = tensor(fast_params._pd.scratchpad_desc());
+
+    if (!reorder) {
+      const tensor& grouped_weights = weights.make_grouped_weights(fast_params._groups);
+      if (with_bias) {
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, src},
+                       {DNNL_ARG_WEIGHTS, grouped_weights},
+                       {DNNL_ARG_BIAS, bias},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      } else {
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, src},
+                       {DNNL_ARG_WEIGHTS, grouped_weights},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      }
+    } else {
+      const tensor& expected_src = src.reorder_if_differ_in(fast_params._pd.src_desc());
+      const tensor& expected_weights = weights.make_grouped_weights(fast_params._groups)
+                                         .reorder_if_differ_in(fast_params._pd.weights_desc());
+      dst.reinit_if_possible(fast_params._pd.dst_desc());
+      if (with_bias) {
+        const tensor& expected_bias = bias.reorder_if_differ_in(fast_params._pd.bias_desc());
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, expected_src},
+                       {DNNL_ARG_WEIGHTS, expected_weights},
+                       {DNNL_ARG_BIAS, expected_bias},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      } else {
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, expected_src},
+                       {DNNL_ARG_WEIGHTS, expected_weights},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      }
+    }
+  }
+
+  // do_compute with given primitive/pd, under the precondition
+  // that whether or not src/weight/bias/dst need to be reorder
+  // quantization version
+  template <bool with_bias, bool reorder>
+  static void do_compute(const convolution_forward_fast_params& fast_params,
+                         const convolution_forward_quant_params& quant_params,
+                         const tensor& src,
+                         const tensor& weights,
+                         const tensor& bias,
+                         tensor& dst) {
+    auto scratchpad = tensor(fast_params._pd.scratchpad_desc());
+
+    if (!reorder) {
+      const tensor& grouped_weights = weights.make_grouped_weights(fast_params._groups);
+      if (with_bias) {
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, src},
+                       {DNNL_ARG_WEIGHTS, grouped_weights},
+                       {DNNL_ARG_BIAS, bias},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad},
+                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, quant_params._src_zero_point}});
+      } else {
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, src},
+                       {DNNL_ARG_WEIGHTS, grouped_weights},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad},
+                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, quant_params._src_zero_point}});
+      }
+    } else {
+      const tensor& expected_src = src.reorder_if_differ_in(fast_params._pd.src_desc());
+      const tensor& expected_weights = weights.make_grouped_weights(fast_params._groups)
+                                         .reorder_if_differ_in(fast_params._pd.weights_desc());
+      dst.reinit_if_possible(fast_params._pd.dst_desc());
+
+      if (!quant_params._dst_scales.empty() && dst.get_data_type() != data_type::f32) {
+        dst.set_scale(quant_params._dst_scales);
+      }
+
+      if (with_bias) {
+        const tensor& expected_bias = bias.reorder_if_differ_in(fast_params._pd.bias_desc(),
+                                                                fast_params._bias_attr);
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, expected_src},
+                       {DNNL_ARG_WEIGHTS, expected_weights},
+                       {DNNL_ARG_BIAS, expected_bias},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad},
+                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, quant_params._src_zero_point}});
+      } else {
+        fast_params._primitive.execute(
+                      stream::default_stream(),
+                      {{DNNL_ARG_SRC, expected_src},
+                       {DNNL_ARG_WEIGHTS, expected_weights},
+                       {DNNL_ARG_DST, dst},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad},
+                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, quant_params._src_zero_point}});
+      }
+    }
+  }
+
+  // DEPRECATED
   // Do_compute with given primitive & src zero point
   // Bias scale has been applied before passed in.
   template <bool with_bias>

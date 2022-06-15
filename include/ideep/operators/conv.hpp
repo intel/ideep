@@ -596,9 +596,9 @@ struct convolution_forward
   }
 
   // Conv computation with bias
-  // reorder as true means reorder needed for src/weight/bias/dst as adapt
-  // to oneDNN recommended memory format or your simply not sure, set to
-  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
   // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const tensor& src,
@@ -627,9 +627,9 @@ struct convolution_forward
   }
 
   // Conv computation w/o bias
-  // reorder as true means reorder needed for src/weight/bias/dst as adapt
-  // to oneDNN recommended memory format or your simply not sure, set to
-  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
   // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const tensor& src,
@@ -652,6 +652,10 @@ struct convolution_forward
   }
 
   // Quantized Conv computation with bias
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const tensor& src,
                       const tensor& weights,
@@ -687,6 +691,10 @@ struct convolution_forward
   }
 
   // Quantized Conv computation w/o bias
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const tensor& src,
                       const tensor& weights,
@@ -716,9 +724,9 @@ struct convolution_forward
 
   // Conv computation with pre-prepared params, with bias
   //   fast_params: pd, primitive, groups ...
-  // reorder as true means reorder needed for src/weight/bias/dst as adapt
-  // to oneDNN recommended memory format or your simply not sure, set to
-  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
   // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const convolution_forward_fast_params& fast_params,
@@ -737,9 +745,9 @@ struct convolution_forward
 
   // Conv computation with pre-prepared params, w/o bias
   //   fast_params: pd, primitive, groups ...
-  // reorder as true means reorder needed for src/weight/bias/dst as adapt
-  // to oneDNN recommended memory format or your simply not sure, set to
-  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
   // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const convolution_forward_fast_params& fast_params,
@@ -754,9 +762,9 @@ struct convolution_forward
   // Quantized Conv computation with pre-prepared params, with bias
   //   fast_params: pd, primitive, groups ...
   //   quant_params: src_zero_point, dst_scale ...
-  // reorder as true means reorder needed for src/weight/bias/dst as adapt
-  // to oneDNN recommended memory format or your simply not sure, set to
-  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
   // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const convolution_forward_fast_params& fast_params,
@@ -777,9 +785,9 @@ struct convolution_forward
   // Quantized Conv computation with pre-prepared params, w/o bias
   //   fast_params: pd, primitive, groups ...
   //   quant_params: src_zero_point, dst_scale ...
-  // reorder as true means reorder needed for src/weight/bias/dst as adapt
-  // to oneDNN recommended memory format or your simply not sure, set to
-  // false if src/weight/bias/dst are pre-reorded or no reorder needed as
+  // reorder as true means reorder might needed for src/weight/bias/dst as
+  // adapt to oneDNN recommended memory format or your simply not sure, set
+  // to false if src/weight/bias/dst are pre-reorded or no reorder needed as
   // you know for sure
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const convolution_forward_fast_params& fast_params,

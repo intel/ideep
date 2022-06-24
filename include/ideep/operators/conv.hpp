@@ -1106,7 +1106,6 @@ private:
       const engine& aengine = engine::cpu_engine()) {
     convolution_forward_params params;
 
-    // Used for to_mkldnn() path
     do_prepare<with_bias>(
         params, src, weights, bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
@@ -1217,7 +1216,7 @@ private:
                                       prop_kind aprop_kind = prop_kind::forward,
                                       const engine &aengine = engine::cpu_engine()) {
     convolution_forward_params params;
-    do_prepare<with_bias, /*keep_format=*/false>(
+    do_prepare<with_bias>(
         params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
         padding_r, groups, scale_t(), scale_t(), scale_t(), zero_point_t(),
         zero_point_t(), attr, aalgorithm, aprop_kind, u8s8, aengine);

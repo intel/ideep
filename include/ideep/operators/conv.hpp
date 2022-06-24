@@ -319,6 +319,58 @@ struct convolution_forward
 
   using super = dnnl::convolution_forward;
 
+  // 3-in-1 compute (prepare & compute) with bias
+  // Bias is not used if it is empty.
+  // This function is used to conv+binary fusion.
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const tensor &bias,
+                             const dims &dst_dims,
+                             tensor &dst,
+                             const dims &strides,
+                             const dims &dilates,
+                             const dims &padding_l,
+                             const dims &padding_r,
+                             int groups,
+                             const attr_t &attr = attr_t(),
+                             algorithm aalgorithm = algorithm::convolution_direct,
+                             prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_binary_dispatch</*with_bias=*/false>(
+          src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
+          padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      compute_binary_dispatch</*with_bias=*/true>(
+          src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
+          padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+    }
+  }
+
+  // 3-in-1 compute (prepare & compute) without bias
+  // Bias is not used if it is empty.
+  // This function is used to conv+binary fusion.
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const dims &dst_dims,
+                             tensor &dst,
+                             const dims &strides,
+                             const dims &dilates,
+                             const dims &padding_l,
+                             const dims &padding_r,
+                             int groups,
+                             const attr_t &attr = attr_t(),
+                             algorithm aalgorithm = algorithm::convolution_direct,
+                             prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_binary_dispatch</*with_bias=*/false>(
+        src, other, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+  }
+
   // DEPRECATED
   // 2-in-1 compute (prepare & compute) with bias
   // Bias is not used if it is empty.
@@ -912,7 +964,6 @@ struct convolution_forward
         aprop_kind == prop_kind::forward_inference) {
       apkind = prop_kind::forward;
     }
-
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_query, weights_desc, tensor::desc(), dst_query, strides, dilates_,
         padding_l, padding_r, attr, aalgorithm, apkind);
@@ -1147,6 +1198,30 @@ private:
     convolution_forward_fast_params params(std::move(pd), std::move(primitive), groups, std::move(bias_attr));
     convolution_forward_quant_params quant_param(std::move(src_zp_tensor), std::move(dst_scales));
     do_compute<with_bias, reorder_src, reorder_weight>(params, quant_param, src, weights, bias, dst);
+  }
+ 
+  template <bool with_bias>
+  static void compute_binary_dispatch(const tensor &src,
+                                      const tensor &other,
+                                      const tensor &weights,
+                                      const tensor &bias,
+                                      const dims &dst_dims,
+                                      tensor &dst,
+                                      const dims &strides,
+                                      const dims &dilates,
+                                      const dims &padding_l,
+                                      const dims &padding_r,
+                                      int groups,
+                                      const attr_t &attr = attr_t(),
+                                      algorithm aalgorithm = algorithm::convolution_direct,
+                                      prop_kind aprop_kind = prop_kind::forward,
+                                      const engine &aengine = engine::cpu_engine()) {
+    convolution_forward_params params;
+    do_prepare<with_bias, /*keep_format=*/false>(
+        params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
+        padding_r, groups, scale_t(), scale_t(), scale_t(), zero_point_t(),
+        zero_point_t(), attr, aalgorithm, aprop_kind, u8s8, aengine);
+    do_compute_binary<with_bias>(params, src, other, weights, bias, dst);
   }
 
   template <bool with_bias>
@@ -1526,6 +1601,44 @@ private:
                        {DNNL_ARG_SCRATCHPAD, scratchpad},
                        {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, quant_params._src_zero_point}});
       }
+    }
+  }
+
+  template <bool with_bias>
+  static void do_compute_binary(const convolution_forward_params &param,
+                                const tensor &src,
+                                const tensor &other,
+                                const tensor &weights,
+                                const tensor &bias,
+                                tensor &dst) {
+    auto &pd = param.pd;
+    auto &scratchpad = param.scratchpad;
+    auto expected_src = src.reorder_if_differ_in(pd.src_desc());
+    // make sure other has same format with dst.
+    // TODO: other has different with dst?
+    auto expected_other = other.reorder_if_differ_in(pd.dst_desc());
+    auto expected_weights = weights.make_grouped_weights(param.groups)
+                                .reorder_if_differ_in(pd.weights_desc());
+    dst.reinit_if_possible(pd.dst_desc());
+    if (with_bias) {
+      auto expected_bias =
+          bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr);
+      super(pd).execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                          expected_other}});
+    } else {
+      super(pd).execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                          expected_other}});
     }
   }
 

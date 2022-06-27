@@ -581,9 +581,6 @@ private:
       do_prepare<with_bias>(param, src, weights, bias, dst, dst_coeff, sum_coeff,
                  attr, dst_type, aengine);
     }
-    // do_prepare(param, type_prepare_static, src, weights, bias, with_bias, dst, dst_coeff, sum_coeff,
-               // src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
-               // attr, dst_type, alowp_kind, aengine);
     do_compute<with_bias, /*reorder_src=*/ true, /*reorder_weight=*/ true>(
         param, src, weights, bias, dst);
   }
@@ -670,12 +667,6 @@ private:
       }
     });
     param._primitive = std::move(super(param._pd));
-    // param._primitive = std::move(super(pd));
-    // param._pd = std::move(pd);
-    // param._op_attr = std::move(op_attr);
-    // param._src_attr = std::move(src_attr);
-    // param._weights_attr = std::move(weights_attr);
-    // param._bias_attr = std::move(bias_attr);
  }
 
   // For static int8 op (int8 * int8 -> int8)
@@ -826,13 +817,6 @@ private:
       }
     });
     param._primitive = std::move(super(param._pd));
-    // param._primitive = std::move(super(pd));
-    // param._pd = std::move(pd);
-    // param._op_attr = std::move(op_attr);
-
-    // param._src_attr = std::move(src_attr);
-    // param._weights_attr = std::move(weights_attr);
-    // param._bias_attr = std::move(bias_attr);
  }
 
   // For dynamic int8 op (fp32 * int8 -> fp32)
@@ -932,7 +916,6 @@ private:
     // Create pd and primitive
     param._pd = primitive_desc({src_desc, weights.get_desc(), dst_desc}, op_attr, aengine);
     param._primitive = super(param._pd);
-    // param._op_attr = std::move(op_attr);
 
     // Create src reorder primitive with runtime scales/zero point
     auto src_reorder_pd = dnnl::reorder::primitive_desc(aengine, src.get_desc(), aengine, src_desc, src_attr);
@@ -1032,33 +1015,6 @@ private:
       }
     }
 
-/*     if (with_bias){
-      auto& expected_bias = reorder_weight ?
-                           bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
-                           bias;
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, expected_dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, expected_dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    }
-    if (reorder_src) {
-      // reorder back to dst's buffer if needed
-      if (dst.is_empty() ||
-            dst.get_desc() == expected_dst.get_desc() ||
-            !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
-        dst =  expected_dst;
-      } else {
-        dst.feed_from(expected_dst);
-      }
-    } */
   }
 
   // For dynamic int8 op (fp32 * int8 -> fp32)

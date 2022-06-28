@@ -744,6 +744,72 @@ struct convolution_forward
   }
 
   // DEPRECATED
+  // Prepare with bias.
+  // Bias is not used if it is empty.
+  // Zero points are set to tensor for quantization
+  static void prepare(
+      convolution_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      const dims& dst_dims,
+      tensor& dst,
+      const dims& strides,
+      const dims& dilates,
+      const dims& padding_l,
+      const dims& padding_r,
+      int groups,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      do_prepare</*with_bias=*/false>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      do_prepare</*with_bias=*/true>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
+  }
+
+  // DEPRECATED
+  // Prepare without bias.
+  // Zero points are set to tensor for quantization
+  static void prepare(
+      convolution_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const dims& dst_dims,
+      tensor& dst,
+      const dims& strides,
+      const dims& dilates,
+      const dims& padding_l,
+      const dims& padding_r,
+      int groups,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const attr_t& attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    do_prepare</*with_bias=*/false>(
+        param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // DEPRECATED
   // Compute with given primitive & src zero point with or without bias
   static void compute(const super::primitive_desc pd,
                       const super& primitive,
@@ -1174,7 +1240,6 @@ private:
     param = {std::move(pd), std::move(primitive), groups, std::move(bias_attr)};
     param._sq_param_ptr =
         std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
-    // quant_param = {std::move(src_zp_tensor), std::move(dst_scales)};
   }
 
   // do_compute with given primitive/pd, under the precondition
@@ -1221,95 +1286,6 @@ private:
                      {DNNL_ARG_SCRATCHPAD, scratchpad},
                      {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
     }
-/*
-    if (!reorder_src && !reorder_weight) {
-      const tensor& grouped_weights = weights.make_grouped_weights(param._groups);
-      if (with_bias) {
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, src},
-                       {DNNL_ARG_WEIGHTS, grouped_weights},
-                       {DNNL_ARG_BIAS, bias},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      } else {
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, src},
-                       {DNNL_ARG_WEIGHTS, grouped_weights},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      }
-    } else if (reorder_src && !reorder_weight) {
-      const tensor& expected_src = src.reorder_if_differ_in(param._pd.src_desc());
-      dst.reinit_if_possible(param._pd.dst_desc());
-      if (with_bias) {
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, expected_src},
-                       {DNNL_ARG_WEIGHTS, weights},
-                       {DNNL_ARG_BIAS, bias},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      } else {
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, expected_src},
-                       {DNNL_ARG_WEIGHTS, weights},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      }
-    } else if (!reorder_src && reorder_weight) {
-      const tensor& expected_weights = weights.make_grouped_weights(param._groups)
-                                         .reorder_if_differ_in(param._pd.weights_desc());
-      if (with_bias) {
-        const tensor& expected_bias = bias.reorder_if_differ_in(param._pd.bias_desc(), param._bias_attr);
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, src},
-                       {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_BIAS, expected_bias},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      } else {
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, src},
-                       {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      }
-    } else {
-      const tensor& expected_src = src.reorder_if_differ_in(param._pd.src_desc());
-      const tensor& expected_weights = weights.make_grouped_weights(param._groups)
-                                         .reorder_if_differ_in(param._pd.weights_desc());
-      dst.reinit_if_possible(param._pd.dst_desc());
-      if (with_bias) {
-        const tensor& expected_bias = bias.reorder_if_differ_in(param._pd.bias_desc(), param._bias_attr);
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, expected_src},
-                       {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_BIAS, expected_bias},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      } else {
-        param._primitive.execute(
-                      stream::default_stream(),
-                      {{DNNL_ARG_SRC, expected_src},
-                       {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad},
-                       {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-      }
-    } */
   }
 
   // For binary post-op

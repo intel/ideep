@@ -17,10 +17,10 @@ struct matmul_forward_dyn_quant_params {
       tensor&& wei_zero_point_m,
       tensor::desc&& src_desc,
       dnnl::reorder::primitive&& src_reorder)
-      : _weight_scales(weight_scales),
-        _wei_zero_point_m(wei_zero_point_m),
-        _src_desc(src_desc),
-        _src_reorder(src_reorder) {}
+      : _weight_scales(std::move(weight_scales)),
+        _wei_zero_point_m(std::move(wei_zero_point_m)),
+        _src_desc(std::move(src_desc)),
+        _src_reorder(std::move(src_reorder)) {}
 };
 
 // Common parameters for computation
@@ -41,11 +41,11 @@ struct matmul_forward_params {
       attr_t&& src_attr,
       attr_t&& weights_attr,
       attr_t&& bias_attr)
-      : _pd(pd),
-        _op_attr(op_attr),
-        _src_attr(src_attr),
-        _weights_attr(weights_attr),
-        _bias_attr(bias_attr) {
+      : _pd(std::move(pd)),
+        _op_attr(std::move(op_attr)),
+        _src_attr(std::move(src_attr)),
+        _weights_attr(std::move(weights_attr)),
+        _bias_attr(std::move(bias_attr)) {
     _primitive = dnnl::matmul(_pd);
   }
 };

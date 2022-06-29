@@ -24,12 +24,12 @@ struct inner_product_forward_params {
       attr_t&& src_attr,
       attr_t&& weights_attr,
       attr_t&& bias_attr)
-      : _pd(pd),
-        _primitive(primitive),
-        _op_attr(op_attr),
-        _src_attr(src_attr),
-        _weights_attr(weights_attr),
-        _bias_attr(bias_attr) {}
+      : _pd(std::move(pd)),
+        _primitive(std::move(primitive)),
+        _op_attr(std::move(op_attr)),
+        _src_attr(std::move(src_attr)),
+        _weights_attr(std::move(weights_attr)),
+        _bias_attr(std::move(bias_attr)) {}
 };
 
 struct inner_product_forward

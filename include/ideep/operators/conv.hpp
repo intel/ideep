@@ -6,7 +6,7 @@ struct convolution_forward_quant_params {
   convolution_forward_quant_params() {}
 
   convolution_forward_quant_params(tensor&& src_zero_point)
-                                  : _src_zero_point(src_zero_point) {}
+                                  : _src_zero_point(std::move(src_zero_point)) {}
 
   // Due to oneDNN's mechanism of conv, zero point is set to
   // runtime value when weight is prepacked without input info in framework.
@@ -21,8 +21,8 @@ struct convolution_forward_params {
       dnnl::convolution_forward::primitive_desc&& pd,
       dnnl::convolution_forward&& primitive,
       int groups)
-      : _pd(pd),
-        _primitive(primitive),
+      : _pd(std::move(pd)),
+        _primitive(std::move(primitive)),
         _groups(groups),
         _bias_attr(attr_t()) {}
 
@@ -31,10 +31,10 @@ struct convolution_forward_params {
       dnnl::convolution_forward&& primitive,
       int groups,
       attr_t&& bias_attr)
-      : _pd(pd),
-        _primitive(primitive),
+      : _pd(std::move(pd)),
+        _primitive(std::move(primitive)),
         _groups(groups),
-        _bias_attr(bias_attr) {}
+        _bias_attr(std::move(bias_attr)) {}
 
   dnnl::convolution_forward::primitive_desc _pd;
   dnnl::convolution_forward _primitive;

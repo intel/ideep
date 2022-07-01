@@ -6,12 +6,12 @@ struct convolution_forward_quant_params {
   convolution_forward_quant_params() {}
 
   convolution_forward_quant_params(tensor&& src_zero_point)
-                                  : _src_zero_point(std::move(src_zero_point)) {}
+                                  : src_zero_point(std::move(src_zero_point)) {}
 
   // Due to oneDNN's mechanism of conv, zero point is set to
   // runtime value when weight is prepacked without input info in framework.
   // So, the true zero point is set at primitive execution time
-  tensor _src_zero_point;
+  tensor src_zero_point;
 };
 
 struct convolution_forward_params {
@@ -21,27 +21,27 @@ struct convolution_forward_params {
       dnnl::convolution_forward::primitive_desc&& pd,
       dnnl::convolution_forward&& primitive,
       int groups)
-      : _pd(std::move(pd)),
-        _primitive(std::move(primitive)),
-        _groups(groups),
-        _bias_attr(attr_t()) {}
+      : pd(std::move(pd)),
+        primitive(std::move(primitive)),
+        groups(groups),
+        bias_attr(attr_t()) {}
 
   convolution_forward_params(
       dnnl::convolution_forward::primitive_desc&& pd,
       dnnl::convolution_forward&& primitive,
       int groups,
       attr_t&& bias_attr)
-      : _pd(std::move(pd)),
-        _primitive(std::move(primitive)),
-        _groups(groups),
-        _bias_attr(std::move(bias_attr)) {}
+      : pd(std::move(pd)),
+        primitive(std::move(primitive)),
+        groups(groups),
+        bias_attr(std::move(bias_attr)) {}
 
-  dnnl::convolution_forward::primitive_desc _pd;
-  dnnl::convolution_forward _primitive;
-  int _groups;
-  attr_t _bias_attr;
+  dnnl::convolution_forward::primitive_desc pd;
+  dnnl::convolution_forward primitive;
+  int groups;
+  attr_t bias_attr;
   // Param for static quantization
-  std::shared_ptr<convolution_forward_quant_params> _sq_param_ptr;
+  std::shared_ptr<convolution_forward_quant_params> sq_param_ptr;
 
   // Now we create scratchpad in do_compute
   // tensor scratchpad;
@@ -744,6 +744,66 @@ struct convolution_forward
   }
 
   // DEPRECATED
+  // 2-in-1 compute (prepare & compute) with bias
+  // Bias is not used if it is empty.
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales = scale_t(),
+                      const scale_t& weights_scales = scale_t(),
+                      const scale_t& dst_scales = scale_t(),
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_dispatch</*with_bias=*/false>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      compute_dispatch</*with_bias=*/true>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
+  }
+
+  // DEPRECATED
+  // 2-in-1 compute (prepare & compute) without bias
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales = scale_t(),
+                      const scale_t& weights_scales = scale_t(),
+                      const scale_t& dst_scales = scale_t(),
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_dispatch</*with_bias=*/false>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // DEPRECATED
   // Prepare with bias.
   // Bias is not used if it is empty.
   // Zero points are set to tensor for quantization
@@ -1238,7 +1298,7 @@ private:
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
 
     param = {std::move(pd), std::move(primitive), groups, std::move(bias_attr)};
-    param._sq_param_ptr =
+    param.sq_param_ptr =
         std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
   }
 
@@ -1251,40 +1311,39 @@ private:
                          const tensor& weights,
                          const tensor& bias,
                          tensor& dst) {
-    auto scratchpad = tensor(param._pd.scratchpad_desc());
+    auto scratchpad = tensor(param.pd.scratchpad_desc());
     static tensor empty_src_zero_point;
-    auto& src_zero_point = param._sq_param_ptr ?
-        param._sq_param_ptr->_src_zero_point : empty_src_zero_point;
+    auto& src_zero_point = param.sq_param_ptr ?
+        param.sq_param_ptr->src_zero_point : empty_src_zero_point;
 
     auto& expected_src = reorder_src ?
-        src.reorder_if_differ_in(param._pd.src_desc()) : src;
-    auto&& grouped_weights = weights.make_grouped_weights(param._groups);
+        src.reorder_if_differ_in(param.pd.src_desc()) : src;
+    auto&& grouped_weights = weights.make_grouped_weights(param.groups);
     auto&& expected_weights = reorder_weight ?
-        grouped_weights.reorder_if_differ_in(param._pd.weights_desc()) :
+        grouped_weights.reorder_if_differ_in(param.pd.weights_desc()) :
         grouped_weights;
     if (reorder_src) {
-      dst.reinit_if_possible(param._pd.dst_desc());
+      dst.reinit_if_possible(param.pd.dst_desc());
     }
+    auto& primitive = param.primitive;
     if (with_bias) {
       auto& expected_bias = reorder_weight ?
-          bias.reorder_if_differ_in(param._pd.bias_desc(), param._bias_attr) :
+          bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
           bias;
-      param._primitive.execute(
-                    stream::default_stream(),
-                    {{DNNL_ARG_SRC, expected_src},
-                     {DNNL_ARG_WEIGHTS, expected_weights},
-                     {DNNL_ARG_BIAS, expected_bias},
-                     {DNNL_ARG_DST, dst},
-                     {DNNL_ARG_SCRATCHPAD, scratchpad},
-                     {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
     } else {
-      param._primitive.execute(
-                    stream::default_stream(),
-                    {{DNNL_ARG_SRC, expected_src},
-                     {DNNL_ARG_WEIGHTS, expected_weights},
-                     {DNNL_ARG_DST, dst},
-                     {DNNL_ARG_SCRATCHPAD, scratchpad},
-                     {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
     }
   }
 
@@ -1296,7 +1355,8 @@ private:
                                 const tensor &weights,
                                 const tensor &bias,
                                 tensor &dst) {
-    auto &pd = param._pd;
+    auto &pd = param.pd;
+    auto& primitive = param.primitive;
     auto scratchpad = tensor(pd.scratchpad_desc());
     auto& expected_src = reorder_src ?
         src.reorder_if_differ_in(pd.src_desc()) :
@@ -1306,7 +1366,7 @@ private:
     auto& expected_other = reorder_src ?
         other.reorder_if_differ_in(pd.dst_desc()) :
         other;
-    auto&& grouped_weights = weights.make_grouped_weights(param._groups);
+    auto&& grouped_weights = weights.make_grouped_weights(param.groups);
     auto&& expected_weights = reorder_weight ?
         grouped_weights.reorder_if_differ_in(pd.weights_desc()) :
         grouped_weights;
@@ -1315,9 +1375,9 @@ private:
     }
     if (with_bias) {
       auto& expected_bias = reorder_weight ?
-          bias.reorder_if_differ_in(pd.bias_desc(), param._bias_attr) :
+          bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr) :
           bias;
-      super(pd).execute(stream::default_stream(),
+      primitive.execute(stream::default_stream(),
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_BIAS, expected_bias},
@@ -1326,7 +1386,7 @@ private:
                          {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
                           expected_other}});
     } else {
-      super(pd).execute(stream::default_stream(),
+      primitive.execute(stream::default_stream(),
                         {{DNNL_ARG_SRC, expected_src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_DST, dst},

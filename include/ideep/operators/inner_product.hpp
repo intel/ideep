@@ -3,43 +3,107 @@
 
 namespace ideep {
 
+// Note:
+// Inner product does not support quantization.
+// Please switch to matmul for quantized *mm ops
+
+struct inner_product_forward_params {
+  dnnl::inner_product_forward::primitive_desc _pd;
+  dnnl::inner_product_forward _primitive;
+  attr_t _op_attr;
+  attr_t _src_attr;
+  attr_t _weights_attr;
+  attr_t _bias_attr;
+
+  inner_product_forward_params() {}
+
+  inner_product_forward_params(
+      dnnl::inner_product_forward::primitive_desc&& pd,
+      dnnl::inner_product_forward&& primitive,
+      attr_t&& op_attr,
+      attr_t&& src_attr,
+      attr_t&& weights_attr,
+      attr_t&& bias_attr)
+      : _pd(std::move(pd)),
+        _primitive(std::move(primitive)),
+        _op_attr(std::move(op_attr)),
+        _src_attr(std::move(src_attr)),
+        _weights_attr(std::move(weights_attr)),
+        _bias_attr(std::move(bias_attr)) {}
+};
+
 struct inner_product_forward
     : public dnnl::inner_product_forward,
       utils::computation_cache<dnnl::inner_product_forward::primitive_desc> {
   using super = dnnl::inner_product_forward;
 
+  // 2-in-1 compute, with bias
   static void compute(const tensor& src,
                       const tensor& weights,
                       const tensor& bias,
                       tensor& dst,
-                      const scale_t& src_scales = scale_t(),
-                      const scale_t& weights_scales = scale_t(),
-                      const scale_t& dst_scales = scale_t(),
                       const attr_t& attr = attr_t(),
                       const prop_kind aprop_kind = prop_kind::forward,
-                      const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(src, weights, bias, dst, src_scales,
-                                     weights_scales, dst_scales, attr,
-                                     aprop_kind, alowp_kind, aengine);
+    compute_impl</*with_bias=*/true>(src, weights, bias, dst, attr,
+                                     aprop_kind, aengine);
   }
 
+  // 2-in-1 compute, without bias
   static void compute(const tensor& src,
                       const tensor& weights,
                       tensor& dst,
-                      const scale_t& src_scales = scale_t(),
-                      const scale_t& weights_scales = scale_t(),
-                      const scale_t& dst_scales = scale_t(),
                       const attr_t& attr = attr_t(),
                       const prop_kind aprop_kind = prop_kind::forward,
-                      const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, src_scales,
-                                      weights_scales, dst_scales, attr,
-                                      aprop_kind, alowp_kind, aengine);
+    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, attr,
+                                      aprop_kind, aengine);
   }
 
+  // Prepare with bias
+  static void prepare(inner_product_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      tensor& dst,
+                      const attr_t& attr = attr_t(),
+                      const prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    do_prepare</*with_bias=*/true>(param, src, weights, bias, dst, attr,
+                                   aprop_kind, aengine);
+  }
+
+  // Prepare without bias
+  static void prepare(inner_product_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      tensor& dst,
+                      const attr_t& attr = attr_t(),
+                      const prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    do_prepare</*with_bias=*/false>(param, src, weights, dummy_bias, dst, attr,
+                                   aprop_kind, aengine);
+  }
+
+  // Compute with prepared param, with bias
+  static void compute(const inner_product_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      tensor& dst) {
+    do_compute</*with_bias=*/true>(param, src, weights, bias, dst);
+  }
+
+  // Compute with prepared param, without bias
+  static void compute(const inner_product_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      tensor& dst) {
+    static tensor dummy_bias;
+    do_compute</*with_bias=*/false>(param, src, weights, dummy_bias, dst);
+  }
 
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
@@ -101,24 +165,25 @@ private:
                            const tensor& weights,
                            const tensor& bias,
                            tensor& dst,
-                           const scale_t& src_scales,
-                           const scale_t& weights_scales,
-                           const scale_t& dst_scales,
                            const attr_t& attr,
                            const prop_kind aprop_kind,
-                           const lowp_kind alowp_kind,
                            const engine& aengine) {
+    inner_product_forward_params param;
     // workaround: src and weights from caffe2 may have different dims.
     // It would be better for caffe2 to do this reshape anyway.
-    auto src_ = src;
     if (src.ndims() != weights.ndims()) {
+      auto src_ = src;
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
+      do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind, aengine);
+      do_compute_<with_bias>(param, src_, weights, bias, dst);
+    } else {
+      do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
+      do_compute_<with_bias>(param, src, weights, bias, dst);
     }
-    compute_impl_<with_bias>(src_, weights, bias, dst, src_scales,
-                             weights_scales, dst_scales, attr, aprop_kind,
-                             alowp_kind, aengine);
+    // compute_impl_<with_bias>(src_, weights, bias, dst, attr,
+                             // aprop_kind, aengine);
   }
 
   template <bool with_bias>
@@ -126,12 +191,8 @@ private:
                             const tensor& weights,
                             const tensor& bias,
                             tensor& dst,
-                            const scale_t& src_scales,
-                            const scale_t& weights_scales,
-                            const scale_t& dst_scales,
                             const attr_t& attr,
                             const prop_kind aprop_kind,
-                            const lowp_kind alowp_kind,
                             const engine& aengine) {
     tensor::desc src_desc, weights_desc, bias_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
@@ -139,86 +200,27 @@ private:
     data_type dst_data_type;
     auto dst_dims = {src.get_dim(0), weights.get_dim(0)};
 
-    auto weights_scales_in =
-        weights.has_scale() ? weights.get_scale() : weights_scales;
+    op_attr = attr;
+    if (src.has_scale()) {
+      auto src_scale = src.get_scale();
+      src_scale[0] = 1.f / src_scale[0];
+      src_attr = {0, src_scale};
+    }
 
-    // TODO(xpz): Remove int8 inner product implementation. We are switching to
-    // matmul for quantized *mm ops
-    if (!weights_scales_in.empty()) {
-      IDEEP_ENFORCE(alowp_kind == u8s8 || alowp_kind == s8s8,
-                    "Unsupported lowp kind");
+    IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
+                                data_type::f32, data_type::bf16),
+            "Incorrect data type in weights");
 
-      auto src_scales_in =
-          src.has_scale() ? src.get_scale()
-                          : src_scales.empty() ? IDEEP_DEF_SCALE : src_scales;
-
-      src_desc = {src.get_dims(),
-                  alowp_kind == u8s8 ? data_type::u8 : data_type::s8,
-                  tag::any};
-      if (src.get_data_type() == data_type::f32) {
-        src_attr = {0, src_scales_in};
-      }
-
-      int scale_size = weights_scales_in.size() > 1 ? weights.get_dim(0) : 1;
-
-      weights_desc = {weights.get_dims(), data_type::s8, tag::any};
-      if (weights.get_data_type() == data_type::f32) {
-        weights_attr = {utils::tensor_scale_mask(scale_size, false),
-                        weights_scales_in};
-      }
-
-      // determine dst data type
-      if (dst.get_data_type() != data_type::undef) {
-        dst_data_type = dst.get_data_type();
-      } else if (dst_scales.empty() || dst_scales == IDEEP_DEF_SCALE) {
-        dst_data_type = data_type::f32;
-      } else if (attr.non_negitive_output()) {
-        dst_data_type = data_type::u8;
-      } else {
-        dst_data_type = data_type::s8;
-      }
-
-      // fill primitive attr
-      scale_t op_scales(scale_size), bias_scales(scale_size);
-      dst_scales_in = dst_scales.empty() || dst_data_type == data_type::f32
-                          ? IDEEP_DEF_SCALE
-                          : dst_scales;
-      for (int i = 0; i < scale_size; i++) {
-        bias_scales[i] = src_scales_in[0] * weights_scales_in[i];
-        op_scales[i] = dst_scales_in[0] / bias_scales[i];
-      }
-      op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
-
-      if (with_bias) {
-        bias_desc = {bias.get_dims(), data_type::s32, format_tag::any};
-        if (bias.get_data_type() == data_type::f32) {
-          bias_attr = {utils::tensor_scale_mask(scale_size, false),
-                       bias_scales};
-        }
-      }
-    } else {
-      op_attr = attr;
-      if (src.has_scale()) {
-        auto src_scale = src.get_scale();
-        src_scale[0] = 1.f / src_scale[0];
-        src_attr = {0, src_scale};
-      }
-
-      IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
+    // align weights data type with src
+    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                           : data_type::f32;
+    src_desc = {src.get_dims(), dst_data_type, format_tag::any};
+    weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
+    if (with_bias) {
+      IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
                                   data_type::f32, data_type::bf16),
-              "Incorrect data type in weights");
-
-      // align weights data type with src
-      dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
-                                                             : data_type::f32;
-      src_desc = {src.get_dims(), dst_data_type, format_tag::any};
-      weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
-      if (with_bias) {
-        IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
-                                    data_type::f32, data_type::bf16),
-                      "Incorrect data type in bias");
-        bias_desc = bias.get_desc().to_format_any();
-      }
+                    "Incorrect data type in bias");
+      bias_desc = bias.get_desc().to_format_any();
     }
 
     tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
@@ -236,12 +238,12 @@ private:
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
     auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-  
+
     tensor expected_dst;
     if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
       // If dst buffer are not given by user or user given dst buffer are not under expected format
-      // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for 
-      // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect) 
+      // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for
+      // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect)
       expected_dst.init(pd.dst_desc());
       if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
         // We need copy the content of given buffer if ip is fused with sum
@@ -250,10 +252,6 @@ private:
     } else {
       // The format of given dst buffer is expected
       expected_dst = dst;
-    }
-
-    if (!dst_scales.empty() && utils::one_of(dst.get_data_type(), data_type::u8, data_type::s8)) {  
-      expected_dst.set_scale(dst_scales_in);
     }
 
     tensor scratchpad(pd.scratchpad_desc());
@@ -274,13 +272,173 @@ private:
                          {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
 
-    if (attr.non_negitive_output() && expected_dst.get_data_type() == data_type::s8) {
-      expected_dst.to_type(data_type::u8);
-    }
     // reorder back to dst's buffer if needed
-    if (dst.is_empty() || 
-        // when dst is empty, expect return buffer allocate by ideep  
-        dst.get_desc() == expected_dst.get_desc() || 
+    if (dst.is_empty() ||
+        // when dst is empty, expect return buffer allocate by ideep
+        dst.get_desc() == expected_dst.get_desc() ||
+        // dst and expected_dst is the same under this case
+        !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+        // for caffe2 caller, get an uncorrect size dst from caller, can return buffer allocate by ideep
+      dst =  expected_dst;
+    } else {
+      dst.feed_from(expected_dst);
+    }
+  }
+
+  template <bool with_bias>
+  static void do_prepare(
+      inner_product_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const attr_t& attr,
+      const prop_kind aprop_kind,
+      const engine& aengine) {
+    // workaround: src and weights from caffe2 may have different dims.
+    // It would be better for caffe2 to do this reshape anyway.
+    if (src.ndims() != weights.ndims()) {
+      auto src_ = src;
+      auto new_dims = weights.get_dims();
+      new_dims[0] = src.get_dim(0);
+      src_.reshape(new_dims);
+      do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind, aengine);
+    } else {
+      do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
+    }
+  }
+
+  template <bool with_bias>
+  static void do_prepare_(
+      inner_product_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const attr_t& attr,
+      const prop_kind aprop_kind,
+      const engine& aengine) {
+    tensor::desc src_desc, weights_desc, bias_desc;
+    attr_t& op_attr = param._op_attr;
+    attr_t& src_attr = param._src_attr;
+    attr_t& weights_attr = param._weights_attr;
+    attr_t& bias_attr = param._bias_attr;
+    scale_t dst_scales_in;
+    data_type dst_data_type;
+    auto dst_dims = {src.get_dim(0), weights.get_dim(0)};
+
+    op_attr = attr;
+    if (src.has_scale()) {
+      auto src_scale = src.get_scale();
+      src_scale[0] = 1.f / src_scale[0];
+      src_attr = {0, src_scale};
+    }
+
+    IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
+                                data_type::f32, data_type::bf16),
+            "Incorrect data type in weights");
+
+    // align weights data type with src
+    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                           : data_type::f32;
+    src_desc = {src.get_dims(), dst_data_type, format_tag::any};
+    weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
+    if (with_bias) {
+      IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
+                                  data_type::f32, data_type::bf16),
+                    "Incorrect data type in bias");
+      bias_desc = bias.get_desc().to_format_any();
+    }
+
+    tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
+
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
+    param._pd = get_primitive_desc(
+        src_desc,
+        weights_desc,
+        dst_desc,
+        bias_desc,
+        with_bias,
+        op_attr,
+        aprop_kind);
+    param._primitive = std::move(super(param._pd));
+  }
+
+  template <bool with_bias>
+  static void do_compute(
+      const inner_product_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
+    // workaround: src and weights from caffe2 may have different dims.
+    // It would be better for caffe2 to do this reshape anyway.
+    if (src.ndims() != weights.ndims()) {
+      auto src_ = src;
+      auto new_dims = weights.get_dims();
+      new_dims[0] = src.get_dim(0);
+      src_.reshape(new_dims);
+      do_compute_<with_bias>(param, src_, weights, bias, dst);
+    } else {
+      do_compute_<with_bias>(param, src, weights, bias, dst);
+    }
+  }
+
+  template <bool with_bias>
+  static void do_compute_(
+      const inner_product_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
+    auto& pd = param._pd;
+    auto& primitive = param._primitive;
+    auto& op_attr = param._op_attr;
+    auto& src_attr = param._src_attr;
+    auto& weights_attr = param._weights_attr;
+    auto& bias_attr = param._bias_attr;
+
+    auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
+    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
+
+    tensor expected_dst;
+    if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
+      // If dst buffer are not given by user or user given dst buffer are not under expected format
+      // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for
+      // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect)
+      expected_dst.init(pd.dst_desc());
+      if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
+        // We need copy the content of given buffer if ip is fused with sum
+        expected_dst.feed_from(dst);
+      }
+    } else {
+      // The format of given dst buffer is expected
+      expected_dst = dst;
+    }
+
+    tensor scratchpad(pd.scratchpad_desc());
+
+    if (with_bias){
+      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, expected_dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    } else {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, expected_dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    }
+
+    // reorder back to dst's buffer if needed
+    if (dst.is_empty() ||
+        // when dst is empty, expect return buffer allocate by ideep
+        dst.get_desc() == expected_dst.get_desc() ||
         // dst and expected_dst is the same under this case
         !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
         // for caffe2 caller, get an uncorrect size dst from caller, can return buffer allocate by ideep
@@ -349,8 +507,8 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                        {DNNL_ARG_DIFF_SRC, expected_diff_src},
                        {DNNL_ARG_SCRATCHPAD, scratchpad}});
     // reorder back to diff_src's buffer if needed
-    if (diff_src.is_empty() || 
-         diff_src.get_desc() == expected_diff_src.get_desc() || 
+    if (diff_src.is_empty() ||
+         diff_src.get_desc() == expected_diff_src.get_desc() ||
          !diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc())){
       diff_src = expected_diff_src;
     } else {
@@ -449,8 +607,8 @@ private:
 
     super(pd).execute(stream::default_stream(), args);
       // reorder back to diff_weights's buffer if needed
-    if (diff_weights.is_empty() || 
-         diff_weights.get_desc() == expected_diff_weights.get_desc() || 
+    if (diff_weights.is_empty() ||
+         diff_weights.get_desc() == expected_diff_weights.get_desc() ||
          !diff_weights.get_desc().has_same_shape_as(expected_diff_weights.get_desc())){
       diff_weights = expected_diff_weights;
     } else {

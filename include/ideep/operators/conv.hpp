@@ -1182,9 +1182,12 @@ private:
     conv_deconv_utils::obtain_runtime_zero_point(
       src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
-    convolution_forward_params params(std::move(pd), std::move(primitive), groups, std::move(bias_attr));
-    convolution_forward_quant_params quant_param(std::move(src_zp_tensor), std::move(dst_scales));
-    do_compute<with_bias, reorder_src, reorder_weight>(params, quant_param, src, weights, bias, dst);
+    convolution_forward_params params(
+        std::move(pd), std::move(primitive), groups, std::move(bias_attr));
+    params.sq_param_ptr =
+        std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
+    IDEEP_ENFORCE(params.sq_param_ptr, "Failed to allocate memory for parameters");
+    do_compute<with_bias, reorder_src, reorder_weight>(params, src, weights, bias, dst);
   }
 
   // For fp32 with binary post-op

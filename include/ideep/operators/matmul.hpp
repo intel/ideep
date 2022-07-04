@@ -336,7 +336,6 @@ struct matmul_forward : public dnnl::matmul,
   template <bool reorder_weight = true>
   static inline void compute(
       const matmul_forward_params& param,
-      const matmul_forward_dyn_quant_params& dq_param,
       const tensor& src,
       const tensor& weights,
       tensor& dst,
@@ -847,7 +846,16 @@ private:
     tensor::desc &src_desc = param.dq_param_ptr->src_desc;
     attr_t& op_attr = param.op_attr;
     attr_t src_attr;
-    op_attr = attr;
+    /* Workaround:
+     * attr_t is shallow copied by operator '=', so attr will also
+     * be modified if we make changes to op_attr.
+     * For dynamic quantization, if this API is called before 2-in-1 compute()
+     * and attr is copied here, then attr would be modified and the 2-in-1 compute()
+     * will give wrong result. So we cannot make a copy of attr here.
+     * For now, we only need post op info in attr. So we just get and set post op.
+     */
+    // op_attr = attr;
+    op_attr.set_post_ops(attr.get_post_ops());
 
     tensor::dims src_dims = src.get_dims();
     tensor::dims dst_dims = {src_dims[0], weights.get_dim(1)};

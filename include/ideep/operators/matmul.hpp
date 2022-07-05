@@ -5,10 +5,10 @@ namespace ideep {
 
 // Parameters for dynamic quantization
 struct matmul_forward_dyn_quant_params {
-  scale_t _weight_scales; // to compute output scales
-  tensor _wei_zero_point_m; // for matmul computation
-  tensor::desc _src_desc; // to create src tensor
-  dnnl::reorder::primitive _src_reorder; // to reorder src
+  scale_t weight_scales; // to compute output scales
+  tensor wei_zero_point_m; // for matmul computation
+  tensor::desc src_desc; // to create src tensor
+  dnnl::reorder::primitive src_reorder; // to reorder src
 
   matmul_forward_dyn_quant_params() {}
 
@@ -17,21 +17,21 @@ struct matmul_forward_dyn_quant_params {
       tensor&& wei_zero_point_m,
       tensor::desc&& src_desc,
       dnnl::reorder::primitive&& src_reorder)
-      : _weight_scales(std::move(weight_scales)),
-        _wei_zero_point_m(std::move(wei_zero_point_m)),
-        _src_desc(std::move(src_desc)),
-        _src_reorder(std::move(src_reorder)) {}
+      : weight_scales(std::move(weight_scales)),
+        wei_zero_point_m(std::move(wei_zero_point_m)),
+        src_desc(std::move(src_desc)),
+        src_reorder(std::move(src_reorder)) {}
 };
 
 // Common parameters for computation
 struct matmul_forward_params {
-  dnnl::matmul::primitive_desc _pd;
-  dnnl::matmul _primitive;
-  attr_t _op_attr;
-  attr_t _src_attr;
-  attr_t _weights_attr;
-  attr_t _bias_attr; // contains requantization scales for bias
-  std::shared_ptr<matmul_forward_dyn_quant_params> _dq_param_ptr;
+  dnnl::matmul::primitive_desc pd;
+  dnnl::matmul primitive;
+  attr_t op_attr;
+  attr_t src_attr;
+  attr_t weights_attr;
+  attr_t bias_attr; // contains requantization scales for bias
+  std::shared_ptr<matmul_forward_dyn_quant_params> dq_param_ptr;
 
   matmul_forward_params() {}
 
@@ -41,12 +41,12 @@ struct matmul_forward_params {
       attr_t&& src_attr,
       attr_t&& weights_attr,
       attr_t&& bias_attr)
-      : _pd(std::move(pd)),
-        _op_attr(std::move(op_attr)),
-        _src_attr(std::move(src_attr)),
-        _weights_attr(std::move(weights_attr)),
-        _bias_attr(std::move(bias_attr)) {
-    _primitive = dnnl::matmul(_pd);
+      : pd(std::move(pd)),
+        op_attr(std::move(op_attr)),
+        src_attr(std::move(src_attr)),
+        weights_attr(std::move(weights_attr)),
+        bias_attr(std::move(bias_attr)) {
+    primitive = dnnl::matmul(pd);
   }
 };
 
@@ -336,7 +336,6 @@ struct matmul_forward : public dnnl::matmul,
   template <bool reorder_weight = true>
   static inline void compute(
       const matmul_forward_params& param,
-      const matmul_forward_dyn_quant_params& dq_param,
       const tensor& src,
       const tensor& weights,
       tensor& dst,
@@ -600,10 +599,10 @@ private:
     IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
 
     tensor::desc src_desc, weights_desc, bias_desc;
-    attr_t& op_attr = param._op_attr;
-    attr_t& src_attr = param._src_attr;
-    attr_t& weights_attr = param._weights_attr;
-    attr_t& bias_attr = param._bias_attr;
+    attr_t& op_attr = param.op_attr;
+    attr_t& src_attr = param.src_attr;
+    attr_t& weights_attr = param.weights_attr;
+    attr_t& bias_attr = param.bias_attr;
     op_attr = attr;
     scale_t dst_scales_in;
     auto dst_data_type = data_type::f32;
@@ -656,7 +655,7 @@ private:
         op_attr,
         with_bias,
         omp_get_max_threads());
-    param._pd = fetch_or_create(key, [&]() {
+    param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
             {src_desc, weights_desc, bias_desc, dst_desc}, op_attr, aengine);
@@ -665,7 +664,7 @@ private:
             {src_desc, weights_desc, dst_desc}, op_attr, aengine);
       }
     });
-    param._primitive = std::move(super(param._pd));
+    param.primitive = std::move(super(param.pd));
  }
 
   // For static int8 op (int8 * int8 -> int8)
@@ -690,10 +689,10 @@ private:
     IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
 
     tensor::desc src_desc, weights_desc, bias_desc;
-    attr_t& op_attr = param._op_attr;
-    attr_t& src_attr = param._src_attr;
-    attr_t& weights_attr = param._weights_attr;
-    attr_t& bias_attr = param._bias_attr;
+    attr_t& op_attr = param.op_attr;
+    attr_t& src_attr = param.src_attr;
+    attr_t& weights_attr = param.weights_attr;
+    attr_t& bias_attr = param.bias_attr;
     op_attr = attr;
     scale_t dst_scales_in;
     auto dst_data_type = data_type::u8;
@@ -806,7 +805,7 @@ private:
         op_attr,
         with_bias,
         omp_get_max_threads());
-    param._pd = fetch_or_create(key, [&]() {
+    param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
             {src_desc, weights_desc, bias_desc, dst_desc}, op_attr, aengine);
@@ -815,7 +814,7 @@ private:
             {src_desc, weights_desc, dst_desc}, op_attr, aengine);
       }
     });
-    param._primitive = std::move(super(param._pd));
+    param.primitive = std::move(super(param.pd));
  }
 
   // For dynamic int8 op (fp32 * int8 -> fp32)
@@ -839,15 +838,14 @@ private:
      */
 
     IDEEP_ENFORCE(src.ndims() == weights.ndims(), "Invalid dims in src or weights");
-    if (!param._dq_param_ptr) {
-      param._dq_param_ptr = std::make_shared<matmul_forward_dyn_quant_params>();
+    if (!param.dq_param_ptr) {
+      param.dq_param_ptr = std::make_shared<matmul_forward_dyn_quant_params>();
     }
-    IDEEP_ENFORCE(param._dq_param_ptr, "Failed to allocate memory for parameters");
+    IDEEP_ENFORCE(param.dq_param_ptr, "Failed to allocate memory for parameters");
 
-    tensor::desc &src_desc = param._dq_param_ptr->_src_desc;
-    attr_t& op_attr = param._op_attr;
+    tensor::desc &src_desc = param.dq_param_ptr->src_desc;
+    attr_t& op_attr = param.op_attr;
     attr_t src_attr;
-    op_attr = attr;
 
     tensor::dims src_dims = src.get_dims();
     tensor::dims dst_dims = {src_dims[0], weights.get_dim(1)};
@@ -874,7 +872,7 @@ private:
     // For dynamic quantization, bias is applied by post-op add
     // so that overhead of bias reorder is avoided.
     // Need to 'prepend' post-op add to post op list.
-    auto pops = op_attr.get_post_ops();
+    auto pops = attr.get_post_ops();
     dnnl::post_ops new_pops;
     if (with_bias) {
       new_pops.append_binary(dnnl::algorithm::binary_add, bias.get_desc());
@@ -913,15 +911,15 @@ private:
     tensor::desc dst_desc = tensor::desc(dst_dims, dst_type, dst_strides);
 
     // Create pd and primitive
-    param._pd = primitive_desc({src_desc, weights.get_desc(), dst_desc}, op_attr, aengine);
-    param._primitive = super(param._pd);
+    param.pd = primitive_desc({src_desc, weights.get_desc(), dst_desc}, op_attr, aengine);
+    param.primitive = super(param.pd);
 
     // Create src reorder primitive with runtime scales/zero point
     auto src_reorder_pd = dnnl::reorder::primitive_desc(aengine, src.get_desc(), aengine, src_desc, src_attr);
-    param._dq_param_ptr->_src_reorder = dnnl::reorder(src_reorder_pd);
+    param.dq_param_ptr->src_reorder = dnnl::reorder(src_reorder_pd);
 
-    param._dq_param_ptr->_weight_scales = std::move(weights_scales_in);
-    param._dq_param_ptr->_wei_zero_point_m = std::move(wei_zero_point_m);
+    param.dq_param_ptr->weight_scales = std::move(weights_scales_in);
+    param.dq_param_ptr->wei_zero_point_m = std::move(wei_zero_point_m);
  }
 
   // For fp32 and static int8 op (int8 * int8 -> int8)
@@ -935,12 +933,12 @@ private:
       const tensor& weights,
       const tensor& bias,
       tensor& dst) {
-    auto& pd = param._pd;
-    auto& primitive = param._primitive;
-    auto& op_attr = param._op_attr;
-    auto& src_attr = param._src_attr;
-    auto& weights_attr = param._weights_attr;
-    auto& bias_attr = param._bias_attr;
+    auto& pd = param.pd;
+    auto& primitive = param.primitive;
+    auto& op_attr = param.op_attr;
+    auto& src_attr = param.src_attr;
+    auto& weights_attr = param.weights_attr;
+    auto& bias_attr = param.bias_attr;
 
     auto expected_src_desc = pd.src_desc();
     auto expected_wei_desc = pd.weights_desc();
@@ -1039,15 +1037,15 @@ private:
      */
 
     // Get primitive, etc. from param
-    IDEEP_ENFORCE(param._dq_param_ptr, "Parameters for dynamic quantization not found");
-    auto& pd = param._pd;
-    auto& primitive = param._primitive;
-    auto& op_attr = param._op_attr;
-    auto& weights_attr = param._weights_attr;
-    auto& weights_scales_in = param._dq_param_ptr->_weight_scales;
-    auto& expected_src_desc = param._dq_param_ptr->_src_desc;
-    auto& wei_zero_point_m = param._dq_param_ptr->_wei_zero_point_m;
-    auto &src_reorder = param._dq_param_ptr->_src_reorder;
+    IDEEP_ENFORCE(param.dq_param_ptr, "Parameters for dynamic quantization not found");
+    auto& pd = param.pd;
+    auto& primitive = param.primitive;
+    auto& op_attr = param.op_attr;
+    auto& weights_attr = param.weights_attr;
+    auto& weights_scales_in = param.dq_param_ptr->weight_scales;
+    auto& expected_src_desc = param.dq_param_ptr->src_desc;
+    auto& wei_zero_point_m = param.dq_param_ptr->wei_zero_point_m;
+    auto &src_reorder = param.dq_param_ptr->src_reorder;
     auto expected_dst_desc = dst.get_desc();
 
     // Prepare tensor of output scales

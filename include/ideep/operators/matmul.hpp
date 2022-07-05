@@ -846,16 +846,6 @@ private:
     tensor::desc &src_desc = param.dq_param_ptr->src_desc;
     attr_t& op_attr = param.op_attr;
     attr_t src_attr;
-    /* Workaround:
-     * attr_t is shallow copied by operator '=', so attr will also
-     * be modified if we make changes to op_attr.
-     * For dynamic quantization, if this API is called before 2-in-1 compute()
-     * and attr is copied here, then attr would be modified and the 2-in-1 compute()
-     * will give wrong result. So we cannot make a copy of attr here.
-     * For now, we only need post op info in attr. So we just get and set post op.
-     */
-    // op_attr = attr;
-    op_attr.set_post_ops(attr.get_post_ops());
 
     tensor::dims src_dims = src.get_dims();
     tensor::dims dst_dims = {src_dims[0], weights.get_dim(1)};
@@ -882,7 +872,7 @@ private:
     // For dynamic quantization, bias is applied by post-op add
     // so that overhead of bias reorder is avoided.
     // Need to 'prepend' post-op add to post op list.
-    auto pops = op_attr.get_post_ops();
+    auto pops = attr.get_post_ops();
     dnnl::post_ops new_pops;
     if (with_bias) {
       new_pops.append_binary(dnnl::algorithm::binary_add, bias.get_desc());

@@ -968,8 +968,8 @@ private:
       }
       if (with_bias){
         auto& expected_bias = reorder_weight ?
-                             bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
-                             bias;
+                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
+                              bias;
         primitive.execute(stream::default_stream(),
                           {{DNNL_ARG_SRC, expected_src},
                            {DNNL_ARG_WEIGHTS, expected_weights},
@@ -995,8 +995,8 @@ private:
       tensor& expected_dst = dst;
       if (with_bias){
         auto& expected_bias = reorder_weight ?
-                             bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
-                             bias;
+                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
+                              bias;
         primitive.execute(stream::default_stream(),
                           {{DNNL_ARG_SRC, expected_src},
                            {DNNL_ARG_WEIGHTS, expected_weights},

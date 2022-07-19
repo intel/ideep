@@ -24,20 +24,20 @@
 #ifndef _IDEEP_HPP
 #define _IDEEP_HPP
 
-#include <cstdlib>
 #include <algorithm>
-#include <memory>
-#include <map>
-#include <vector>
-#include <iterator>
-#include <string>
+#include <cstdlib>
 #include <cstring>
-#include <numeric>
 #include <functional>
 #include <iostream>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <numeric>
+#include <string>
+#include <vector>
 
 #include "ideep/abstract_types.hpp"
-#include "ideep/tensor.hpp"
 #include "ideep/computations.hpp"
+#include "ideep/tensor.hpp"
 
 #endif

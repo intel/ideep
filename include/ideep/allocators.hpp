@@ -7,7 +7,7 @@ namespace ideep {
 namespace utils {
 
 class allocator {
-public:
+ public:
   constexpr static size_t tensor_memalignment = 4096;
 
   static char* malloc(size_t size) {
@@ -30,6 +30,6 @@ public:
   }
 };
 
-}
-}
+} // namespace utils
+} // namespace ideep
 #endif

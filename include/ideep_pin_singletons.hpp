@@ -4,7 +4,6 @@
 #include "ideep.hpp"
 #include "mkldnn_compat.hpp"
 
-
 namespace ideep {
 
 engine& engine::cpu_engine() {
@@ -18,15 +17,16 @@ engine& engine::gpu_engine() {
 }
 
 struct RegisterEngineAllocator {
-  RegisterEngineAllocator(engine& eng,
-                          const std::function<void*(size_t)>& malloc,
-                          const std::function<void(void*)>& free) {
+  RegisterEngineAllocator(
+      engine& eng,
+      const std::function<void*(size_t)>& malloc,
+      const std::function<void(void*)>& free) {
     // change runtime flag start with "MKLDNN_" to "DNNL_"
     EnvSetter env_setter;
     eng.set_allocator(malloc, free);
   }
 };
 
-}
+} // namespace ideep
 
 #endif

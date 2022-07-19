@@ -4,13 +4,13 @@
 namespace ideep {
 
 struct sum : public dnnl::sum {
-
   using super = dnnl::sum;
 
-  static void compute(const scale_t& scales,
-                      const std::vector<tensor>& srcs,
-                      tensor& dst,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const scale_t& scales,
+      const std::vector<tensor>& srcs,
+      tensor& dst,
+      const engine& aengine = engine::cpu_engine()) {
     auto src_descs = utils::fmap(srcs, [](const tensor& t) {
       // "upcast" vector<tensor::desc> to vector<memory::desc>
       return static_cast<memory::desc>(t.get_desc());
@@ -23,7 +23,7 @@ struct sum : public dnnl::sum {
 
     dst.reinit_if_possible(pd.dst_desc());
     tensor scratchpad(pd.scratchpad_desc());
-    exec_args args {{DNNL_ARG_DST, dst}, {DNNL_ARG_SCRATCHPAD, scratchpad}};
+    exec_args args{{DNNL_ARG_DST, dst}, {DNNL_ARG_SCRATCHPAD, scratchpad}};
     for (int i = 0; i < srcs.size(); ++i) {
       args.insert({DNNL_ARG_MULTIPLE_SRC + i, srcs[i]});
     }
@@ -32,6 +32,6 @@ struct sum : public dnnl::sum {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

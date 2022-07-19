@@ -4,8 +4,11 @@
 namespace ideep {
 
 struct dropout_forward {
-  static void compute(const tensor& src, float ratio, tensor& dst,
-                      tensor& mask) {
+  static void compute(
+      const tensor& src,
+      float ratio,
+      tensor& dst,
+      tensor& mask) {
     switch (src.get_data_type()) {
       case data_type::f32:
         compute_impl<float>(src, ratio, dst, mask);
@@ -26,8 +29,11 @@ struct dropout_forward {
 
  private:
   template <typename T>
-  static void compute_impl(const tensor& src, float ratio, tensor& dst,
-                           tensor& mask) {
+  static void compute_impl(
+      const tensor& src,
+      float ratio,
+      tensor& dst,
+      tensor& mask) {
     mask.reinit_if_possible(src.get_desc());
     dst.reinit_if_possible(src.get_desc());
     if (src.has_scale()) {
@@ -44,9 +50,9 @@ struct dropout_forward {
     const auto dst_data = static_cast<T*>(dst.get_data_handle());
 #ifdef _OPENMP
 #if (_OPENMP >= 201307)
-# pragma omp parallel for simd
+#pragma omp parallel for simd
 #else
-# pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
 #endif
 #endif
     for (auto i = 0; i < size; i++) {
@@ -57,8 +63,10 @@ struct dropout_forward {
 };
 
 struct dropout_backward {
-  static void compute(const tensor& mask, const tensor& diff_dst,
-                      tensor& diff_src) {
+  static void compute(
+      const tensor& mask,
+      const tensor& diff_dst,
+      tensor& diff_src) {
     switch (diff_dst.get_data_type()) {
       case data_type::f32:
         compute_impl<float>(mask, diff_dst, diff_src);
@@ -79,8 +87,10 @@ struct dropout_backward {
 
  private:
   template <typename T>
-  static void compute_impl(const tensor& mask, const tensor& diff_dst,
-                           tensor& diff_src) {
+  static void compute_impl(
+      const tensor& mask,
+      const tensor& diff_dst,
+      tensor& diff_src) {
     diff_src.reinit_if_possible(diff_dst.get_desc());
 
     const auto size = mask.get_size() / sizeof(T);
@@ -96,6 +106,6 @@ struct dropout_backward {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

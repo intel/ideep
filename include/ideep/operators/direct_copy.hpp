@@ -13,6 +13,6 @@ struct direct_copy {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

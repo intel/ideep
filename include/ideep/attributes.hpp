@@ -12,14 +12,18 @@ using post_ops = dnnl::post_ops;
 struct attr_t : public dnnl::primitive_attr {
   attr_t() {}
 
-  attr_t(int mask, const scale_t& scales) { set_output_scales(mask, scales); }
+  attr_t(int mask, const scale_t& scales) {
+    set_output_scales(mask, scales);
+  }
 
   std::pair<scale_t, int> get_output_scales() const {
     dnnl_dim_t count;
     int c_mask;
     const float* c_scales;
-    error::wrap_c_api(dnnl_primitive_attr_get_output_scales(
-        get(), &count, &c_mask, &c_scales), "could not get int output scales");
+    error::wrap_c_api(
+        dnnl_primitive_attr_get_output_scales(
+            get(), &count, &c_mask, &c_scales),
+        "could not get int output scales");
     return std::make_pair(scale_t(c_scales, c_scales + count), c_mask);
   }
 
@@ -32,8 +36,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_relu(float scale = 1.0, float alpha = 0.f,
-                          float beta = 0.f) {
+  static attr_t fuse_relu(
+      float scale = 1.0,
+      float alpha = 0.f,
+      float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_relu, alpha, beta);
@@ -41,9 +47,11 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_gelu(float scale = 1.0, float alpha = 0.f,
-                          float beta = 0.f,
-                          algorithm gelu_type = algorithm::eltwise_gelu_erf) {
+  static attr_t fuse_gelu(
+      float scale = 1.0,
+      float alpha = 0.f,
+      float beta = 0.f,
+      algorithm gelu_type = algorithm::eltwise_gelu_erf) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, gelu_type, alpha, beta);
@@ -51,8 +59,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_elu(float scale = 1.0, float alpha = 0.f,
-                         float beta = 1.0) {
+  static attr_t fuse_elu(
+      float scale = 1.0,
+      float alpha = 0.f,
+      float beta = 1.0) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_elu, alpha, beta);
@@ -60,8 +70,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_sigmoid(float scale = 1.0, float alpha = 1.0,
-                             float beta = 0.f) {
+  static attr_t fuse_sigmoid(
+      float scale = 1.0,
+      float alpha = 1.0,
+      float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_logistic, alpha, beta);
@@ -69,8 +81,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_swish(float scale = 1.0, float alpha = 1.0,
-                           float beta = 0.f) {
+  static attr_t fuse_swish(
+      float scale = 1.0,
+      float alpha = 1.0,
+      float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_swish, alpha, beta);
@@ -78,8 +92,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_tanh(float scale = 1.0, float alpha = 0.f,
-                          float beta = 0.f) {
+  static attr_t fuse_tanh(
+      float scale = 1.0,
+      float alpha = 0.f,
+      float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_tanh, alpha, beta);
@@ -87,8 +103,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_mish(float scale = 1.0, float alpha = 1.0,
-                          float beta = 0.f) {
+  static attr_t fuse_mish(
+      float scale = 1.0,
+      float alpha = 1.0,
+      float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_mish, alpha, beta);
@@ -96,8 +114,11 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t residual(float sum_scale = 1.0, float relu_scale = 1.0,
-                         float alpha = 0.f, float beta = 0.f) {
+  static attr_t residual(
+      float sum_scale = 1.0,
+      float relu_scale = 1.0,
+      float alpha = 0.f,
+      float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_sum(sum_scale);
@@ -182,13 +203,13 @@ struct attr_t : public dnnl::primitive_attr {
   void to_bytes(utils::bytestring& bytes) const {
     // encode post ops
     auto num_ops = get_post_ops().len();
-    for (int i = 0; i < num_ops; i ++) {
+    for (int i = 0; i < num_ops; i++) {
       kind akind;
       algorithm alg = algorithm::undef;
       float scale = 1.0, alpha = 1.0, beta = 0.0;
       std::tie(akind, scale, alpha, beta, alg) = get_params(i);
 
-      switch(akind) {
+      switch (akind) {
         case kind::sum:
           utils::to_bytes(bytes, akind);
           bytes.append(1, '.');
@@ -224,6 +245,6 @@ struct attr_t : public dnnl::primitive_attr {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

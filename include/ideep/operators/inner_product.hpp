@@ -88,6 +88,10 @@ struct inner_product_forward
   }
 
   // Compute with prepared param, with bias
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const inner_product_forward_params& param,
                       const tensor& src,
                       const tensor& weights,
@@ -97,6 +101,10 @@ struct inner_product_forward
   }
 
   // Compute with prepared param, without bias
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(const inner_product_forward_params& param,
                       const tensor& src,
                       const tensor& weights,
@@ -177,111 +185,10 @@ private:
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
       do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind, aengine);
-      do_compute_<with_bias>(param, src_, weights, bias, dst);
+      do_compute_<with_bias, true, true>(param, src_, weights, bias, dst);
     } else {
       do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
-      do_compute_<with_bias>(param, src, weights, bias, dst);
-    }
-    // compute_impl_<with_bias>(src_, weights, bias, dst, attr,
-                             // aprop_kind, aengine);
-  }
-
-  template <bool with_bias>
-  static void compute_impl_(const tensor& src,
-                            const tensor& weights,
-                            const tensor& bias,
-                            tensor& dst,
-                            const attr_t& attr,
-                            const prop_kind aprop_kind,
-                            const engine& aengine) {
-    tensor::desc src_desc, weights_desc, bias_desc;
-    attr_t op_attr, src_attr, weights_attr, bias_attr;
-    scale_t dst_scales_in;
-    data_type dst_data_type;
-    auto dst_dims = {src.get_dim(0), weights.get_dim(0)};
-
-    op_attr = attr;
-    if (src.has_scale()) {
-      auto src_scale = src.get_scale();
-      src_scale[0] = 1.f / src_scale[0];
-      src_attr = {0, src_scale};
-    }
-
-    IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
-                                data_type::f32, data_type::bf16),
-            "Incorrect data type in weights");
-
-    // align weights data type with src
-    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
-                                                           : data_type::f32;
-    src_desc = {src.get_dims(), dst_data_type, format_tag::any};
-    weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
-    if (with_bias) {
-      IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
-                                  data_type::f32, data_type::bf16),
-                    "Incorrect data type in bias");
-      bias_desc = bias.get_desc().to_format_any();
-    }
-
-    tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
-
-    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-
-    auto pd = get_primitive_desc(
-        src_desc,
-        weights_desc,
-        dst_desc,
-        bias_desc,
-        with_bias,
-        op_attr,
-        aprop_kind);
-
-    auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
-    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-
-    tensor expected_dst;
-    if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
-      // If dst buffer are not given by user or user given dst buffer are not under expected format
-      // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for
-      // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect)
-      expected_dst.init(pd.dst_desc());
-      if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
-        // We need copy the content of given buffer if ip is fused with sum
-        expected_dst.feed_from(dst);
-      }
-    } else {
-      // The format of given dst buffer is expected
-      expected_dst = dst;
-    }
-
-    tensor scratchpad(pd.scratchpad_desc());
-
-    if (with_bias){
-      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
-      super(pd).execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, expected_dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    } else {
-      super(pd).execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, expected_dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    }
-
-    // reorder back to dst's buffer if needed
-    if (dst.is_empty() ||
-        // when dst is empty, expect return buffer allocate by ideep
-        dst.get_desc() == expected_dst.get_desc() ||
-        // dst and expected_dst is the same under this case
-        !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
-        // for caffe2 caller, get an uncorrect size dst from caller, can return buffer allocate by ideep
-      dst =  expected_dst;
-    } else {
-      dst.feed_from(expected_dst);
+      do_compute_<with_bias, true, true>(param, src, weights, bias, dst);
     }
   }
 
@@ -365,7 +272,10 @@ private:
     param._primitive = std::move(super(param._pd));
   }
 
-  template <bool with_bias>
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
   static void do_compute(
       const inner_product_forward_params& param,
       const tensor& src,
@@ -379,13 +289,16 @@ private:
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
-      do_compute_<with_bias>(param, src_, weights, bias, dst);
+      do_compute_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, dst);
     } else {
-      do_compute_<with_bias>(param, src, weights, bias, dst);
+      do_compute_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, dst);
     }
   }
 
-  template <bool with_bias>
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
   static void do_compute_(
       const inner_product_forward_params& param,
       const tensor& src,
@@ -399,53 +312,79 @@ private:
     auto& weights_attr = param._weights_attr;
     auto& bias_attr = param._bias_attr;
 
-    auto expected_src = src.reorder_if_differ_in(pd.src_desc(), src_attr);
-    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc(), weights_attr);
-
-    tensor expected_dst;
-    if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
-      // If dst buffer are not given by user or user given dst buffer are not under expected format
-      // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for
-      // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect)
-      expected_dst.init(pd.dst_desc());
-      if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
-        // We need copy the content of given buffer if ip is fused with sum
-        expected_dst.feed_from(dst);
-      }
-    } else {
-      // The format of given dst buffer is expected
-      expected_dst = dst;
-    }
-
+    auto& expected_src = reorder_src ?
+        src.reorder_if_differ_in(pd.src_desc(), src_attr) :
+        src;
+    auto& expected_weights = reorder_weight ?
+        weights.reorder_if_differ_in(pd.weights_desc(), weights_attr) :
+        weights;
     tensor scratchpad(pd.scratchpad_desc());
 
-    if (with_bias){
-      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, expected_dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, expected_dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    if (reorder_src) {
+      tensor expected_dst;
+      if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
+        // If dst buffer are not given by user or user given dst buffer are not under expected format
+        // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for
+        // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect)
+        expected_dst.init(pd.dst_desc());
+        if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
+          // We need copy the content of given buffer if ip is fused with sum
+          expected_dst.feed_from(dst);
+        }
+      } else {
+        // The format of given dst buffer is expected
+        expected_dst = dst;
+      }
+
+      if (with_bias){
+        auto& expected_bias = reorder_weight ?
+                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
+                              bias;
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_BIAS, expected_bias},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      } else {
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      }
+      // reorder back to dst's buffer if needed
+      if (dst.is_empty() ||
+          // when dst is empty, expect return buffer allocate by ideep
+          dst.get_desc() == expected_dst.get_desc() ||
+          // dst and expected_dst is the same under this case
+          !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+          // for caffe2 caller, get an uncorrect size dst from caller, can return buffer allocate by ideep
+        dst =  expected_dst;
+      } else {
+        dst.feed_from(expected_dst);
+      }
+    } else { // reorder_src
+      tensor& expected_dst = dst;
+      if (with_bias){
+        auto& expected_bias = reorder_weight ?
+                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
+                              bias;
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_BIAS, expected_bias},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      } else {
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
+      }
     }
 
-    // reorder back to dst's buffer if needed
-    if (dst.is_empty() ||
-        // when dst is empty, expect return buffer allocate by ideep
-        dst.get_desc() == expected_dst.get_desc() ||
-        // dst and expected_dst is the same under this case
-        !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
-        // for caffe2 caller, get an uncorrect size dst from caller, can return buffer allocate by ideep
-      dst =  expected_dst;
-    } else {
-      dst.feed_from(expected_dst);
-    }
   }
 };
 

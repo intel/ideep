@@ -38,27 +38,63 @@ struct inner_product_forward
   using super = dnnl::inner_product_forward;
 
   // 2-in-1 compute, with bias
-  static void compute(const tensor& src,
-                      const tensor& weights,
-                      const tensor& bias,
-                      tensor& dst,
-                      const attr_t& attr = attr_t(),
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute(const tensor &src,
+                      const tensor &weights,
+                      const tensor &bias,
+                      tensor &dst,
+                      const attr_t &attr = attr_t(),
                       const prop_kind aprop_kind = prop_kind::forward,
-                      const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(src, weights, bias, dst, attr,
-                                     aprop_kind, aengine);
+                      const engine &aengine = engine::cpu_engine()) {
+    compute_impl</*with_bias=*/true, reorder_src, reorder_weight>(
+        src, weights, bias, dst, attr, aprop_kind, aengine);
   }
 
   // 2-in-1 compute, without bias
-  static void compute(const tensor& src,
-                      const tensor& weights,
-                      tensor& dst,
-                      const attr_t& attr = attr_t(),
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute(const tensor &src,
+                      const tensor &weights,
+                      tensor &dst,
+                      const attr_t &attr = attr_t(),
                       const prop_kind aprop_kind = prop_kind::forward,
-                      const engine& aengine = engine::cpu_engine()) {
+                      const engine &aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, attr,
-                                      aprop_kind, aengine);
+    compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, weights, dummy_bias, dst, attr, aprop_kind, aengine);
+  }
+
+  // 2-in-1 compute, with bias
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const tensor &bias,
+                             tensor &dst,
+                             const attr_t &attr = attr_t(),
+                             const prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    inner_product_forward_params param;
+    do_prepare_<true>(param, src, weights, bias, dst, attr, aprop_kind,
+                      aengine);
+    do_compute_binary<true, reorder_src, reorder_weight>(
+        param, src, other, weights, bias, dst);
+  }
+
+  // 2-in-1 compute, without bias
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             tensor &dst,
+                             const attr_t &attr = attr_t(),
+                             const prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    inner_product_forward_params param;
+    do_prepare_<false>(param, src, weights, dummy_bias, dst, attr, aprop_kind,
+                       aengine);
+    do_compute_binary<false, reorder_src, reorder_weight>(
+        param, src, other, weights, dummy_bias, dst);
   }
 
   // Prepare with bias
@@ -97,7 +133,8 @@ struct inner_product_forward
                       const tensor& weights,
                       const tensor& bias,
                       tensor& dst) {
-    do_compute</*with_bias=*/true>(param, src, weights, bias, dst);
+    do_compute</*with_bias=*/true, reorder_src, reorder_weight>(
+        param, src, weights, bias, dst);
   }
 
   // Compute with prepared param, without bias
@@ -110,7 +147,38 @@ struct inner_product_forward
                       const tensor& weights,
                       tensor& dst) {
     static tensor dummy_bias;
-    do_compute</*with_bias=*/false>(param, src, weights, dummy_bias, dst);
+    do_compute</*with_bias=*/false, reorder_src, reorder_weight>(
+        param, src, weights, dummy_bias, dst);
+  }
+
+  // Compute with prepared param, with bias
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute_binary(const inner_product_forward_params &param,
+                             const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const tensor &bias,
+                             tensor &dst) {
+    do_compute_binary</*with_bias=*/true, reorder_src, reorder_weight>(
+        param, src, other, weights, bias, dst);
+  }
+
+  // Compute with prepared param, without bias
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute_binary(const inner_product_forward_params &param,
+                             const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             tensor &dst) {
+    static tensor dummy_bias;
+    do_compute_binary</*with_bias=*/false, reorder_src, reorder_weight>(
+        param, src, other, weights, dummy_bias, dst);
   }
 
   static tensor::desc expected_weights_desc(
@@ -168,14 +236,14 @@ struct inner_product_forward
   };
 
 private:
-  template <bool with_bias>
-  static void compute_impl(const tensor& src,
-                           const tensor& weights,
-                           const tensor& bias,
-                           tensor& dst,
-                           const attr_t& attr,
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
+  static void compute_impl(const tensor &src,
+                           const tensor &weights,
+                           const tensor &bias,
+                           tensor &dst,
+                           const attr_t &attr,
                            const prop_kind aprop_kind,
-                           const engine& aengine) {
+                           const engine &aengine) {
     inner_product_forward_params param;
     // workaround: src and weights from caffe2 may have different dims.
     // It would be better for caffe2 to do this reshape anyway.
@@ -184,11 +252,15 @@ private:
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
-      do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind, aengine);
-      do_compute_<with_bias, true, true>(param, src_, weights, bias, dst);
+      do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind,
+                             aengine);
+      do_compute_<with_bias, reorder_src, reorder_weight>(param, src_, weights,
+                                                          bias, dst);
     } else {
-      do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
-      do_compute_<with_bias, true, true>(param, src, weights, bias, dst);
+      do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind,
+                             aengine);
+      do_compute_<with_bias, reorder_src, reorder_weight>(param, src, weights,
+                                                          bias, dst);
     }
   }
 
@@ -297,6 +369,109 @@ private:
 
   // Set reorder flags to false if you are sure the memory layout aligns
   // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed. Used for binary fusion
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
+  static void do_compute_binary(const inner_product_forward_params &param,
+                                const tensor &src,
+                                const tensor &other,
+                                const tensor &weights,
+                                const tensor &bias,
+                                tensor &dst) {
+    auto &pd = param._pd;
+    auto &primitive = param._primitive;
+    auto &op_attr = param._op_attr;
+    auto &src_attr = param._src_attr;
+    auto &weights_attr = param._weights_attr;
+    auto &bias_attr = param._bias_attr;
+
+    auto &expected_src =
+        reorder_src ? src.reorder_if_differ_in(pd.src_desc(), src_attr) : src;
+    // make sure other has same format with dst.
+    // TODO: other has different with dst?
+    auto &expected_other =
+        reorder_src ? other.reorder_if_differ_in(pd.dst_desc()) : other;
+    auto &expected_weights =
+        reorder_weight
+            ? weights.reorder_if_differ_in(pd.weights_desc(), weights_attr)
+            : weights;
+    tensor scratchpad(pd.scratchpad_desc());
+
+    if (reorder_src) {
+      tensor expected_dst;
+      if (dst.is_empty() || dst.get_desc() != pd.dst_desc()) {
+        // If dst buffer are not given by user or user given dst buffer are not
+        // under expected format We need init a new one. "dst.get_desc() !=
+        // pd.dst_desc()" conditional is setting for caffe2 caller, it might
+        // given a non-empty but incorrect dst (maybe the size is incorrect)
+        expected_dst.init(pd.dst_desc());
+      } else {
+        // The format of given dst buffer is expected
+        expected_dst = dst;
+      }
+
+      if (with_bias) {
+        auto &expected_bias =
+            reorder_weight
+                ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
+                : bias;
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_BIAS, expected_bias},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            expected_other}});
+      } else {
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            expected_other}});
+      }
+      // reorder back to dst's buffer if needed
+      if (dst.is_empty() ||
+          // when dst is empty, expect return buffer allocate by ideep
+          dst.get_desc() == expected_dst.get_desc() ||
+          // dst and expected_dst is the same under this case
+          !dst.get_desc().has_same_shape_as(expected_dst.get_desc())) {
+        // for caffe2 caller, get an incorrect size dst from caller, can return
+        // buffer allocate by ideep
+        dst = expected_dst;
+      } else {
+        dst.feed_from(expected_dst);
+      }
+    } else { // reorder_src
+      tensor &expected_dst = dst;
+      if (with_bias) {
+        auto &expected_bias =
+            reorder_weight
+                ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
+                : bias;
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_BIAS, expected_bias},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            expected_other}});
+      } else {
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            expected_other}});
+      }
+    }
+  }
+
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
   // may be needed.
   template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
   static void do_compute_(
@@ -323,9 +498,10 @@ private:
     if (reorder_src) {
       tensor expected_dst;
       if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
-        // If dst buffer are not given by user or user given dst buffer are not under expected format
-        // We need init a new one. "dst.get_desc() != pd.dst_desc()" conditional is setting for
-        // caffe2 caller, it might given a non-empty but uncorrect dst (maybe the size is uncorrect)
+        // If dst buffer are not given by user or user given dst buffer are not
+        // under expected format We need init a new one. "dst.get_desc() !=
+        // pd.dst_desc()" conditional is setting for caffe2 caller, it might
+        // given a non-empty but incorrect dst (maybe the size is incorrect)
         expected_dst.init(pd.dst_desc());
         if (!dst.is_empty() && op_attr.has_op_kind(kind::sum)) {
           // We need copy the content of given buffer if ip is fused with sum
@@ -384,7 +560,6 @@ private:
                            {DNNL_ARG_SCRATCHPAD, scratchpad}});
       }
     }
-
   }
 };
 

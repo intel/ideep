@@ -68,20 +68,20 @@ struct matmul_forward : public dnnl::matmul,
       const float sum_coeff = 1.0f,
       const attr_t& attr = attr_t(),
       const data_type dst_type = data_type::undef,
-      const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
+    static lowp_kind dummy_lowp_kind = u8s8;
     if (bias.is_empty()) {
       compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
           src, weights, bias, dst,
           IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
           IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
-          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+          dst_coeff, sum_coeff, attr, dst_type, dummy_lowp_kind, aengine);
     } else {
       compute_impl</*with_bias=*/true, reorder_src, reorder_weight>(
           src, weights, bias, dst,
           IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
           IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
-          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+          dst_coeff, sum_coeff, attr, dst_type, dummy_lowp_kind, aengine);
     }
   }
 
@@ -98,14 +98,14 @@ struct matmul_forward : public dnnl::matmul,
       const float sum_coeff = 1.0f,
       const attr_t& attr = attr_t(),
       const data_type dst_type = data_type::undef,
-      const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
+    static lowp_kind dummy_lowp_kind = u8s8;
     compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
         src, weights, dummy_bias, dst,
         IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
         IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
-        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+        dst_coeff, sum_coeff, attr, dst_type, dummy_lowp_kind, aengine);
   }
 
   // 2-in-1 compute for int8 op with bias. Bias is not used if it is empty.
@@ -627,11 +627,8 @@ private:
 
     tensor::desc src_desc, weights_desc, bias_desc;
     attr_t& op_attr = param.op_attr;
-    attr_t& src_attr = param.src_attr;
-    attr_t& weights_attr = param.weights_attr;
     attr_t& bias_attr = param.bias_attr;
     op_attr = attr;
-    scale_t dst_scales_in;
     auto dst_data_type = data_type::f32;
 
     tensor::dims src_dims = src.get_dims();
@@ -777,7 +774,6 @@ private:
                   "DNNL only support 1-dim zero_point");
     const auto& wei_zero_point = weights.has_zero_point() ?
                                  weights.get_zero_point() : IDEEP_DEF_ZP;
-    const dim wei_zero_point_size = 1;
 
     if (attr.has_op_kind(kind::sum)) {
       float sum_scale =
@@ -1067,13 +1063,11 @@ private:
     IDEEP_ENFORCE(param.dq_param_ptr, "Parameters for dynamic quantization not found");
     auto& pd = param.pd;
     auto& primitive = param.primitive;
-    auto& op_attr = param.op_attr;
     auto& weights_attr = param.weights_attr;
     auto& weights_scales_in = param.dq_param_ptr->weight_scales;
     auto& expected_src_desc = param.dq_param_ptr->src_desc;
     auto& wei_zero_point_m = param.dq_param_ptr->wei_zero_point_m;
     auto &src_reorder = param.dq_param_ptr->src_reorder;
-    auto expected_dst_desc = dst.get_desc();
 
     // Prepare tensor of output scales
     int scale_size = (weights_scales_in.size() > 1) ? weights.get_dim(1) : 1;
@@ -1095,9 +1089,8 @@ private:
     tensor src_scales_m(src_scales_desc, reinterpret_cast<float*>(src_scales_in.data()), aengine);
 
     // Prepare tensor of src zero point
-    static const zero_point_t default_zero_points = zero_point_t(1);
     auto src_zero_point = src.has_zero_point() ? src.get_zero_point() :
-                              src_zero_points.empty() ? default_zero_points : src_zero_points;
+                              src_zero_points.empty() ? IDEEP_DEF_ZP : src_zero_points;
     const auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
     IDEEP_ENFORCE(src_zero_point_size == 1,
                   "DNNL only support 1-dim zero_point");

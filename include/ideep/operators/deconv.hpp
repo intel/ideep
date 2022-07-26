@@ -590,8 +590,6 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       algorithm aalgorithm,
       prop_kind aprop_kind,
       const engine& aengine) {
-    scale_t dst_scales_in;
-    data_type dst_data_type;
     tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     tensor weights_grouped;
@@ -636,8 +634,6 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          prop_kind aprop_kind,
                          const lowp_kind alowp_kind,
                          const engine& aengine) {
-    scale_t dst_scales_in;
-    data_type dst_data_type;
     tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     tensor weights_grouped;

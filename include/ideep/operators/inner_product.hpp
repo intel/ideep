@@ -8,12 +8,12 @@ namespace ideep {
 // Please switch to matmul for quantized *mm ops
 
 struct inner_product_forward_params {
-  dnnl::inner_product_forward::primitive_desc _pd;
-  dnnl::inner_product_forward _primitive;
-  attr_t _op_attr;
-  attr_t _src_attr;
-  attr_t _weights_attr;
-  attr_t _bias_attr;
+  dnnl::inner_product_forward::primitive_desc pd;
+  dnnl::inner_product_forward primitive;
+  attr_t op_attr;
+  attr_t src_attr;
+  attr_t weights_attr;
+  attr_t bias_attr;
 
   inner_product_forward_params() {}
 
@@ -24,12 +24,12 @@ struct inner_product_forward_params {
       attr_t&& src_attr,
       attr_t&& weights_attr,
       attr_t&& bias_attr)
-      : _pd(std::move(pd)),
-        _primitive(std::move(primitive)),
-        _op_attr(std::move(op_attr)),
-        _src_attr(std::move(src_attr)),
-        _weights_attr(std::move(weights_attr)),
-        _bias_attr(std::move(bias_attr)) {}
+      : pd(std::move(pd)),
+        primitive(std::move(primitive)),
+        op_attr(std::move(op_attr)),
+        src_attr(std::move(src_attr)),
+        weights_attr(std::move(weights_attr)),
+        bias_attr(std::move(bias_attr)) {}
 };
 
 struct inner_product_forward
@@ -298,15 +298,13 @@ private:
       const prop_kind aprop_kind,
       const engine& aengine) {
     tensor::desc src_desc, weights_desc, bias_desc;
-    attr_t& op_attr = param._op_attr;
-    attr_t& src_attr = param._src_attr;
-    attr_t& weights_attr = param._weights_attr;
-    attr_t& bias_attr = param._bias_attr;
-    scale_t dst_scales_in;
+    attr_t& op_attr = param.op_attr;
+    attr_t& src_attr = param.src_attr;
     data_type dst_data_type;
     auto dst_dims = {src.get_dim(0), weights.get_dim(0)};
 
     op_attr = attr;
+    // Below is used by int8 FC in Caffe2
     if (src.has_scale()) {
       auto src_scale = src.get_scale();
       src_scale[0] = 1.f / src_scale[0];
@@ -333,7 +331,7 @@ private:
 
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    param._pd = get_primitive_desc(
+    param.pd = get_primitive_desc(
         src_desc,
         weights_desc,
         dst_desc,
@@ -341,7 +339,7 @@ private:
         with_bias,
         op_attr,
         aprop_kind);
-    param._primitive = std::move(super(param._pd));
+    param.primitive = std::move(super(param.pd));
   }
 
   // Set reorder flags to false if you are sure the memory layout aligns
@@ -377,12 +375,12 @@ private:
                                 const tensor &weights,
                                 const tensor &bias,
                                 tensor &dst) {
-    auto &pd = param._pd;
-    auto &primitive = param._primitive;
-    auto &op_attr = param._op_attr;
-    auto &src_attr = param._src_attr;
-    auto &weights_attr = param._weights_attr;
-    auto &bias_attr = param._bias_attr;
+    auto &pd = param.pd;
+    auto &primitive = param.primitive;
+    auto &op_attr = param.op_attr;
+    auto &src_attr = param.src_attr;
+    auto &weights_attr = param.weights_attr;
+    auto &bias_attr = param.bias_attr;
 
     auto &expected_src =
         reorder_src ? src.reorder_if_differ_in(pd.src_desc(), src_attr) : src;
@@ -480,12 +478,12 @@ private:
       const tensor& weights,
       const tensor& bias,
       tensor& dst) {
-    auto& pd = param._pd;
-    auto& primitive = param._primitive;
-    auto& op_attr = param._op_attr;
-    auto& src_attr = param._src_attr;
-    auto& weights_attr = param._weights_attr;
-    auto& bias_attr = param._bias_attr;
+    auto& pd = param.pd;
+    auto& primitive = param.primitive;
+    auto& op_attr = param.op_attr;
+    auto& src_attr = param.src_attr;
+    auto& weights_attr = param.weights_attr;
+    auto& bias_attr = param.bias_attr;
 
     auto& expected_src = reorder_src ?
         src.reorder_if_differ_in(pd.src_desc(), src_attr) :

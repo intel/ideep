@@ -55,6 +55,10 @@ struct matmul_forward : public dnnl::matmul,
   using super = dnnl::matmul;
 
   // 2-in-1 compute for fp32 op with bias. Bias is disabled if it is empty.
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static inline void compute(
       const tensor& src,
       const tensor& weights,
@@ -67,19 +71,25 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_impl</*with_bias=*/false>(src, weights, bias, dst,
-                                        IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
-                                        IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
-                                        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+          src, weights, bias, dst,
+          IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
+          IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
+          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
     } else {
-      compute_impl</*with_bias=*/true>(src, weights, bias, dst,
-                                       IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
-                                       IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
-                                       dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      compute_impl</*with_bias=*/true, reorder_src, reorder_weight>(
+          src, weights, bias, dst,
+          IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
+          IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
+          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
     }
   }
 
   // 2-in-1 compute for fp32 op without bias.
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static inline void compute(
       const tensor& src,
       const tensor& weights,
@@ -91,13 +101,18 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst,
-                                      IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
-                                      IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
-                                      dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+    compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, weights, dummy_bias, dst,
+        IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE, IDEEP_EMPTY_SCALE,
+        IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP,
+        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
   }
 
   // 2-in-1 compute for int8 op with bias. Bias is not used if it is empty.
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static inline void compute(
       const tensor& src,
       const tensor& weights,
@@ -115,19 +130,25 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_impl</*with_bias=*/false>(src, weights, bias, dst,
-                                        src_scales, weights_scales, dst_scales,
-                                        src_zero_points, dst_zero_points,
-                                        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+          src, weights, bias, dst,
+          src_scales, weights_scales, dst_scales,
+          src_zero_points, dst_zero_points,
+          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
     } else {
-      compute_impl</*with_bias=*/true>(src, weights, bias, dst,
-                                       src_scales, weights_scales, dst_scales,
-                                       src_zero_points, dst_zero_points,
-                                       dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      compute_impl</*with_bias=*/true, reorder_src, reorder_weight>(
+          src, weights, bias, dst,
+          src_scales, weights_scales, dst_scales,
+          src_zero_points, dst_zero_points,
+          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
     }
   }
 
   // 2-in-1 compute for int8 op with bias. Bias is not used if it is empty.
+  // Set reorder flags to false if you are sure the memory layout aligns
+  // with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static inline void compute(
       const tensor& src,
       const tensor& weights,
@@ -144,10 +165,11 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst,
-                                      src_scales, weights_scales, dst_scales,
-                                      src_zero_points, dst_zero_points,
-                                      dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+    compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, weights, dummy_bias, dst,
+        src_scales, weights_scales, dst_scales,
+        src_zero_points, dst_zero_points,
+        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
   }
 
   // Prepare for fp32 op
@@ -369,15 +391,17 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_impl</*with_bias=*/false>(src, weights, bias, dst,
-                                        src_scales, weights_scales, dst_scales,
-                                        src_zero_points, dst_zero_points,
-                                        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      compute_impl</*with_bias=*/false, /*reorder_src*/true, /*reorder_weight*/true>(
+          src, weights, bias, dst,
+          src_scales, weights_scales, dst_scales,
+          src_zero_points, dst_zero_points,
+          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
     } else {
-      compute_impl</*with_bias=*/true>(src, weights, bias, dst,
-                                       src_scales, weights_scales, dst_scales,
-                                       src_zero_points, dst_zero_points,
-                                       dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      compute_impl</*with_bias=*/true, /*reorder_src*/true, /*reorder_weight*/true>(
+          src, weights, bias, dst,
+          src_scales, weights_scales, dst_scales,
+          src_zero_points, dst_zero_points,
+          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
     }
   }
 
@@ -399,10 +423,11 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst,
-                                      src_scales, weights_scales, dst_scales,
-                                      src_zero_points, dst_zero_points,
-                                      dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+    compute_impl</*with_bias=*/false, /*reorder_src*/true, /*reorder_weight*/true>(
+        src, weights, dummy_bias, dst,
+        src_scales, weights_scales, dst_scales,
+        src_zero_points, dst_zero_points,
+        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
   }
 
   // Deprecated 2-in-1 compute. With bias. Set zero points to tensors for quantization.
@@ -420,10 +445,11 @@ struct matmul_forward : public dnnl::matmul,
       const data_type dst_type = data_type::undef,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true>(src, weights, bias, dst,
-                                     src_scales, weights_scales, dst_scales,
-                                     zero_point_t(), zero_point_t(),
-                                     dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+    compute_impl</*with_bias=*/true, /*reorder_src*/true, /*reorder_weight*/true>(
+        src, weights, bias, dst,
+        src_scales, weights_scales, dst_scales,
+        zero_point_t(), zero_point_t(),
+        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
   }
 
   // Deprecated 2-in-1 compute. Without bias. Set zero points to tensors for quantization.
@@ -441,10 +467,11 @@ struct matmul_forward : public dnnl::matmul,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst,
-                                      src_scales, weights_scales, dst_scales,
-                                      zero_point_t(), zero_point_t(),
-                                      dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+    compute_impl</*with_bias=*/false, /*reorder_src*/true, /*reorder_weight*/true>(
+        src, weights, dummy_bias, dst,
+        src_scales, weights_scales, dst_scales,
+        zero_point_t(), zero_point_t(),
+        dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
   }
 
   // Deprecated. Prepare for int8 op with bias. Bias is not used if it is empty.
@@ -550,7 +577,7 @@ struct matmul_forward : public dnnl::matmul,
 private:
   // For 2-in-1 compute: prepare + compute
   // Supports fp32, static int8 and dynamic int8
-  template <bool with_bias>
+  template <bool with_bias, bool reorder_src, bool reorder_weight>
   static inline void compute_impl(
       const tensor& src,
       const tensor& weights,
@@ -579,7 +606,7 @@ private:
       do_prepare<with_bias>(param, src, weights, bias, dst, dst_coeff, sum_coeff,
                  attr, dst_type, aengine);
     }
-    do_compute<with_bias, /*reorder_src=*/ true, /*reorder_weight=*/ true>(
+    do_compute<with_bias, reorder_src, reorder_weight>(
         param, src, weights, bias, dst);
   }
 

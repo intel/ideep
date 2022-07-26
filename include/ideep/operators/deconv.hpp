@@ -51,6 +51,10 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
   // 2-in-1 Compute for fp32
   // With bias. Bias is disabled if it is empty.
+  // `reorder_src` and `reorder_weight` indicate whether
+  // src/dst and weight/bias should be checked and possibly reordered.
+  // Set them to False if you are sure they don't need reordering.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(
       const tensor& src,
       const tensor& weights, // dim: {o, i[, d], h, w}
@@ -67,11 +71,11 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       prop_kind aprop_kind = prop_kind::forward,
       const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_impl</*with_bias=*/false>(
+      compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
     } else {
-      compute_impl</*with_bias=*/true>(
+      compute_impl</*with_bias=*/true, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
     }
@@ -79,6 +83,10 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
   // 2-in-1 Compute for fp32
   // Without bias.
+  // `reorder_src` and `reorder_weight` indicate whether
+  // src/dst and weight/bias should be checked and possibly reordered.
+  // Set them to False if you are sure they don't need reordering.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(
       const tensor& src,
       const tensor& weights, // dim: {o, i[, d], h, w}
@@ -94,13 +102,17 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       prop_kind aprop_kind = prop_kind::forward,
       const engine& aengine = engine::cpu_engine()) {
     static const tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(
+    compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
   }
 
   // 2-in-1 Compute for int8
   // With bias. Bias is disabled if it is empty.
+  // `reorder_src` and `reorder_weight` indicate whether
+  // src/dst and weight/bias should be checked and possibly reordered.
+  // Set them to False if you are sure they don't need reordering.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(
       const tensor& src,
       const tensor& weights, // dim: {o, i[, d], h, w}
@@ -123,12 +135,12 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_impl</*with_bias=*/false>(
+      compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
-      compute_impl</*with_bias=*/true>(
+      compute_impl</*with_bias=*/true, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -137,6 +149,10 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
   // 2-in-1 Compute for int8
   // Without bias.
+  // `reorder_src` and `reorder_weight` indicate whether
+  // src/dst and weight/bias should be checked and possibly reordered.
+  // Set them to False if you are sure they don't need reordering.
+  template <bool reorder_src = true, bool reorder_weight = true>
   static void compute(
       const tensor& src,
       const tensor& weights, // dim: {o, i[, d], h, w}
@@ -158,7 +174,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static const tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(
+    compute_impl</*with_bias=*/false, reorder_src, reorder_weight>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -342,12 +358,12 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_impl</*with_bias=*/false>(
+      compute_impl</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
-      compute_impl</*with_bias=*/true>(
+      compute_impl</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -376,25 +392,10 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false>(
+    compute_impl</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
-  }
-
-  // Deprecated
-  // Bias is not used if it is empty.
-  static void compute(const super::primitive_desc& pd,
-                      const super& primitive,
-                      const tensor& src,
-                      const tensor& weights,
-                      const tensor& expected_bias,
-                      tensor& dst,
-                      const tensor& src_zero_point,
-                      int groups) {
-    bool with_bias = (!expected_bias.is_empty());
-    do_compute(pd, primitive, src, weights, expected_bias,
-               with_bias, dst, src_zero_point, groups);
   }
 
   static tensor::desc expected_weights_desc(
@@ -521,7 +522,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
  private:
   // For 2-in-1 compute. For fp32
-  template <bool with_bias>
+  template <bool with_bias, bool reorder_src, bool reorder_weight>
   static void compute_impl(const tensor& src,
                            const tensor& weights,
                            const tensor& bias,
@@ -539,11 +540,11 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     deconv_forward_params param;
     do_prepare<with_bias>(param, src, weights, bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
-    do_compute<with_bias, true, true>(param, src, weights, bias, dst);
+    do_compute<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, dst);
   }
 
   // For 2-in-1 compute. For int8
-  template <bool with_bias>
+  template <bool with_bias, bool reorder_src, bool reorder_weight>
   static void compute_impl(const tensor& src,
                            const tensor& weights,
                            const tensor& bias,
@@ -568,7 +569,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     do_prepare<with_bias>(param, src, weights, bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
-    do_compute<with_bias, true, true>(param, src, weights, bias, dst);
+    do_compute<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, dst);
   }
 
   // For fp32
@@ -703,36 +704,6 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     } else {
       primitive.execute(stream::default_stream(),
                         {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    }
-  }
-
-  // Deprecated
-  static void do_compute(const super::primitive_desc& pd,
-                         const super& primitive,
-                         const tensor& src,
-                         const tensor& weights,
-                         const tensor& expected_bias,
-                         bool with_bias,
-                         tensor& dst,
-                         const tensor& src_zero_point,
-                         int groups) {
-    tensor scratchpad(pd.scratchpad_desc());
-    auto expected_weights = weights.make_grouped_weights(groups, /*is_deconv=*/true);
-    if (with_bias) {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, src},
                          {DNNL_ARG_WEIGHTS, expected_weights},
                          {DNNL_ARG_DST, dst},
                          {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},

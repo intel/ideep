@@ -704,12 +704,12 @@ struct convolution_forward
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_dispatch</*with_bias=*/false>(
+      compute_dispatch</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
-      compute_dispatch</*with_bias=*/true>(
+      compute_dispatch</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -739,7 +739,7 @@ struct convolution_forward
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_dispatch</*with_bias=*/false>(
+    compute_dispatch</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -767,12 +767,12 @@ struct convolution_forward
                       const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     if (bias.is_empty()) {
-      compute_dispatch</*with_bias=*/false>(
+      compute_dispatch</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
-      compute_dispatch</*with_bias=*/true>(
+      compute_dispatch</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
           IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -799,7 +799,7 @@ struct convolution_forward
                       const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_dispatch</*with_bias=*/false>(
+    compute_dispatch</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
@@ -869,25 +869,6 @@ struct convolution_forward
         param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
         zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
-  }
-
-  // DEPRECATED
-  // Compute with given primitive & src zero point with or without bias
-  static void compute(const super::primitive_desc pd,
-                      const super& primitive,
-                      const tensor& src,
-                      const tensor& weights,
-                      const tensor& expected_bias,
-                      tensor& dst,
-                      const tensor& src_zero_point,
-                      int groups) {
-    if (expected_bias.is_empty()) {
-      do_compute</*with_bias=*/false>(
-          pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
-    } else {
-      do_compute</*with_bias=*/true>(
-          pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
-    }
   }
 
   static tensor::desc expected_weights_desc(
@@ -1400,70 +1381,6 @@ private:
                          {DNNL_ARG_SCRATCHPAD, scratchpad},
                          {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
                           expected_other}});
-    }
-  }
-
-  // DEPRECATED
-  template <bool with_bias>
-  static void compute_dispatch(
-      const tensor& src,
-      const tensor& weights,
-      const tensor& bias,
-      const dims& dst_dims,
-      tensor& dst,
-      const dims& strides,
-      const dims& dilates,
-      const dims& padding_l,
-      const dims& padding_r,
-      int groups,
-      const scale_t& src_scales = scale_t(),
-      const scale_t& weights_scales = scale_t(),
-      const scale_t& dst_scales = scale_t(),
-      const zero_point_t& src_zero_point = zero_point_t(),
-      const zero_point_t& dst_zero_point = zero_point_t(),
-      const attr_t& attr = attr_t(),
-      algorithm aalgorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward,
-      const lowp_kind alowp_kind = u8s8,
-      const engine& aengine = engine::cpu_engine()) {
-    convolution_forward_params params;
-
-    do_prepare<with_bias>(
-        params, src, weights, bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
-    do_compute<with_bias, true, true>(params, src, weights, bias, dst);
-  }
-
-  // DEPRECATED
-  // Do_compute with given primitive & src zero point
-  // Bias scale has been applied before passed in.
-  template <bool with_bias>
-  static void do_compute(const super::primitive_desc& pd,
-                         const super& primitive,
-                         const tensor& src,
-                         const tensor& weights,
-                         const tensor& expected_bias,
-                         tensor& dst,
-                         const tensor& src_zero_point,
-                         int groups) {
-    auto scratchpad = tensor(pd.scratchpad_desc());
-    auto weights_grouped = weights.make_grouped_weights(groups);
-    if (with_bias) {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, src},
-                         {DNNL_ARG_WEIGHTS, weights_grouped},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
-    } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, src},
-                         {DNNL_ARG_WEIGHTS, weights_grouped},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
     }
   }
 };

@@ -108,6 +108,46 @@ struct matmul_forward : public dnnl::matmul,
         dst_coeff, sum_coeff, attr, dst_type, dummy_lowp_kind, aengine);
   }
 
+  // 2-in-1 compute for fp32 op with bias. Bias is disabled if it is empty.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static inline void compute_binary(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_binary_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+          src, other, weights, bias, dst,
+          dst_coeff, attr, dst_type, aengine);
+    } else {
+      compute_binary_impl</*with_bias=*/true, reorder_src, reorder_weight>(
+          src, other, weights, bias, dst,
+          dst_coeff, attr, dst_type, aengine);
+    }
+  }
+
+  // 2-in-1 compute for fp32 op without bias.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static inline void compute_binary(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_binary_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, other, weights, dummy_bias, dst,
+        dst_coeff, attr, dst_type, aengine);
+  }
+
   // 2-in-1 compute for int8 op with bias. Bias is not used if it is empty.
   // Set reorder flags to false if you are sure the memory layout aligns
   // with primitive descriptor. Otherwise, checks are made and reorder
@@ -610,6 +650,26 @@ private:
         param, src, weights, bias, dst);
   }
 
+  // For 2-in-1 compute: prepare + compute
+  // Supports fp32.
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
+  static inline void compute_binary_impl(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const engine& aengine = engine::cpu_engine()) {
+    matmul_forward_params param;
+    do_prepare<with_bias>(param, src, weights, bias, dst, dst_coeff, 1.0f,
+        attr, dst_type, aengine);
+    do_compute_binary<with_bias, reorder_src, reorder_weight>(
+        param, src, other, weights, bias, dst);
+  }
+
   // For fp32 op
   template <bool with_bias>
   static inline void do_prepare(
@@ -1034,7 +1094,99 @@ private:
                            {DNNL_ARG_SCRATCHPAD, scratchpad}});
       }
     }
+  }
 
+  // For fp32. Set reorder flags to false if you are sure the memory layout
+  // aligns with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool with_bias, bool reorder_src, bool reorder_weight>
+  static inline void do_compute_binary(
+      const matmul_forward_params& param,
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
+    auto& pd = param.pd;
+    auto& primitive = param.primitive;
+    auto& bias_attr = param.bias_attr;
+
+    auto expected_src_desc = pd.src_desc();
+    auto expected_wei_desc = pd.weights_desc();
+    auto expected_dst_desc = pd.dst_desc();
+
+    auto& expected_src = reorder_src ?
+                         src.reorder_if_differ_in(expected_src_desc) :
+                         src;
+    
+    auto& expected_other = reorder_src ?
+                           other.reorder_if_differ_in(expected_dst_desc) :
+                           other;
+    
+    auto& expected_weights = reorder_weight ?
+                             weights.reorder_if_differ_in(expected_wei_desc) :
+                             weights;
+    tensor scratchpad(pd.scratchpad_desc());
+
+    if (reorder_src) {
+      tensor expected_dst;
+      if (dst.is_empty() || dst.get_desc() != expected_dst_desc){
+        // If dst buffer are not given by user or user given dst buffer are not under expected format
+        // We need init a new one
+        expected_dst.init(expected_dst_desc);
+      } else {
+        // The format of given dst buffer is expected
+        expected_dst = dst;
+      }
+      if (with_bias){
+        auto& expected_bias = reorder_weight ?
+                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
+                              bias;
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_BIAS, expected_bias},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other}});
+      } else {
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other}});
+      }
+      // reorder back to dst's buffer if needed
+      if (dst.is_empty() ||
+            dst.get_desc() == expected_dst.get_desc() ||
+            !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+        dst =  expected_dst;
+      } else {
+        dst.feed_from(expected_dst);
+      }
+    } else {
+      tensor& expected_dst = dst;
+      if (with_bias){
+        auto& expected_bias = reorder_weight ?
+                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
+                              bias;
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_BIAS, expected_bias},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other}});
+      } else {
+        primitive.execute(stream::default_stream(),
+                          {{DNNL_ARG_SRC, expected_src},
+                           {DNNL_ARG_WEIGHTS, expected_weights},
+                           {DNNL_ARG_DST, expected_dst},
+                           {DNNL_ARG_SCRATCHPAD, scratchpad},
+                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other}});
+      }
+    }
   }
 
   // For dynamic int8 op (fp32 * int8 -> fp32)

@@ -4,13 +4,13 @@
 namespace ideep {
 
 struct concat : public dnnl::concat {
-
   using super = dnnl::concat;
 
-  static void compute(const std::vector<tensor>& inputs,
-                      int axis,
-                      tensor& output,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const std::vector<tensor>& inputs,
+      int axis,
+      tensor& output,
+      const engine& aengine = engine::cpu_engine()) {
     auto input_descs = utils::fmap(inputs, [](const tensor& t) {
       // "upcast" vector<tensor::desc> to vector<memory::desc>
       return static_cast<memory::desc>(t.get_desc());
@@ -29,8 +29,8 @@ struct concat : public dnnl::concat {
     //   (Very fast) Works only when all memories are in the same format
     //   (Slower) Generic one, based on reorders: concat of n tensors is a set
     //            of n reorders from input to the proper part of the output
-    // In case you have only two inputs there should not be performance 
-    // difference between reordering one input to the format of the other one 
+    // In case you have only two inputs there should not be performance
+    // difference between reordering one input to the format of the other one
     // and emit the fast concat implementation versus using generic concat which
     // emits two reorders. So we align all tensors to the same optimial format
     // only when there are more than two inputs.
@@ -50,7 +50,7 @@ struct concat : public dnnl::concat {
     }
 
     tensor scratchpad(pd.scratchpad_desc());
-    exec_args args {{DNNL_ARG_DST, output}, {DNNL_ARG_SCRATCHPAD, scratchpad}};
+    exec_args args{{DNNL_ARG_DST, output}, {DNNL_ARG_SCRATCHPAD, scratchpad}};
 
     for (int i = 0; i < opt_inputs.size(); ++i) {
       args.insert({DNNL_ARG_MULTIPLE_SRC + i, opt_inputs[i]});
@@ -66,13 +66,15 @@ struct concat : public dnnl::concat {
       bool add_axis,
       tensor& dst,
       const engine& aengine = engine::cpu_engine()) {
-    IDEEP_ENFORCE(axis < (inputs[0].ndims() + add_axis),
-                  "invalid axis in concat");
+    IDEEP_ENFORCE(
+        axis < (inputs[0].ndims() + add_axis), "invalid axis in concat");
     for (int i = 0; i < inputs[0].ndims(); i++) {
-      if (i == axis && !add_axis) continue;
+      if (i == axis && !add_axis)
+        continue;
       for (unsigned j = 1; j < inputs.size(); j++) {
-        IDEEP_ENFORCE(inputs[j].get_dim(i) == inputs[0].get_dim(i),
-                      "invalid input dims in concat");
+        IDEEP_ENFORCE(
+            inputs[j].get_dim(i) == inputs[0].get_dim(i),
+            "invalid input dims in concat");
       }
     }
 
@@ -115,7 +117,7 @@ struct concat : public dnnl::concat {
       auto dst_desc = inputs[0].get_desc().to_dims(dst_dims);
       dst.reinit_if_possible(dst_desc);
     }
-      
+
     if (utils::one_of(dst_data_type, data_type::s8, data_type::u8))
       dst.set_scale(min_scale);
 
@@ -160,6 +162,6 @@ struct concat : public dnnl::concat {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

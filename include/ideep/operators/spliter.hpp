@@ -4,11 +4,11 @@
 namespace ideep {
 
 struct spliter {
-
-  static std::vector<tensor> compute(const tensor& input,
-                                     std::vector<int32_t>& axis_info,
-                                     int axis,
-                                     bool add_axis = false) {
+  static std::vector<tensor> compute(
+      const tensor& input,
+      std::vector<int32_t>& axis_info,
+      int axis,
+      bool add_axis = false) {
     std::vector<tensor> outputs;
     tensor::dims output_dims(input.get_dims());
     tensor::dims offset_dims(output_dims.size(), 0);
@@ -36,7 +36,6 @@ struct spliter {
   }
 };
 
-
-}  // namespace ideep
+} // namespace ideep
 
 #endif

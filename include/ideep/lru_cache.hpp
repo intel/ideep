@@ -8,9 +8,12 @@
 namespace ideep {
 namespace utils {
 
-template <class key_t, class value_t, template <typename ...> class map = std::unordered_map>
+template <
+    class key_t,
+    class value_t,
+    template <typename...> class map = std::unordered_map>
 class lru_cache {
-public:
+ public:
   class node_t;
 
   typedef typename std::pair<key_t, value_t> value_type;
@@ -22,25 +25,31 @@ public:
 
   // Only class possible, we can't use typedef or using. Or can we?
   class node_t : public std::pair<map_it, value_t> {
-  public:
-    node_t (const std::pair<map_it, value_t>& l) : std::pair<map_it, value_t>(l) {}
-    node_t (std::pair<map_it, value_t>&& l) : std::pair<map_it, value_t>(std::move(l)) {}
+   public:
+    node_t(const std::pair<map_it, value_t>& l)
+        : std::pair<map_it, value_t>(l) {}
+    node_t(std::pair<map_it, value_t>&& l)
+        : std::pair<map_it, value_t>(std::move(l)) {}
   };
 
   typedef typename std::list<node_t>::size_type size_type;
 
   lru_cache(size_type capacity) : capacity_(capacity) {}
 
-  size_type size() const { map_.size(); }
+  size_type size() const {
+    map_.size();
+  }
 
-  size_type max_size() const { return capacity_; }
+  size_type max_size() const {
+    return capacity_;
+  }
 
   void resize(size_type new_capacity) {
     capacity_ = new_capacity;
     // Trim cache
     while (map_.size() > capacity_) {
       auto last = vlist_.end();
-      last --;
+      last--;
       map_.erase(last->first);
       vlist_.pop_back();
     }
@@ -114,7 +123,7 @@ public:
     // Trim cache
     while (map_.size() > capacity_) {
       auto last = vlist_.end();
-      last --;
+      last--;
       map_.erase(last->first);
       vlist_.pop_back();
     }
@@ -134,7 +143,7 @@ public:
     std::swap(capacity_, other.capacity_);
   }
 
-private:
+ private:
   std::list<node_t> vlist_;
   map<key_t, iterator> map_;
   size_type capacity_;
@@ -142,10 +151,10 @@ private:
 
 template <class value_t, size_t capacity = 1024, class key_t = std::string>
 class computation_cache {
-public:
+ public:
   using iterator = typename lru_cache<key_t, value_t>::iterator;
 
-protected:
+ protected:
   template <typename T>
   static inline iterator create(const key_t& key, T&& args) {
     auto it = t_store().insert(std::make_pair(key, std::forward<T>(args)));
@@ -168,9 +177,10 @@ protected:
     return t_store().end();
   }
 
-public:
- static inline value_t& fetch_or_create(
-     const key_t& key, const std::function<value_t()>& callback) {
+ public:
+  static inline value_t& fetch_or_create(
+      const key_t& key,
+      const std::function<value_t()>& callback) {
     auto it = find(key);
     return it == end() ? fetch(create((key), callback())) : fetch(it);
   }
@@ -181,18 +191,19 @@ public:
 
   static inline lru_cache<key_t, value_t>& t_store() {
     static thread_local lru_cache<key_t, value_t> t_store_(capacity);
-    static thread_local int new_capacity = [&](const char *pt) {
+    static thread_local int new_capacity = [&](const char* pt) {
       if (pt != NULL) {
-        IDEEP_ENFORCE(std::atoi(pt) > 0 , "The LRU_CACHE_CAPACITY should be positive");
+        IDEEP_ENFORCE(
+            std::atoi(pt) > 0, "The LRU_CACHE_CAPACITY should be positive");
         t_store_.resize(std::atoi(pt));
         return std::atoi(pt);
       } else {
         return 0;
       }
-    } (std::getenv("LRU_CACHE_CAPACITY"));
+    }(std::getenv("LRU_CACHE_CAPACITY"));
     return t_store_;
   }
 };
-}
-}
+} // namespace utils
+} // namespace ideep
 #endif

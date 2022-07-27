@@ -4,15 +4,13 @@
 namespace ideep {
 
 struct gru_forward : public dnnl::gru_forward {
-  static void compute() {
-  }
+  static void compute() {}
 };
 
 struct gru_backward : public dnnl::gru_backward {
-  static void compute() {
-  }
+  static void compute() {}
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

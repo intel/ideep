@@ -6,21 +6,21 @@ namespace ideep {
 // while pooling_forward/backward does not.
 
 struct pooling_forward : public dnnl::pooling_forward {
-
   using super = dnnl::pooling_forward;
 
-  static void compute(const tensor& src,
-                      const dims& output_sizes,
-                      tensor& dst,
-                      const dims& strides,
-                      const dims& kernel,
-                      const dims& padding_l,
-                      const dims& padding_r,
-                      algorithm aalgorithm,
-                      prop_kind aprop_kind = prop_kind::forward,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const tensor& src,
+      const dims& output_sizes,
+      tensor& dst,
+      const dims& strides,
+      const dims& kernel,
+      const dims& padding_l,
+      const dims& padding_r,
+      algorithm aalgorithm,
+      prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
     bool with_workspace = aprop_kind == prop_kind::forward_training &&
-                          aalgorithm == dnnl::algorithm::pooling_max;
+        aalgorithm == dnnl::algorithm::pooling_max;
 
     // workaround: use src.get_desc() once issue intel/mkl-dnn#588 is resolved
     auto src_desc = src._get_unblocked_desc_if_4c_blocked();
@@ -32,8 +32,16 @@ struct pooling_forward : public dnnl::pooling_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aprop_kind, aalgorithm, src_desc, dst_desc, strides, kernel, padding_l,
-         padding_r}, op_attr, aengine);
+        {aprop_kind,
+         aalgorithm,
+         src_desc,
+         dst_desc,
+         strides,
+         kernel,
+         padding_l,
+         padding_r},
+        op_attr,
+        aengine);
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     dst.reinit_if_possible(pd.dst_desc());
@@ -43,7 +51,7 @@ struct pooling_forward : public dnnl::pooling_forward {
 
     tensor scratchpad(pd.scratchpad_desc());
 
-    exec_args args {
+    exec_args args{
         {DNNL_ARG_SRC, expected_src},
         {DNNL_ARG_DST, dst},
         {DNNL_ARG_SCRATCHPAD, scratchpad}};
@@ -57,22 +65,22 @@ struct pooling_forward : public dnnl::pooling_forward {
 };
 
 struct pooling_v2_forward : public dnnl::pooling_v2_forward {
-
   using super = dnnl::pooling_v2_forward;
 
-  static void compute(const tensor& src,
-                      const dims& output_sizes,
-                      tensor& dst,
-                      const dims& strides,
-                      const dims& kernel,
-                      const dims& dilation,
-                      const dims& padding_l,
-                      const dims& padding_r,
-                      algorithm aalgorithm,
-                      prop_kind aprop_kind = prop_kind::forward,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const tensor& src,
+      const dims& output_sizes,
+      tensor& dst,
+      const dims& strides,
+      const dims& kernel,
+      const dims& dilation,
+      const dims& padding_l,
+      const dims& padding_r,
+      algorithm aalgorithm,
+      prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
     bool with_workspace = aprop_kind == prop_kind::forward_training &&
-                          aalgorithm == dnnl::algorithm::pooling_max;
+        aalgorithm == dnnl::algorithm::pooling_max;
 
     // workaround: use src.get_desc() once issue intel/mkl-dnn#588 is resolved
     auto src_desc = src._get_unblocked_desc_if_4c_blocked();
@@ -86,8 +94,17 @@ struct pooling_v2_forward : public dnnl::pooling_v2_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aprop_kind, aalgorithm, src_desc, dst_desc, strides, kernel,
-         dil_compatible, padding_l, padding_r}, op_attr, aengine);
+        {aprop_kind,
+         aalgorithm,
+         src_desc,
+         dst_desc,
+         strides,
+         kernel,
+         dil_compatible,
+         padding_l,
+         padding_r},
+        op_attr,
+        aengine);
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     dst.reinit_if_possible(pd.dst_desc());
@@ -97,7 +114,7 @@ struct pooling_v2_forward : public dnnl::pooling_v2_forward {
 
     tensor scratchpad(pd.scratchpad_desc());
 
-    exec_args args {
+    exec_args args{
         {DNNL_ARG_SRC, expected_src},
         {DNNL_ARG_DST, dst},
         {DNNL_ARG_SCRATCHPAD, scratchpad}};
@@ -112,42 +129,51 @@ struct pooling_v2_forward : public dnnl::pooling_v2_forward {
 };
 
 struct pooling_backward : public dnnl::pooling_backward {
-
   using super = dnnl::pooling_backward;
 
-  static void compute(const tensor& diff_dst,
-                      const tensor& dst,
-                      const tensor& src,
-                      tensor& diff_src,
-                      const dims& strides,
-                      const dims& kernel,
-                      const dims& padding_l,
-                      const dims& padding_r,
-                      algorithm aalgorithm,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const tensor& diff_dst,
+      const tensor& dst,
+      const tensor& src,
+      tensor& diff_src,
+      const dims& strides,
+      const dims& kernel,
+      const dims& padding_l,
+      const dims& padding_r,
+      algorithm aalgorithm,
+      const engine& aengine = engine::cpu_engine()) {
     auto src_desc = src.get_desc();
     auto dst_desc = dst.get_desc();
 
-    auto forward_hints =
-        pooling_forward::primitive_desc(
-            {prop_kind::forward, aalgorithm, src_desc, dst_desc, strides,
-             kernel, padding_l, padding_r}, aengine);
+    auto forward_hints = pooling_forward::primitive_desc(
+        {prop_kind::forward,
+         aalgorithm,
+         src_desc,
+         dst_desc,
+         strides,
+         kernel,
+         padding_l,
+         padding_r},
+        aengine);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
         {aalgorithm, src_desc, dst_desc, strides, kernel, padding_l, padding_r},
-        op_attr, aengine, forward_hints);
+        op_attr,
+        aengine,
+        forward_hints);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());
 
     tensor scratchpad(pd.scratchpad_desc());
 
-    exec_args args {{DNNL_ARG_DIFF_DST, expected_diff_dst},
-                    {DNNL_ARG_DIFF_SRC, diff_src},
-                    {DNNL_ARG_SCRATCHPAD, scratchpad}};
+    exec_args args{
+        {DNNL_ARG_DIFF_DST, expected_diff_dst},
+        {DNNL_ARG_DIFF_SRC, diff_src},
+        {DNNL_ARG_SCRATCHPAD, scratchpad}};
 
     if (dst.has_workspace()) {
       auto expected_workspace =
@@ -160,43 +186,60 @@ struct pooling_backward : public dnnl::pooling_backward {
 };
 
 struct pooling_v2_backward : public dnnl::pooling_v2_backward {
-
   using super = dnnl::pooling_v2_backward;
 
-  static void compute(const tensor& diff_dst,
-                      const tensor& dst,
-                      const tensor& src,
-                      tensor& diff_src,
-                      const dims& strides,
-                      const dims& kernel,
-                      const dims& dilation,
-                      const dims& padding_l,
-                      const dims& padding_r,
-                      algorithm aalgorithm,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const tensor& diff_dst,
+      const tensor& dst,
+      const tensor& src,
+      tensor& diff_src,
+      const dims& strides,
+      const dims& kernel,
+      const dims& dilation,
+      const dims& padding_l,
+      const dims& padding_r,
+      algorithm aalgorithm,
+      const engine& aengine = engine::cpu_engine()) {
     auto src_desc = src.get_desc();
     auto dst_desc = dst.get_desc();
     auto dil_compatible = utils::get_compatible_dilates(dilation);
 
-    auto forward_hints =
-        pooling_v2_forward::primitive_desc(
-            {prop_kind::forward, aalgorithm, src_desc, dst_desc, strides,
-             kernel, dil_compatible, padding_l, padding_r}, aengine);
+    auto forward_hints = pooling_v2_forward::primitive_desc(
+        {prop_kind::forward,
+         aalgorithm,
+         src_desc,
+         dst_desc,
+         strides,
+         kernel,
+         dil_compatible,
+         padding_l,
+         padding_r},
+        aengine);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aalgorithm, src_desc, dst_desc, strides, kernel, dil_compatible,
-         padding_l, padding_r}, op_attr, aengine, forward_hints);
+        {aalgorithm,
+         src_desc,
+         dst_desc,
+         strides,
+         kernel,
+         dil_compatible,
+         padding_l,
+         padding_r},
+        op_attr,
+        aengine,
+        forward_hints);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());
     tensor scratchpad(pd.scratchpad_desc());
 
-    exec_args args {{DNNL_ARG_DIFF_DST, expected_diff_dst},
-                    {DNNL_ARG_DIFF_SRC, diff_src},
-                    {DNNL_ARG_SCRATCHPAD, scratchpad}};
+    exec_args args{
+        {DNNL_ARG_DIFF_DST, expected_diff_dst},
+        {DNNL_ARG_DIFF_SRC, diff_src},
+        {DNNL_ARG_SCRATCHPAD, scratchpad}};
     if (dst.has_workspace()) {
       auto expected_workspace =
           dst.get_workspace().reorder_if_differ_in(pd.workspace_desc());
@@ -207,6 +250,6 @@ struct pooling_v2_backward : public dnnl::pooling_v2_backward {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

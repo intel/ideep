@@ -1,14 +1,14 @@
 #ifndef IDEEP_ABSTRACT_TYPES_HPP
 #define IDEEP_ABSTRACT_TYPES_HPP
 
-#include <string>
-#include <cstring>
-#include <map>
-#include <vector>
-#include <cstdlib>
-#include <functional>
 #include <dnnl.h>
 #include <dnnl.hpp>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <map>
+#include <string>
+#include <vector>
 #include "allocators.hpp"
 
 namespace ideep {
@@ -42,17 +42,17 @@ using exec_args = std::unordered_map<int, memory>;
 using key_t = std::string;
 
 #ifndef NDEBUG
-#define IDEEP_ENFORCE(condition, message) \
-  do {  \
-    error::wrap_c_api((condition) \
-        ? dnnl_success : dnnl_invalid_arguments, (message));  \
-  } while(false)
+#define IDEEP_ENFORCE(condition, message)                                \
+  do {                                                                   \
+    error::wrap_c_api(                                                   \
+        (condition) ? dnnl_success : dnnl_invalid_arguments, (message)); \
+  } while (false)
 #else
 #define IDEEP_ENFORCE(condition, message)
 #endif
 
-const scale_t IDEEP_DEF_SCALE {1.0f};
-const zero_point_t IDEEP_DEF_ZP {0};
+const scale_t IDEEP_DEF_SCALE{1.0f};
+const zero_point_t IDEEP_DEF_ZP{0};
 const scale_t IDEEP_EMPTY_SCALE;
 const zero_point_t IDEEP_EMPTY_ZP;
 
@@ -63,18 +63,14 @@ enum lowp_kind {
   LOWP_S8S8 = s8s8,
 };
 
-enum rnn_kind {
-  RNN_RELU = 0,
-  RNN_TANH = 1,
-  LSTM = 2,
-  GRU = 3
-};
+enum rnn_kind { RNN_RELU = 0, RNN_TANH = 1, LSTM = 2, GRU = 3 };
 
 static bool has_bf16_type_support() {
   // for v1.8
   // static bool support_bf16 = isa >= dnnl::cpu_isa::avx512_core
   //                           && isa != dnnl::cpu_isa::avx2_vnni;
-  static bool support_bf16 = dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core;
+  static bool support_bf16 =
+      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core;
   return support_bf16;
 }
 
@@ -93,8 +89,9 @@ struct engine : public dnnl::engine {
         malloc(utils::allocator::malloc),
         free(utils::allocator::free) {}
 
-  void set_allocator(const std::function<void*(size_t)>& malloc,
-                     const std::function<void(void*)>& free) {
+  void set_allocator(
+      const std::function<void*(size_t)>& malloc,
+      const std::function<void(void*)>& free) {
     this->malloc = malloc;
     this->free = free;
   }
@@ -111,6 +108,6 @@ struct stream : public dnnl::stream {
     return s;
   }
 };
-}
+} // namespace ideep
 
 #endif

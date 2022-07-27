@@ -4,14 +4,14 @@
 namespace ideep {
 
 struct prelu_forward : public dnnl::prelu_forward {
-
   using super = dnnl::prelu_forward;
 
-  static void compute(const tensor& src,
-                      const tensor& weight,
-                      tensor& dst,
-                      prop_kind aprop_kind = prop_kind::forward,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const tensor& src,
+      const tensor& weight,
+      tensor& dst,
+      prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
     auto src_in = src;
     auto weight_in = weight;
 
@@ -29,31 +29,33 @@ struct prelu_forward : public dnnl::prelu_forward {
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto pd = primitive_desc({aprop_kind, src_desc, weight_desc}, op_attr, aengine);
+    auto pd =
+        primitive_desc({aprop_kind, src_desc, weight_desc}, op_attr, aengine);
     auto expected_weights = weight_in.reorder_if_differ_in(pd.weights_desc());
     dst.reinit_if_possible(pd.dst_desc());
 
     tensor scratchpad(pd.scratchpad_desc());
 
-    super(pd).execute(stream::default_stream(),
-                      {{DNNL_ARG_SRC, src_in},
-                       {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_DST, dst},
-                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    super(pd).execute(
+        stream::default_stream(),
+        {{DNNL_ARG_SRC, src_in},
+         {DNNL_ARG_WEIGHTS, expected_weights},
+         {DNNL_ARG_DST, dst},
+         {DNNL_ARG_SCRATCHPAD, scratchpad}});
   }
 };
 
 struct prelu_backward : public dnnl::prelu_backward {
-
   using super = dnnl::prelu_backward;
 
-  static void compute(const tensor& src,
-                      const tensor& weight,
-                      const tensor& diff_dst,
-                      tensor& diff_src,
-                      tensor& diff_weight,
-                      prop_kind aprop_kind = prop_kind::backward,
-                      const engine& aengine = engine::cpu_engine()) {
+  static void compute(
+      const tensor& src,
+      const tensor& weight,
+      const tensor& diff_dst,
+      tensor& diff_src,
+      tensor& diff_weight,
+      prop_kind aprop_kind = prop_kind::backward,
+      const engine& aengine = engine::cpu_engine()) {
     auto src_in = src;
     auto weight_in = weight;
     auto diff_dst_in = diff_dst;
@@ -71,7 +73,9 @@ struct prelu_backward : public dnnl::prelu_backward {
     auto weight_desc = weight_in.get_desc().to_format_any();
     auto diff_dst_desc = diff_dst_in.get_desc();
     auto diff_weights_desc =
-        tensor::desc(weight_in.get_dims(), diff_dst_in.get_data_type(), tag::any).to_format_any();
+        tensor::desc(
+            weight_in.get_dims(), diff_dst_in.get_data_type(), tag::any)
+            .to_format_any();
     auto forward_hints = prelu_forward::primitive_desc(
         {prop_kind::forward, src_desc, weight_desc}, aengine);
 
@@ -79,9 +83,13 @@ struct prelu_backward : public dnnl::prelu_backward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {src_desc, weight_desc, diff_dst_desc, diff_weights_desc}, op_attr, aengine, forward_hints);
+        {src_desc, weight_desc, diff_dst_desc, diff_weights_desc},
+        op_attr,
+        aengine,
+        forward_hints);
 
-    auto expected_diff_dst = diff_dst_in.reorder_if_differ_in(pd.diff_dst_desc());
+    auto expected_diff_dst =
+        diff_dst_in.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src_in.reorder_if_differ_in(pd.src_desc());
     auto expected_weights = weight_in.reorder_if_differ_in(pd.weights_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());
@@ -89,13 +97,14 @@ struct prelu_backward : public dnnl::prelu_backward {
 
     tensor scratchpad(pd.scratchpad_desc());
 
-    super(pd).execute(stream::default_stream(),
-                    {{DNNL_ARG_DIFF_DST, expected_diff_dst},
-                    {DNNL_ARG_SRC, expected_src},
-                    {DNNL_ARG_WEIGHTS, expected_weights},
-                    {DNNL_ARG_DIFF_SRC, diff_src},
-                    {DNNL_ARG_DIFF_WEIGHTS ,diff_weight},
-                    {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    super(pd).execute(
+        stream::default_stream(),
+        {{DNNL_ARG_DIFF_DST, expected_diff_dst},
+         {DNNL_ARG_SRC, expected_src},
+         {DNNL_ARG_WEIGHTS, expected_weights},
+         {DNNL_ARG_DIFF_SRC, diff_src},
+         {DNNL_ARG_DIFF_WEIGHTS, diff_weight},
+         {DNNL_ARG_SCRATCHPAD, scratchpad}});
 
     // Reshape weight back to original dimension
     if (diff_weight.get_dims() != weight_dims) {
@@ -104,6 +113,6 @@ struct prelu_backward : public dnnl::prelu_backward {
   }
 };
 
-}  // namespace ideep
+} // namespace ideep
 
 #endif

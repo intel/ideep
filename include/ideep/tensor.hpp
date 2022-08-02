@@ -674,23 +674,7 @@ class tensor : public memory {
       return *this;
     } else {
       tensor dst{expected_desc};
-      // Keep scale and zero point
-      if (has_scale()) {
-        dst.set_scale(get_scale());
-      }
-      if (has_zero_point()) {
-        dst.set_zero_point(get_zero_point());
-      }
-      // Try to reorder and catch possible runtime errors.
-      // If error occurs, it is reordered to plain format then to the desired format
-      try {
-        reorder_to(dst, aattr);
-      } catch (...) {
-        // A common error is 'could not create a reorder primitive descriptor'
-        // We won't distinguish between specific errors
-        ideep::tensor&& plain_weight = to_public(nullptr, get_data_type());
-        plain_weight.reorder_to(dst, aattr);
-      }
+      this->reorder_to(dst, aattr);
       return dst;
     }
   }

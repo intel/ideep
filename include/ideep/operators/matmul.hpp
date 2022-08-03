@@ -120,6 +120,39 @@ struct matmul_forward : public dnnl::matmul,
                                       attr, dst_type, alowp_kind, aengine);
   }
 
+  // 2-in-1 compute for fp32 op with bias. Bias is disabled if it is empty.
+  static inline void compute_binary(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_binary_impl</*with_bias=*/false>(src, other, weights, bias, dst,
+                                               dst_coeff, attr, aengine);
+    } else {
+      compute_binary_impl</*with_bias=*/true>(src, other, weights, bias, dst,
+                                              dst_coeff, attr, aengine);
+    }
+  }
+
+  // 2-in-1 compute for fp32 op without bias.
+  static inline void compute_binary(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_binary_impl</*with_bias=*/false>(src, other, weights, dummy_bias, dst,
+                                             dst_coeff, attr, aengine);
+  }
+
   // Bias is not used if it is empty.
   template <bool is_dynamic>
   static void prepare(matmul_forward_params& param,
@@ -241,6 +274,25 @@ enum task_type {
                src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
                attr, dst_type, alowp_kind, aengine);
     do_compute(param, type_compute_static, src, weights, bias, with_bias, dst);
+  }
+
+  // For 2-in-1 compute: prepare + compute
+  // Supports fp32.
+  template <bool with_bias>
+  static inline void compute_binary_impl(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const engine& aengine = engine::cpu_engine()) {
+    matmul_forward_params param;
+    do_prepare(param, type_prepare_static, src, weights, bias, with_bias, dst, dst_coeff, 1.0f,
+        scale_t(), scale_t(), scale_t(), zero_point_t(), zero_point_t(),
+        attr, data_type::undef, u8s8, aengine);
+    do_compute_binary<with_bias>(param, src, other, weights, bias, dst);
   }
 
  static void do_prepare(matmul_forward_params& param,
@@ -575,6 +627,64 @@ enum task_type {
    } else {
      dst.feed_from(expected_dst);
    }
+  }
+
+// For fp32. Set reorder flags to false if you are sure the memory layout
+  // aligns with primitive descriptor. Otherwise, checks are made and reorder
+  // may be needed.
+  template <bool with_bias>
+  static inline void do_compute_binary(
+      const matmul_forward_params& param,
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
+    auto& pd = param.pd;
+    auto& primitive = param.primitive;
+    auto& bias_attr = param.bias_attr;
+
+    auto expected_dst_desc = pd.dst_desc();
+
+    auto expected_src = src.reorder_if_differ_in(pd.src_desc());
+    auto expected_other = other.reorder_if_differ_in(expected_dst_desc);
+    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc());
+    tensor scratchpad(pd.scratchpad_desc());
+
+    tensor expected_dst;
+    if (dst.is_empty() || dst.get_desc() != expected_dst_desc){
+      // If dst buffer are not given by user or user given dst buffer are not under expected format
+      // We need init a new one
+      expected_dst.init(expected_dst_desc);
+    } else {
+      // The format of given dst buffer is expected
+      expected_dst = dst;
+    }
+    if (with_bias){
+      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc(), bias_attr);
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, expected_dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other}});
+    } else {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, expected_dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other}});
+    }
+    // reorder back to dst's buffer if needed
+    if (dst.is_empty() ||
+       dst.get_desc() == expected_dst.get_desc() ||
+       !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+      dst =  expected_dst;
+    } else {
+      dst.feed_from(expected_dst);
+    }
   }
 
 };

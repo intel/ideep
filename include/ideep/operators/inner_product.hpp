@@ -3,6 +3,22 @@
 
 namespace ideep {
 
+struct inner_product_forward_params {
+  dnnl::inner_product_forward::primitive_desc pd;
+  dnnl::inner_product_forward primitive;
+  attr_t op_attr;
+
+  inner_product_forward_params() {}
+
+  inner_product_forward_params(
+      dnnl::inner_product_forward::primitive_desc&& pd,
+      dnnl::inner_product_forward&& primitive,
+      attr_t&& op_attr)
+      : pd(std::move(pd)),
+        primitive(std::move(primitive)),
+        op_attr(std::move(op_attr)) {}
+};
+
 struct inner_product_forward
     : public dnnl::inner_product_forward,
       utils::computation_cache<dnnl::inner_product_forward::primitive_desc> {
@@ -38,6 +54,80 @@ struct inner_product_forward
     compute_impl</*with_bias=*/false>(src, weights, dummy_bias, dst, src_scales,
                                       weights_scales, dst_scales, attr,
                                       aprop_kind, alowp_kind, aengine);
+  }
+
+  // 2-in-1 compute, with bias
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const tensor &bias,
+                             tensor &dst,
+                             const attr_t &attr = attr_t(),
+                             const prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    inner_product_forward_params param;
+    do_prepare<true>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
+    do_compute_binary<true>(param, src, other, weights, bias, dst);
+  }
+
+  // 2-in-1 compute, without bias
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             tensor &dst,
+                             const attr_t &attr = attr_t(),
+                             const prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    inner_product_forward_params param;
+    do_prepare<false>(param, src, weights, dummy_bias, dst, attr, aprop_kind, aengine);
+    do_compute_binary<false>(param, src, other, weights, dummy_bias, dst);
+  }
+
+  // Compute with prepared param, with bias
+  static void compute_binary(const inner_product_forward_params &param,
+                             const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const tensor &bias,
+                             tensor &dst) {
+    do_compute_binary</*with_bias=*/true>(param, src, other, weights, bias, dst);
+  }
+
+  // Compute with prepared param, without bias
+  static void compute_binary(const inner_product_forward_params &param,
+                             const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             tensor &dst) {
+    static tensor dummy_bias;
+    do_compute_binary</*with_bias=*/false>(param, src, other, weights, dummy_bias, dst);
+  }
+
+  // Prepare with bias
+  static void prepare(inner_product_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      tensor& dst,
+                      const attr_t& attr = attr_t(),
+                      const prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    do_prepare</*with_bias=*/true>(param, src, weights, bias, dst, attr,
+                                   aprop_kind, aengine);
+  }
+
+  // Prepare without bias
+  static void prepare(inner_product_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      tensor& dst,
+                      const attr_t& attr = attr_t(),
+                      const prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    do_prepare</*with_bias=*/false>(param, src, weights, dummy_bias, dst, attr,
+                                   aprop_kind, aengine);
   }
 
 
@@ -289,8 +379,111 @@ private:
       dst.feed_from(expected_dst);
     }
   }
-};
 
+  template <bool with_bias>
+  static void do_prepare(
+      inner_product_forward_params& param,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const attr_t& attr,
+      const prop_kind aprop_kind,
+      const engine& aengine) {
+    tensor::desc src_desc, weights_desc, bias_desc;
+    attr_t& op_attr = param.op_attr;
+    data_type dst_data_type;
+    auto dst_dims = {src.get_dim(0), weights.get_dim(0)};
+
+    op_attr = attr;
+    IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
+                                data_type::f32, data_type::bf16),
+            "Incorrect data type in weights");
+
+    // align weights data type with src
+    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
+                                                           : data_type::f32;
+    src_desc = {src.get_dims(), dst_data_type, format_tag::any};
+    weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
+    if (with_bias) {
+      IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
+                                  data_type::f32, data_type::bf16),
+                    "Incorrect data type in bias");
+      bias_desc = bias.get_desc().to_format_any();
+    }
+
+    tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
+
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
+    param.pd = get_primitive_desc(
+        src_desc,
+        weights_desc,
+        dst_desc,
+        bias_desc,
+        with_bias,
+        op_attr,
+        aprop_kind);
+    param.primitive = std::move(super(param.pd));
+  }
+
+  template <bool with_bias>
+  static void do_compute_binary(const inner_product_forward_params &param,
+                                const tensor &src,
+                                const tensor &other,
+                                const tensor &weights,
+                                const tensor &bias,
+                                tensor &dst) {
+    auto &pd = param.pd;
+    auto &primitive = param.primitive;
+    auto &op_attr = param.op_attr;
+
+    auto expected_src = src.reorder_if_differ_in(pd.src_desc());
+    // make sure other has same format with dst.
+    // TODO: other has different with dst?
+    auto expected_other = other.reorder_if_differ_in(pd.dst_desc());
+    auto expected_weights = weights.reorder_if_differ_in(pd.weights_desc());
+    tensor scratchpad(pd.scratchpad_desc());
+    tensor expected_dst;
+    if (dst.is_empty() || dst.get_desc() != pd.dst_desc()) {
+      // If dst buffer are not given by user or user given dst buffer are not
+      // under expected format We need init a new one.
+      expected_dst.init(pd.dst_desc());
+    } else {
+      // The format of given dst buffer is expected
+      expected_dst = dst;
+    }
+
+    if (with_bias) {
+      auto expected_bias = bias.reorder_if_differ_in(pd.bias_desc());
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, expected_dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                          expected_other}});
+    } else {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, expected_src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, expected_dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                          expected_other}});
+    }
+   // reorder back to dst's buffer if needed
+   if (dst.is_empty() ||
+       dst.get_desc() == expected_dst.get_desc() ||
+       !dst.get_desc().has_same_shape_as(expected_dst.get_desc())){
+     dst =  expected_dst;
+   } else {
+     dst.feed_from(expected_dst);
+   }
+  }
+
+};
 
 struct inner_product_backward_data : public dnnl::inner_product_backward_data {
 

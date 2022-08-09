@@ -236,6 +236,7 @@ struct convolution_forward
                              const dims &padding_l,
                              const dims &padding_r,
                              int groups,
+			     bool is_channels_last = false,
                              const attr_t &attr = attr_t(),
                              algorithm aalgorithm = algorithm::convolution_direct,
                              prop_kind aprop_kind = prop_kind::forward,
@@ -264,7 +265,8 @@ struct convolution_forward
                              const dims &padding_l,
                              const dims &padding_r,
                              int groups,
-                             const attr_t &attr = attr_t(),
+                             bool is_channels_last = false,
+			     const attr_t &attr = attr_t(),
                              algorithm aalgorithm = algorithm::convolution_direct,
                              prop_kind aprop_kind = prop_kind::forward,
                              const engine &aengine = engine::cpu_engine()) {

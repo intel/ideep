@@ -146,6 +146,10 @@ class tensor : public memory {
       return is_blocking_desc() && blocking_desc().inner_nblks == 0;
     };
 
+    inline bool is_rnn_packed() const {
+      return is_rnn_packed_desc();
+    }
+
     inline bool is_default() const {
       if (!is_plain())
         return false;
@@ -257,6 +261,30 @@ class tensor : public memory {
       return strides[n] == dims[c] * dims[h] * dims[w] &&
           strides[c] == dims[h] * dims[w] && strides[h] == dims[w] &&
           strides[w] == 1;
+    };
+
+    inline bool is_channels_last() const {
+      if (!is_plain() ||
+          !(data.ndims == 4 || data.ndims == 5 || data.ndims == 3))
+        return false;
+      const auto& dims = data.dims;
+      const auto& strides = blocking_strides();
+      if (data.ndims == 4) {
+        const auto n = 0, c = 1, h = 2, w = 3;
+        return strides[n] == dims[h] * dims[w] * dims[c] &&
+            strides[h] == dims[w] * dims[c] && strides[w] == dims[c] &&
+            strides[c] == 1;
+      } else if (data.ndims == 5) {
+        const auto n = 0, c = 1, d = 2, h = 3, w = 4;
+        return strides[n] == dims[d] * dims[h] * dims[w] * dims[c] &&
+            strides[d] == dims[h] * dims[w] * dims[c] &&
+            strides[h] == dims[w] * dims[c] && strides[w] == dims[c] &&
+            strides[c] == 1;
+      } else {
+        const auto n = 0, c = 1, w = 2;
+        return strides[n] == dims[w] * dims[c] && strides[w] == dims[c] &&
+            strides[c] == 1;
+      }
     };
 
     inline bool is_iohw() const {
@@ -474,14 +502,21 @@ class tensor : public memory {
       return data.format_desc.blocking;
     }
 
-   private:
-    /// Returns dimension vector
-    inline dims get_internal_dims() const {
-      return dims(data.dims, data.dims + data.ndims);
+    dims_t& blocking_strides() const {
+      IDEEP_ENFORCE(
+          is_blocking_desc(),
+          "Cannot get blocking desc on a non-blocking desc");
+      return const_cast<dnnl_memory_desc_t&>(data).format_desc.blocking.strides;
     }
 
     const dims_t& padded_dims() const {
       return data.padded_dims;
+    }
+
+   private:
+    /// Returns dimension vector
+    inline dims get_internal_dims() const {
+      return dims(data.dims, data.dims + data.ndims);
     }
 
     const dims_t& padded_offsets() const {
@@ -506,13 +541,6 @@ class tensor : public memory {
 
     bool is_rnn_packed_desc() const {
       return format_kind() == dnnl_format_kind_rnn_packed;
-    }
-
-    dims_t& blocking_strides() const {
-      IDEEP_ENFORCE(
-          is_blocking_desc(),
-          "Cannot get blocking desc on a non-blocking desc");
-      return const_cast<dnnl_memory_desc_t&>(data).format_desc.blocking.strides;
     }
 
     void set_g(dim groups) {
@@ -630,6 +658,18 @@ class tensor : public memory {
   /// Function that refill tensor with new description or buffer
   void init(const desc& adesc, const engine& aengine = engine::cpu_engine()) {
     buffer_.reset(aengine.malloc(adesc.get_size()), aengine.free);
+    scale_.reset();
+    zero_point_.reset();
+    eng_ = aengine;
+    reset_internal(adesc, aengine, buffer_.get());
+  }
+
+  void zero_init(
+      const desc& adesc,
+      const engine& aengine = engine::cpu_engine()) {
+    void* data = aengine.malloc(adesc.get_size());
+    memset(data, 0, adesc.get_size());
+    buffer_.reset(data, aengine.free);
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
@@ -909,12 +949,17 @@ class tensor : public memory {
       }
     } else {
       // conv: judge whether is channels last on oihw format
-      if (old_desc.is_nhwc()) {
-        // goihw (abcde) => gohwi (abdec)
-        grouped_desc = grouped_desc.to_format(format_tag::abdec);
-      } else if (old_desc.is_ndhwc()) {
-        // goidhw (abcdef) => godhwi (abdefc)
-        grouped_desc = grouped_desc.to_format(format_tag::abdefc);
+      auto channels_last = old_desc.is_channels_last();
+      if (channels_last) {
+        // goihw (abcde) => gohwi (abdec) or goidhw (abcdef) => gohwi (abdefc)
+        auto memory_format = format_tag::abdec;
+        auto dim = old_desc.get_ndims();
+        if (dim == 5) {
+          memory_format = format_tag::abdefc;
+        } else if (dim == 3) {
+          memory_format = format_tag::abdc;
+        }
+        grouped_desc = grouped_desc.to_format(memory_format);
       }
     }
 

@@ -12,8 +12,23 @@ using post_ops = dnnl::post_ops;
 struct attr_t : public dnnl::primitive_attr {
   attr_t() {}
 
+  attr_t(const attr_t& other) : dnnl::primitive_attr(other) {
+    *this = other;
+  }
+
   attr_t(int mask, const scale_t& scales) {
     set_output_scales(mask, scales);
+  }
+
+  attr_t(dnnl_fpmath_mode_t mode) {
+    set_fpmath_mode(mode);
+  }
+
+  attr_t& set_fpmath_mode(dnnl_fpmath_mode_t mode) {
+    error::wrap_c_api(
+        dnnl_primitive_attr_set_fpmath_mode(get(), mode),
+        "could not set fpmath mode primitive attribute");
+    return *this;
   }
 
   std::pair<scale_t, int> get_output_scales() const {
@@ -25,6 +40,13 @@ struct attr_t : public dnnl::primitive_attr {
             get(), &count, &c_mask, &c_scales),
         "could not get int output scales");
     return std::make_pair(scale_t(c_scales, c_scales + count), c_mask);
+  }
+
+  std::pair<zero_point_t, int> get_zero_points(int arg) const {
+    int mask;
+    zero_point_t zero_points;
+    get_zero_points(arg, mask, zero_points);
+    return std::make_pair(zero_points, mask);
   }
 
   // Helper factory
@@ -285,6 +307,48 @@ struct attr_t : public dnnl::primitive_attr {
         std::get<4>(params) != algorithm::eltwise_relu)
       return false;
 
+    return true;
+  }
+
+  attr_t& operator=(const attr_t& rhs) {
+    if (this == &rhs) {
+      return *this;
+    }
+    dnnl_primitive_attr_t result;
+    error::wrap_c_api(
+        dnnl_primitive_attr_clone(&result, rhs.get()),
+        "could not clone primitive attributes");
+    this->reset(result);
+    return *this;
+  }
+
+  bool operator==(const attr_t& rhs) const {
+    auto l_po = get_post_ops();
+    auto r_po = rhs.get_post_ops();
+    if (l_po.len() != r_po.len() ||
+        get_output_scales() != rhs.get_output_scales() ||
+        get_fpmath_mode() != rhs.get_fpmath_mode() ||
+        get_scratchpad_mode() != rhs.get_scratchpad_mode()) {
+      return false;
+    }
+    if (get_zero_points(DNNL_ARG_SRC) != rhs.get_zero_points(DNNL_ARG_SRC) ||
+        get_zero_points(DNNL_ARG_WEIGHTS) != rhs.get_zero_points(DNNL_ARG_WEIGHTS) ||
+        get_zero_points(DNNL_ARG_DST) != rhs.get_zero_points(DNNL_ARG_DST)) {
+      return false;
+    }
+    for (auto index = 0; index < l_po.len(); index++) {
+      kind l_akind, r_akind;
+      algorithm l_alg, r_alg;
+      float l_scale = 1.0, l_alpha = 1.0, l_beta = 0.0;
+      float r_scale = 1.0, r_alpha = 1.0, r_beta = 0.0;
+      std::tie(l_akind, l_scale, l_alpha, l_beta, l_alg) = get_params(index);
+      std::tie(r_akind, r_scale, r_alpha, r_beta, r_alg) =
+          rhs.get_params(index);
+      if (l_akind != r_akind || l_alg != r_alg || l_scale != r_scale ||
+          l_alpha != r_alpha || l_beta != r_beta) {
+        return false;
+      }
+    }
     return true;
   }
 

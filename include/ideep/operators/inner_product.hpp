@@ -181,6 +181,42 @@ struct inner_product_forward
         param, src, other, weights, dummy_bias, dst);
   }
 
+  // DEPRECATED
+  // 2-in-1 compute. With bias.
+  static void compute(
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const scale_t& src_scales = scale_t(),
+      const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(),
+      const attr_t& attr = attr_t(),
+      const prop_kind aprop_kind = prop_kind::forward,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+    compute_impl</*with_bias=*/true, true, true>(
+        src, weights, bias, dst, attr, aprop_kind, aengine);
+  }
+
+  // DEPRECATED
+  // 2-in-1 compute. Without bias.
+  static void compute(
+      const tensor& src,
+      const tensor& weights,
+      tensor& dst,
+      const scale_t& src_scales = scale_t(),
+      const scale_t& weights_scales = scale_t(),
+      const scale_t& dst_scales = scale_t(),
+      const attr_t& attr = attr_t(),
+      const prop_kind aprop_kind = prop_kind::forward,
+      const lowp_kind alowp_kind = u8s8,
+      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_impl</*with_bias=*/false, true, true>(
+        src, weights, dummy_bias, dst, attr, aprop_kind, aengine);
+  }
+
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
       const dims& src_dims = dims(),
@@ -189,9 +225,9 @@ struct inner_product_forward
       prop_kind aprop_kind = prop_kind::forward,
       const engine& aengine = engine::cpu_engine()) {
     auto x_dims = weights_dims;
-    x_dims[0] = src_dims.empty() ? 1 : src_dims[0];
+    // 128 is default batch size for inner product
+    x_dims[0] = src_dims.empty() ? 128 : src_dims[0];
     auto y_dims = {x_dims[0], weights_dims[0]};
-    auto ndims = weights_dims.size();
     auto y_dtype = (dtype != data_type::s8) ? dtype : data_type::s32;
 
     IDEEP_ENFORCE(x_dims.size() == weights_dims.size(),
@@ -394,6 +430,18 @@ private:
             : weights;
     tensor scratchpad(pd.scratchpad_desc());
 
+    exec_args args;
+    args.insert({DNNL_ARG_SRC, expected_src});
+    args.insert({DNNL_ARG_WEIGHTS, expected_weights});
+    if (with_bias) {
+      auto& expected_bias = reorder_weight
+          ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
+          : bias;
+      args.insert({DNNL_ARG_BIAS, expected_bias});
+    }
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    args.insert(
+        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other});
     if (reorder_src) {
       tensor expected_dst;
       if (dst.is_empty() || dst.get_desc() != pd.dst_desc()) {
@@ -406,29 +454,9 @@ private:
         // The format of given dst buffer is expected
         expected_dst = dst;
       }
+      args.insert({DNNL_ARG_DST, expected_dst});
+      primitive.execute(stream::default_stream(), args);
 
-      if (with_bias) {
-        auto &expected_bias =
-            reorder_weight
-                ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
-                : bias;
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_BIAS, expected_bias},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad},
-                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                            expected_other}});
-      } else {
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad},
-                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                            expected_other}});
-      }
       // reorder back to dst's buffer if needed
       if (dst.is_empty() ||
           // when dst is empty, expect return buffer allocate by ideep
@@ -442,29 +470,8 @@ private:
         dst.feed_from(expected_dst);
       }
     } else { // reorder_src
-      tensor &expected_dst = dst;
-      if (with_bias) {
-        auto &expected_bias =
-            reorder_weight
-                ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
-                : bias;
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_BIAS, expected_bias},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad},
-                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                            expected_other}});
-      } else {
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad},
-                           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                            expected_other}});
-      }
+      args.insert({DNNL_ARG_DST, dst});
+      primitive.execute(stream::default_stream(), args);
     }
   }
 
@@ -493,6 +500,16 @@ private:
         weights;
     tensor scratchpad(pd.scratchpad_desc());
 
+    exec_args args;
+    args.insert({DNNL_ARG_SRC, expected_src});
+    args.insert({DNNL_ARG_WEIGHTS, expected_weights});
+    if (with_bias) {
+      auto& expected_bias = reorder_weight
+          ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
+          : bias;
+      args.insert({DNNL_ARG_BIAS, expected_bias});
+    }
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
     if (reorder_src) {
       tensor expected_dst;
       if (dst.is_empty() || dst.get_desc() != pd.dst_desc()){
@@ -509,24 +526,9 @@ private:
         // The format of given dst buffer is expected
         expected_dst = dst;
       }
+      args.insert({DNNL_ARG_DST, expected_dst});
+      primitive.execute(stream::default_stream(), args);
 
-      if (with_bias){
-        auto& expected_bias = reorder_weight ?
-                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
-                              bias;
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_BIAS, expected_bias},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
-      } else {
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
-      }
       // reorder back to dst's buffer if needed
       if (dst.is_empty() ||
           // when dst is empty, expect return buffer allocate by ideep
@@ -539,24 +541,8 @@ private:
         dst.feed_from(expected_dst);
       }
     } else { // reorder_src
-      tensor& expected_dst = dst;
-      if (with_bias){
-        auto& expected_bias = reorder_weight ?
-                              bias.reorder_if_differ_in(pd.bias_desc(), bias_attr) :
-                              bias;
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_BIAS, expected_bias},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
-      } else {
-        primitive.execute(stream::default_stream(),
-                          {{DNNL_ARG_SRC, expected_src},
-                           {DNNL_ARG_WEIGHTS, expected_weights},
-                           {DNNL_ARG_DST, expected_dst},
-                           {DNNL_ARG_SCRATCHPAD, scratchpad}});
-      }
+      args.insert({DNNL_ARG_DST, dst});
+      primitive.execute(stream::default_stream(), args);
     }
   }
 };
@@ -570,6 +556,7 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       const tensor& weights,
                       const dims& diff_src_dims,
                       tensor& diff_src,
+                      const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
     auto weights_ = weights;
     if (diff_dst.get_data_type() == data_type::bf16) {
@@ -590,11 +577,11 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     auto diff_src_desc =
         tensor::desc(diff_src_dims, diff_dst.get_data_type(), tag::any);
 
-    auto forward_hints = inner_product_forward::get_primitive_desc(
-        diff_src_desc, weights_desc, diff_dst_desc);
-
-    auto op_attr = dnnl::primitive_attr();
+    auto op_attr = attr;
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
+    auto forward_hints = inner_product_forward::get_primitive_desc(
+        diff_src_desc, weights_desc, diff_dst_desc, tensor::desc(), false, op_attr);
 
     auto pd = primitive_desc(
         {diff_src_desc, weights_desc, diff_dst_desc}, op_attr, aengine, forward_hints);
@@ -639,19 +626,21 @@ struct inner_product_backward_weights
                       tensor& diff_weights,
                       tensor& diff_bias,
                       const data_type diff_weight_type = data_type::undef,
+                      const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_diff_bias=*/true>(
-        src, diff_dst, diff_weights, diff_bias, diff_weight_type);
+        src, diff_dst, diff_weights, diff_bias, diff_weight_type, attr);
   }
 
   static void compute(const tensor& src,
                       const tensor& diff_dst,
                       tensor& diff_weights,
                       const data_type diff_weight_type = data_type::undef,
+                      const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
-        src, diff_dst, diff_weights, dummy_diff_bias, diff_weight_type);
+        src, diff_dst, diff_weights, dummy_diff_bias, diff_weight_type, attr);
   }
 
 private:
@@ -661,6 +650,7 @@ private:
                            tensor& diff_weights,
                            tensor& diff_bias,
                            const data_type diff_weight_type,
+                           const attr_t& attr = attr_t(),
                            const engine& aengine = engine::cpu_engine()) {
     auto src_desc = src.get_desc().to_format_any();
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
@@ -681,11 +671,11 @@ private:
     if (diff_weight_type_in != diff_dst_type) {
       weights_desc = weights_desc.to_type(diff_dst_type);
     }
-    auto forward_hints = inner_product_forward::get_primitive_desc(
-        src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias);
-
-    auto op_attr = dnnl::primitive_attr();
+    auto op_attr = attr;
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
+    auto forward_hints = inner_product_forward::get_primitive_desc(
+        src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
 
     auto pd = with_diff_bias
         ? primitive_desc({src_desc, diff_weights_desc, diff_bias_desc,

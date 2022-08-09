@@ -20,26 +20,36 @@ struct convolution_forward_params {
   convolution_forward_params(
       dnnl::convolution_forward::primitive_desc&& pd,
       dnnl::convolution_forward&& primitive,
+      attr_t&& op_attr,
       int groups)
       : pd(std::move(pd)),
         primitive(std::move(primitive)),
+        op_attr(op_attr),
         groups(groups),
-        bias_attr(attr_t()) {}
+        bias_attr(attr_t()),
+        pd_use_threads(omp_get_max_threads()) {}
 
   convolution_forward_params(
       dnnl::convolution_forward::primitive_desc&& pd,
       dnnl::convolution_forward&& primitive,
+      attr_t&& op_attr,
       int groups,
       attr_t&& bias_attr)
       : pd(std::move(pd)),
         primitive(std::move(primitive)),
+        op_attr(op_attr),
         groups(groups),
-        bias_attr(std::move(bias_attr)) {}
+        bias_attr(std::move(bias_attr)),
+        pd_use_threads(omp_get_max_threads()) {}
 
   dnnl::convolution_forward::primitive_desc pd;
   dnnl::convolution_forward primitive;
+  attr_t op_attr;
   int groups;
   attr_t bias_attr;
+  // From IPEX. Set in `do_prepare()`, only used outside ideep.
+  // TO-DO: Use a better name, i.e., num_threads
+  int pd_use_threads;
   // Param for static quantization
   std::shared_ptr<convolution_forward_quant_params> sq_param_ptr;
 
@@ -766,16 +776,15 @@ struct convolution_forward
                       prop_kind aprop_kind = prop_kind::forward,
                       const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
+    // Consider fp32 only for IPEX
     if (bias.is_empty()) {
       compute_dispatch</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
       compute_dispatch</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     }
   }
 
@@ -798,11 +807,11 @@ struct convolution_forward
                       prop_kind aprop_kind = prop_kind::forward,
                       const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
+    // Consider fp32 only for IPEX
     static tensor dummy_bias;
     compute_dispatch</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        IDEEP_EMPTY_ZP, IDEEP_EMPTY_ZP, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   // DEPRECATED
@@ -871,6 +880,40 @@ struct convolution_forward
         zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
+  // DEPRECATED
+  // compute with param and primitive. With bias
+  static void compute(
+      const convolution_forward_params& param,
+      const dnnl::convolution_forward& prim,
+      const tensor& src,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
+    (void)prim; // Mark as unused
+    if (bias.is_empty()) {
+      do_compute</*with_bias=*/false, true, true>(
+          param, src, weights, bias, dst);
+    } else {
+      do_compute</*with_bias=*/true, true, true>(
+          param, src, weights, bias, dst);
+    }
+  }
+
+  // DEPRECATED
+  // compute with param and primitive. Without bias
+  static void compute(
+      const convolution_forward_params& param,
+      const dnnl::convolution_forward& prim,
+      const tensor& src,
+      const tensor& weights,
+      tensor& dst) {
+    (void)prim; // Mark as unused
+    static tensor dummy_bias;
+    do_compute</*with_bias=*/false, true, true>(
+        param, src, weights, dummy_bias, dst);
+  }
+
+  template <bool is_channels_last = false>
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
       data_type dtype = data_type::f32,
@@ -884,10 +927,9 @@ struct convolution_forward
       data_type x_dtype = data_type::f32,
       const dims& src_dims = dims(),
       const attr_t& attr = attr_t(),
-      bool is_channels_last = false,
       const engine& aengine = engine::cpu_engine()) {
-
-    auto src_size = weights_dims.size(); // weights_dims is 4 for conv2d and 5 for conv3d
+    // weights_dims.size() is 3 for conv1d, 4 for conv2d and 5 for conv3d
+    auto src_size = weights_dims.size();
     auto grouped = groups > 1;
     auto weights_dims_g =
         grouped ? utils::group_dims(weights_dims, groups) : weights_dims;
@@ -905,22 +947,23 @@ struct convolution_forward
     auto oc = groups * dims_in[0 + grouped];
     if (5 == src_size) {
       kernel_size.push_back(dims_in[ndims - 3]);
+      kernel_size.push_back(dims_in[ndims - 2]);
+    } else if (4 == src_size) {
+      kernel_size.push_back(dims_in[ndims - 2]);
     }
-    kernel_size.push_back(dims_in[ndims - 2]);
     kernel_size.push_back(dims_in[ndims - 1]);
     if (src_dims.empty()) {
-      // Construct a dummy case
-      x_dims.push_back(1);
+      // Construct a dummy case. Shape from resnet50 model.
+      x_dims.push_back(32);
       x_dims.push_back(ic);
-      y_dims.push_back(1);
+      y_dims.push_back(32);
       y_dims.push_back(oc);
+      x_dims.push_back(14 * kernel_size[0]);
       if (4 == src_size) {
-        x_dims.push_back(4 * kernel_size[0]);
-        x_dims.push_back(4 * kernel_size[1]);
-      } else {
-        x_dims.push_back(8 * kernel_size[0]);
-        x_dims.push_back(8 * kernel_size[1]);
-        x_dims.push_back(8 * kernel_size[2]);
+        x_dims.push_back(14 * kernel_size[1]);
+      } else if (5 == src_size) {
+        x_dims.push_back(14 * kernel_size[1]);
+        x_dims.push_back(14 * kernel_size[2]);
       }
     } else {
       // Use the real data
@@ -943,12 +986,15 @@ struct convolution_forward
     auto src_query = src_desc;
     auto dst_query = dst_desc;
     if (is_channels_last) {
-      if (src_size == 4) {
+      if (4 == src_size) {
         src_query = src_desc.to_format(tag::nhwc);
         dst_query = dst_desc.to_format(tag::nhwc);
-      } else if (src_size == 5) {
+      } else if (5 == src_size) {
         src_query = src_desc.to_format(tag::ndhwc);
         dst_query = dst_desc.to_format(tag::ndhwc);
+      } else if (3 == src_size) {
+        src_query = src_desc.to_format(tag::nwc);
+        dst_query = dst_desc.to_format(tag::nwc);
       }
     }
 
@@ -964,9 +1010,11 @@ struct convolution_forward
         aprop_kind == prop_kind::forward_inference) {
       apkind = prop_kind::forward;
     }
+    attr_t op_attr = attr;
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_query, weights_desc, tensor::desc(), dst_query, strides, dilates_,
-        padding_l, padding_r, attr, aalgorithm, apkind);
+        padding_l, padding_r, op_attr, aalgorithm, apkind);
 
     // embed group info into weights_desc
     return tensor::desc(pd.weights_desc(), groups);
@@ -998,23 +1046,18 @@ struct convolution_forward
 
     // For nhwc path, weight uses format_tag::any,
     // while activation uses format_tag::nhwc.
+    bool is_channels_last =
+        src_desc.is_channels_last() || weights_desc.is_channels_last();
     auto ndims = src_desc.get_dims().size();
-    if (ndims == 4) {
-      bool is_channels_last = src_desc.is_nhwc();
-      if (is_channels_last) {
-        src_desc_query = src_desc.to_format(tag::nhwc);
-        weights_desc_query = weights_desc.to_format_any();
-        bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
-        dst_desc_query = dst_desc.to_format(tag::nhwc);
+    if (is_channels_last) {
+      auto memory_format = tag::nhwc;
+      if (3 == ndims) {
+        memory_format = tag::nwc;
+      } else if (5 == ndims) {
+        memory_format = tag::ndhwc;
       }
-    } else if (ndims == 5) {
-      bool is_channels_last = src_desc.is_ndhwc();
-      if (is_channels_last) {
-        src_desc_query = src_desc.to_format(tag::ndhwc);
-        weights_desc_query = weights_desc.to_format_any();
-        bias_desc_query = with_bias ? bias_desc.to_format_any() : tensor::desc();
-        dst_desc_query = dst_desc.to_format(tag::ndhwc);
-      }
+      src_desc_query = src_desc.to_format(memory_format);
+      dst_desc_query = dst_desc.to_format(memory_format);
     }
 
     auto key = utils::create_key(
@@ -1116,7 +1159,7 @@ private:
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
         padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
     dnnl::convolution_forward primitive(pd);
-    convolution_forward_params params(std::move(pd), std::move(primitive), groups);
+    convolution_forward_params params(std::move(pd), std::move(primitive), std::move(op_attr), groups);
     do_compute<with_bias, reorder_src, reorder_weight>(params, src, weights, bias, dst);
   }
 
@@ -1166,7 +1209,7 @@ private:
       src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
     convolution_forward_params params(
-        std::move(pd), std::move(primitive), groups, std::move(bias_attr));
+        std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr));
     params.sq_param_ptr =
         std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
     IDEEP_ENFORCE(params.sq_param_ptr, "Failed to allocate memory for parameters");
@@ -1235,7 +1278,7 @@ private:
 
     dnnl::convolution_forward primitive(pd);
 
-    param = {std::move(pd), std::move(primitive), groups};
+    param = {std::move(pd), std::move(primitive), std::move(op_attr), groups};
   }
 
   // for int8
@@ -1285,7 +1328,7 @@ private:
       src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
 
-    param = {std::move(pd), std::move(primitive), groups, std::move(bias_attr)};
+    param = {std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr)};
     param.sq_param_ptr =
         std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
   }
@@ -1310,28 +1353,39 @@ private:
     auto&& expected_weights = reorder_weight ?
         grouped_weights.reorder_if_differ_in(param.pd.weights_desc()) :
         grouped_weights;
-    if (reorder_src) {
-      dst.reinit_if_possible(param.pd.dst_desc());
-    }
     auto& primitive = param.primitive;
+    exec_args args;
+    args.insert({DNNL_ARG_SRC, expected_src});
+    args.insert({DNNL_ARG_WEIGHTS, expected_weights});
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point});
     if (with_bias) {
       auto& expected_bias = reorder_weight ?
           bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
           bias;
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+      args.insert({DNNL_ARG_BIAS, expected_bias});
+    }
+
+    // Deal with dst tensor
+    if (reorder_src) {
+      auto expected_dst_desc = param.pd.dst_desc();
+      tensor expected_dst;
+      // dst not init in FW or has same desc with expected desc.
+      if (dst.is_empty() || dst.get_desc() == expected_dst_desc) {
+        dst.reinit_if_possible(expected_dst_desc);
+        expected_dst = dst;
+      } else {
+        expected_dst.init(expected_dst_desc);
+      }
+      args.insert({DNNL_ARG_DST, expected_dst});
+      primitive.execute(stream::default_stream(), args);
+      // dst has been init in FW side, but has diff desc with expected_dst.
+      if (dst.get_desc() != expected_dst.get_desc()) {
+        dst.feed_from(expected_dst);
+      }
     } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+      args.insert({DNNL_ARG_DST, dst});
+      primitive.execute(stream::default_stream(), args);
     }
   }
 
@@ -1399,15 +1453,15 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
                       const dims& padding_l,
                       const dims& padding_r,
                       const int groups,
+                      const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     // make weights and dilates compatible with DNNL
     auto weights_ = weights.make_grouped_weights(groups);
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
-    bool is_nhwc = diff_dst.get_desc().is_nhwc();
-    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
-    auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
+    bool channels_last = diff_dst.get_desc().is_channels_last();
+    auto format_tag = channels_last ? (diff_src_dims.size() == 4 ? tag::nhwc : tag::ndhwc) : tag::any;
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     // align weight data type with diff_dst for bf16
     auto weights_desc =
@@ -1416,13 +1470,13 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto diff_src_desc = 
         tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
 
+    auto op_attr = attr;
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto forward_hints =
         convolution_forward::get_primitive_desc</*with_bias=*/false>(
             diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
-            dilates_, padding_l, padding_r);
-
-    auto op_attr = dnnl::primitive_attr();
-    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+            dilates_, padding_l, padding_r, op_attr);
 
     auto pd = primitive_desc(
         {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
@@ -1430,15 +1484,29 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
-    diff_src.reinit_if_possible(pd.diff_src_desc());
+
+    auto expected_diff_src_desc = pd.diff_src_desc();
+    tensor expected_diff_src;
+    // diff_src not init in FW or has same desc with expected desc.
+    if (diff_src.is_empty() || diff_src.get_desc() == expected_diff_src_desc) {
+      diff_src.reinit_if_possible(expected_diff_src_desc);
+      expected_diff_src = diff_src;
+    } else {
+      expected_diff_src.init(expected_diff_src_desc);
+    }
 
     tensor scratchpad(pd.scratchpad_desc());
 
     super(pd).execute(stream::default_stream(), 
                       {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                        {DNNL_ARG_WEIGHTS, expected_weights},
-                       {DNNL_ARG_DIFF_SRC, diff_src},
+                       {DNNL_ARG_DIFF_SRC, expected_diff_src},
                        {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    // diff_src has been init in FW side, but has diff desc with
+    // expected_diff_src.
+    if (diff_src.get_desc() != expected_diff_src_desc) {
+      diff_src.feed_from(expected_diff_src);
+    }
   }
 };
 
@@ -1458,12 +1526,13 @@ struct convolution_backward_weights
                       const dims& padding_l,
                       const dims& padding_r,
                       const int groups,
+                      const attr_t& attr = attr_t(),
                       const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     compute_impl</*with_diff_bias=*/true>(
         src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
-        strides, dilates, padding_l, padding_r, groups, diff_weight_type, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, attr, diff_weight_type, aalgorithm, aengine);
   }
 
   static void compute(const tensor& src,
@@ -1475,13 +1544,14 @@ struct convolution_backward_weights
                       const dims& padding_l,
                       const dims& padding_r,
                       const int groups,
+                      const attr_t& attr = attr_t(),
                       const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
         src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
-        strides, dilates, padding_l, padding_r, groups, diff_weight_type, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, attr, diff_weight_type, aalgorithm, aengine);
   }
 
  private:
@@ -1496,6 +1566,7 @@ struct convolution_backward_weights
                            const dims& padding_l,
                            const dims& padding_r,
                            const int groups,
+                           const attr_t& attr,
                            const data_type diff_weight_type,
                            algorithm aalgorithm,
                            const engine& aengine) {
@@ -1511,9 +1582,10 @@ struct convolution_backward_weights
         diff_weights_desc = diff_weights_desc.to_grouped(groups).to_format_any();
     }
 
-    bool is_nhwc = diff_dst.get_desc().is_nhwc();
-    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
-    auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
+    bool channels_last = diff_dst.get_desc().is_channels_last();
+    auto format_tag = channels_last
+        ? (diff_dst.ndims() == 4 ? tag::nhwc : tag::ndhwc)
+        : tag::any;
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     auto src_desc = src.get_desc().to_format(format_tag);
 
@@ -1526,14 +1598,14 @@ struct convolution_backward_weights
     if (diff_weight_type_in != diff_dst_type) {
       weights_desc = weights_desc.to_type(diff_dst_type);
     }
+    auto op_attr = attr;
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto forward_hints =
         convolution_forward::get_primitive_desc<with_diff_bias>(
             src_desc, weights_desc, diff_bias_desc, diff_dst_desc, strides,
-            dilates_, padding_l, padding_r, attr_t(), aalgorithm,
+            dilates_, padding_l, padding_r,op_attr, aalgorithm,
             prop_kind::forward, aengine);
-
-    auto op_attr = dnnl::primitive_attr();
-    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = with_diff_bias
         ? primitive_desc({aalgorithm, src_desc, diff_weights_desc,
@@ -1548,7 +1620,15 @@ struct convolution_backward_weights
     // embed group info into diff_weights_desc
     auto expected_diff_weights_desc =
         tensor::desc(pd.diff_weights_desc(), groups);
-    diff_weights.reinit_if_possible(expected_diff_weights_desc);
+    tensor expected_diff_weights;
+    // diff_weights not init in FW or has same desc with expected desc.
+    if (diff_weights.is_empty() ||
+        diff_weights.get_desc() == expected_diff_weights_desc) {
+      diff_weights.reinit_if_possible(expected_diff_weights_desc);
+      expected_diff_weights = diff_weights;
+    } else {
+      expected_diff_weights.init(expected_diff_weights_desc);
+    }
 
     tensor scratchpad(pd.scratchpad_desc());
 
@@ -1557,15 +1637,20 @@ struct convolution_backward_weights
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_DIFF_WEIGHTS, diff_weights},
+                         {DNNL_ARG_DIFF_WEIGHTS, expected_diff_weights},
                          {DNNL_ARG_DIFF_BIAS, diff_bias},
                          {DNNL_ARG_SCRATCHPAD, scratchpad}});
     } else {
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_DIFF_WEIGHTS, diff_weights},
+                         {DNNL_ARG_DIFF_WEIGHTS, expected_diff_weights},
                          {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    }
+    // diff_weights has been init in FW side, but has diff desc with
+    // expected_diff_weights.
+    if (diff_weights.get_desc() != expected_diff_weights_desc) {
+      diff_weights.feed_from(expected_diff_weights);
     }
   }
 };

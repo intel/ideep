@@ -39,8 +39,8 @@ struct deconv_forward_params {
 
   dnnl::deconvolution_forward::primitive_desc pd;
   dnnl::deconvolution_forward primitive;
-  attr_t bias_attr;
   int groups;
+  attr_t bias_attr;
   // Param for static quantization
   std::shared_ptr<deconv_forward_quant_params> sq_param_ptr;
 };
@@ -398,6 +398,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
+  template <bool is_channels_last = false>
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,   // [i, o, ...]
       data_type dtype = data_type::f32,
@@ -469,6 +470,11 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     tensor::desc src_desc(x_dims, x_dtype);
     tensor::desc dst_desc(y_dims, y_dtype);
 
+    if (is_channels_last) {
+      src_desc = src_desc.to_format(5 == src_size ? tag::ndhwc : tag::nhwc);
+      dst_desc = dst_desc.to_format(5 == src_size ? tag::ndhwc : tag::nhwc);
+    }
+
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_desc, weights_desc, tensor::desc(), dst_desc, strides, dilates_,
         padding_l, padding_r, attr, aalgorithm, aprop_kind);
@@ -499,8 +505,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
       const engine& aengine = engine::cpu_engine()) {
     // For nhwc path, weight uses format_tag::any,
     // while activation uses format_tag::nhwc
-    bool is_nhwc = src_desc.is_nhwc();
-    bool is_ndhwc = src_desc.is_ndhwc();
+    bool is_nhwc = src_desc.is_nhwc() || weights_desc.is_nhwc();
+    bool is_ndhwc = src_desc.is_ndhwc() || weights_desc.is_ndhwc();
     auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
     auto src_desc_query = src_desc.to_format(format_tag);
     auto weights_desc_query = weights_desc.to_format_any();
@@ -723,6 +729,7 @@ struct convolution_transpose_backward_data
                       const dims& padding_r,
                       const dims& dilates = {1, 1},
                       const int groups = 1,
+                      const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     // make weights and dilates compatible with DNNL
@@ -737,13 +744,13 @@ struct convolution_transpose_backward_data
 
     tensor::desc diff_src_desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
 
+    auto op_attr = attr;
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto forward_hints =
         convolution_transpose_forward::get_primitive_desc</*with_bias=*/false>(
             diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
-            dilates_, padding_l, padding_r);
-
-    auto op_attr = dnnl::primitive_attr();
-    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+            dilates_, padding_l, padding_r, op_attr);
 
     auto pd = primitive_desc(
         {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
@@ -777,11 +784,12 @@ struct convolution_transpose_backward_weights
                       const dims& padding_r,
                       const dims& dilates = {1, 1},
                       const int groups = 1,
+                      const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
    compute_impl</*with_diff_bias=*/true>(
        src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
-       strides, dilates, padding_l, padding_r, groups, aalgorithm, aengine);
+       strides, dilates, padding_l, padding_r, groups, attr, aalgorithm, aengine);
   }
 
   static void compute(const tensor& src,
@@ -793,12 +801,13 @@ struct convolution_transpose_backward_weights
                       const dims& padding_r,
                       const dims& dilates = {1, 1},
                       const int groups = 1,
+                      const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
         src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
-        strides, dilates, padding_l, padding_r, groups, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, attr, aalgorithm, aengine);
   }
 private:
   template <bool with_diff_bias>
@@ -812,6 +821,7 @@ private:
                            const dims& padding_l,
                            const dims& padding_r,
                            const int groups,
+                           const attr_t& attr,
                            algorithm aalgorithm,
                            const engine& aengine) {
 
@@ -841,14 +851,14 @@ private:
               .to_format_any()
         : tensor::desc();
 
+    auto op_attr = attr;
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
     auto forward_hints =
         convolution_transpose_forward::get_primitive_desc<with_diff_bias>(
             src_desc, diff_weights_desc, diff_bias_desc, diff_dst_desc, strides,
-            dilates_, padding_l, padding_r, attr_t(), aalgorithm,
+            dilates_, padding_l, padding_r, op_attr, aalgorithm,
             prop_kind::forward, aengine);
-
-    auto op_attr = dnnl::primitive_attr();
-    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = with_diff_bias
         ? primitive_desc({aalgorithm, src_desc, diff_weights_desc,
@@ -863,7 +873,15 @@ private:
     // embed group info into diff_weights_desc
     auto expected_diff_weights_desc =
         tensor::desc(pd.diff_weights_desc(), groups);
-    diff_weights.reinit_if_possible(expected_diff_weights_desc);
+    tensor expected_diff_weights;
+    // diff_weights not init in FW or has same desc with expected desc.
+    if (diff_weights.is_empty() ||
+        diff_weights.get_desc() == expected_diff_weights_desc) {
+      diff_weights.reinit_if_possible(expected_diff_weights_desc);
+      expected_diff_weights = diff_weights;
+    } else {
+      expected_diff_weights.init(expected_diff_weights_desc);
+    }
     tensor scratchpad(pd.scratchpad_desc());
 
     if (with_diff_bias) {
@@ -871,16 +889,18 @@ private:
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_DIFF_WEIGHTS, diff_weights},
+                         {DNNL_ARG_DIFF_WEIGHTS, expected_diff_weights},
                          {DNNL_ARG_DIFF_BIAS, diff_bias},
                          {DNNL_ARG_SCRATCHPAD, scratchpad}});
     } else {
       super(pd).execute(stream::default_stream(),
                         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
                          {DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_DIFF_WEIGHTS, diff_weights},
+                         {DNNL_ARG_DIFF_WEIGHTS, expected_diff_weights},
                          {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
+
+    diff_weights.feed_from(expected_diff_weights, /*is_deconv_weights=*/true);
 
     // recover output dims to align with pytorch
     if (groups > 1) {

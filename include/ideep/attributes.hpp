@@ -20,8 +20,10 @@ struct attr_t : public dnnl::primitive_attr {
     set_output_scales(mask, scales);
   }
 
-  attr_t(dnnl_fpmath_mode_t mode) {
-    set_fpmath_mode(mode);
+  attr_t(dnnl_fpmath_mode_t fpmath_mode,
+         dnnl::scratchpad_mode sp_mode = dnnl::scratchpad_mode::user) {
+    set_fpmath_mode(fpmath_mode);
+    set_scratchpad_mode(sp_mode);
   }
 
   attr_t& set_fpmath_mode(dnnl_fpmath_mode_t mode) {
@@ -47,6 +49,11 @@ struct attr_t : public dnnl::primitive_attr {
     zero_point_t zero_points;
     get_zero_points(arg, mask, zero_points);
     return std::make_pair(zero_points, mask);
+  }
+
+  void get_zero_points(
+          int arg, int &mask, std::vector<int32_t> &zero_points) const {
+      dnnl::primitive_attr::get_zero_points(arg, mask, zero_points);
   }
 
   // Helper factory

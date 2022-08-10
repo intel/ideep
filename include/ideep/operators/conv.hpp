@@ -774,17 +774,16 @@ struct convolution_forward
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
-                      const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     // Consider fp32 only for IPEX
     if (bias.is_empty()) {
       compute_dispatch</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
     } else {
       compute_dispatch</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
     }
   }
 
@@ -805,13 +804,12 @@ struct convolution_forward
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
-                      const lowp_kind alowp_kind = u8s8,
                       const engine& aengine = engine::cpu_engine()) {
     // Consider fp32 only for IPEX
     static tensor dummy_bias;
     compute_dispatch</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
   }
 
   // DEPRECATED

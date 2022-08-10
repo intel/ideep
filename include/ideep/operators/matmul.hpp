@@ -1064,6 +1064,12 @@ struct matmul_forward : public dnnl::matmul,
           : bias;
       args.insert({DNNL_ARG_BIAS, expected_bias});
     }
+    // Do not reorder these params. They may have different shapes as dst
+    for (int i = 0; i < bin_post_params.size(); i++) {
+      args.insert(
+          {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+            bin_post_params[i]});
+    }
     if (reorder_src) {
       tensor expected_dst;
       if (dst.is_empty() || dst.get_desc() != expected_dst_desc){
@@ -1079,11 +1085,6 @@ struct matmul_forward : public dnnl::matmul,
         expected_dst = dst;
       }
       args.insert({DNNL_ARG_DST, expected_dst});
-      for (int i = 0; i < bin_post_params.size(); i++) {
-        args.insert(
-            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
-             bin_post_params[i].reorder_if_differ_in(expected_dst_desc)});
-      }
       primitive.execute(stream::default_stream(), args);
       // reorder back to dst's buffer if needed
       if (dst.is_empty() || dst.get_desc() == expected_dst.get_desc() ||
@@ -1094,11 +1095,6 @@ struct matmul_forward : public dnnl::matmul,
       }
     } else {
       args.insert({DNNL_ARG_DST, dst});
-      for (int i = 0; i < bin_post_params.size(); i++) {
-        args.insert(
-            {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
-             bin_post_params[i]});
-      }
       primitive.execute(stream::default_stream(), args);
     }
   }

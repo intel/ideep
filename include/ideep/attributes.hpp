@@ -252,6 +252,18 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
+  static attr_t fuse_hardsigmoid() {
+    constexpr float scale = 1.0f;
+    constexpr float alpha = 1.0f / 6.0f;
+    constexpr float beta = 1.0f / 2.0f;
+
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(scale, algorithm::eltwise_hardsigmoid, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t fuse_binary(algorithm alg, memory::desc src_desc) {
     attr_t attr;
     post_ops po;

@@ -748,6 +748,9 @@ struct matmul_forward : public dnnl::matmul,
 
     dst_data_type = dst_type == data_type::undef ? dst_data_type : dst_type;
     tensor::desc dst_desc = tensor::desc(dst_dims, dst_data_type, tag::any);
+    if (!dst.is_empty()) {
+      dst_desc = dst.get_desc().to_type(dst_data_type);
+    }
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -897,6 +900,9 @@ struct matmul_forward : public dnnl::matmul,
 
     dst_data_type = dst_type == data_type::undef ? dst_data_type : dst_type;
     tensor::desc dst_desc = tensor::desc(dst_dims, dst_data_type, tag::any);
+    if (!dst.is_empty()) {
+      dst_desc = dst.get_desc().to_type(dst_data_type);
+    }
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -1010,6 +1016,9 @@ struct matmul_forward : public dnnl::matmul,
         std::vector<int64_t>({dst_dims[2]* dst_dims[1], dst_dims[1], 1}) :
         std::vector<int64_t>({dst_dims[1], 1});
     tensor::desc dst_desc = tensor::desc(dst_dims, dst_type, dst_strides);
+    if (!dst.is_empty()) {
+      dst_desc = dst.get_desc().to_type(dst_type);
+    }
 
     // Create pd and primitive
     param.pd = primitive_desc({src_desc, weights.get_desc(), dst_desc}, op_attr, aengine);

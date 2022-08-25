@@ -218,6 +218,59 @@ struct matmul_forward : public dnnl::matmul,
         dst_type, alowp_kind, aengine);
   }
 
+  // 2-in-1 compute for int8 op with bias. Bias is disabled if it is empty.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static inline void compute_binary(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const zero_point_t& src_zero_points,
+      const zero_point_t& dst_zero_points,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_binary_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+          src, other, weights, bias, dst,
+          src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
+          dst_coeff, attr, dst_type, aengine);
+    } else {
+      compute_binary_impl</*with_bias=*/true, reorder_src, reorder_weight>(
+          src, other, weights, bias, dst,
+          src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
+          dst_coeff, attr, dst_type, aengine);
+    }
+  }
+
+  // 2-in-1 compute for int8 op without bias.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static inline void compute_binary(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      tensor& dst,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const zero_point_t& src_zero_points,
+      const zero_point_t& dst_zero_points,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_binary_impl</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, other, weights, dummy_bias, dst,
+        src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
+        dst_coeff, attr, dst_type, aengine);
+  }
+
   // Prepare for fp32 op
   // With bias. Bias is disabled if it is empty.
   static inline void prepare(
@@ -665,7 +718,7 @@ struct matmul_forward : public dnnl::matmul,
         param, src, weights, bias, dst, bin_post_params);
   }
 
-  // For 2-in-1 compute: prepare + compute
+  // For 2-in-1 compute with binary post-op: prepare + compute
   // Supports fp32.
   template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
   static inline void compute_binary_impl(
@@ -681,6 +734,32 @@ struct matmul_forward : public dnnl::matmul,
     matmul_forward_params param;
     do_prepare<with_bias>(param, src, weights, bias, dst, dst_coeff, 1.0f,
         attr, dst_type, aengine);
+    do_compute_binary<with_bias, reorder_src, reorder_weight>(
+        param, src, other, weights, bias, dst);
+  }
+
+  // For 2-in-1 compute with binary post-op: prepare + compute
+  // Supports int8.
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
+  static inline void compute_binary_impl(
+      const tensor& src,
+      const tensor& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const zero_point_t& src_zero_points,
+      const zero_point_t& dst_zero_points,
+      const float dst_coeff = 1.0f,
+      const attr_t& attr = attr_t(),
+      const data_type dst_type = data_type::undef,
+      const engine& aengine = engine::cpu_engine()) {
+    matmul_forward_params param;
+    do_prepare<with_bias>(param, src, weights, bias, dst,
+        src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
+        dst_coeff, 1.0f, attr, dst_type, aengine);
     do_compute_binary<with_bias, reorder_src, reorder_weight>(
         param, src, other, weights, bias, dst);
   }

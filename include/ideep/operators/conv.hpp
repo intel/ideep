@@ -337,6 +337,7 @@ struct convolution_forward
                       const dims& padding_l,
                       const dims& padding_r,
                       int groups,
+                      bool is_channels_last,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -344,11 +345,11 @@ struct convolution_forward
     if (bias.is_empty()) {
       compute_dispatch<false, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
     } else {
       compute_dispatch<true, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
     }
   }
 
@@ -367,6 +368,7 @@ struct convolution_forward
                       const dims& padding_l,
                       const dims& padding_r,
                       int groups,
+                      bool is_channels_last,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -374,7 +376,59 @@ struct convolution_forward
     static tensor dummy_bias;
     compute_dispatch<false, reorder_src, reorder_weight>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+  }
+
+  // 2-in-1 compute for fp32 with bias
+  // This one does not have `is_channels_last` argument for compatibility
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    if (bias.is_empty()) {
+      compute_dispatch<false, reorder_src, reorder_weight>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      compute_dispatch<true, reorder_src, reorder_weight>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    }
+  }
+
+  // 2-in-1 compute for fp32 without bias
+  // This one does not have `is_channels_last` argument for compatibility
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    static tensor dummy_bias;
+    compute_dispatch<false, reorder_src, reorder_weight>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
   }
 
   // 2-in-1 Quantized Conv computation with bias
@@ -398,6 +452,7 @@ struct convolution_forward
                       const scale_t& dst_scales,
                       const zero_point_t& src_zero_point,
                       const zero_point_t& dst_zero_point,
+                      bool is_channels_last,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -407,12 +462,14 @@ struct convolution_forward
       compute_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, is_channels_last,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
       compute_dispatch</*with_bias=*/true, reorder_src, reorder_weight>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, is_channels_last,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     }
   }
 
@@ -436,6 +493,7 @@ struct convolution_forward
                       const scale_t& dst_scales,
                       const zero_point_t& src_zero_point,
                       const zero_point_t& dst_zero_point,
+                      bool is_channels_last,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -445,12 +503,82 @@ struct convolution_forward
     compute_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        src_zero_point, dst_zero_point, is_channels_last,
+        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  // 2-in-1 compute (prepare & compute) with bias
-  // Bias is not used if it is empty.
-  // This function is used to conv+binary fusion.
+  // 2-in-1 compute for int8 without bias
+  // This one does not have `is_channels_last` argument for compatibility
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales,
+                      const scale_t& weights_scales,
+                      const scale_t& dst_scales,
+                      const zero_point_t& src_zero_point,
+                      const zero_point_t& dst_zero_point,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    if (bias.is_empty()) {
+      compute_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, true,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      compute_dispatch</*with_bias=*/true, reorder_src, reorder_weight>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, true,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
+  }
+
+  // 2-in-1 compute for int8 with bias
+  // This one does not have `is_channels_last` argument for compatibility
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute(const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales,
+                      const scale_t& weights_scales,
+                      const scale_t& dst_scales,
+                      const zero_point_t& src_zero_point,
+                      const zero_point_t& dst_zero_point,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    static tensor dummy_bias;
+    compute_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        src_zero_point, dst_zero_point, is_channels_last,
+        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // 2-in-1 compute (prepare & compute) for fp32 with binary fusion
+  // With bias. Bias is not used if it is empty.
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute_binary(const tensor &src,
                              const tensor &other,
@@ -463,6 +591,7 @@ struct convolution_forward
                              const dims &padding_l,
                              const dims &padding_r,
                              int groups,
+                             bool is_channels_last,
                              const attr_t &attr = attr_t(),
                              algorithm aalgorithm = algorithm::convolution_direct,
                              prop_kind aprop_kind = prop_kind::forward,
@@ -470,17 +599,16 @@ struct convolution_forward
     if (bias.is_empty()) {
       compute_binary_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
           src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-          padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
     } else {
       compute_binary_dispatch</*with_bias=*/true, reorder_src, reorder_weight>(
           src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-          padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
     }
   }
 
-  // 2-in-1 compute (prepare & compute) without bias
-  // Bias is not used if it is empty.
-  // This function is used to conv+binary fusion.
+  // 2-in-1 compute (prepare & compute) for fp32 with binary fusion
+  // Without bias.
   template <bool reorder_src = true, bool reorder_weight = true>
   static void compute_binary(const tensor &src,
                              const tensor &other,
@@ -492,6 +620,7 @@ struct convolution_forward
                              const dims &padding_l,
                              const dims &padding_r,
                              int groups,
+                             bool is_channels_last,
                              const attr_t &attr = attr_t(),
                              algorithm aalgorithm = algorithm::convolution_direct,
                              prop_kind aprop_kind = prop_kind::forward,
@@ -499,7 +628,74 @@ struct convolution_forward
     static tensor dummy_bias;
     compute_binary_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
         src, other, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+  }
+
+  // 2-in-1 compute (prepare & compute) for int8 with binary fusion
+  // With bias. Bias is not used if it is empty.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const tensor &bias,
+                             const dims &dst_dims,
+                             tensor &dst,
+                             const dims &strides,
+                             const dims &dilates,
+                             const dims &padding_l,
+                             const dims &padding_r,
+                             int groups,
+                             const scale_t& src_scales,
+                             const scale_t& weights_scales,
+                             const scale_t& dst_scales,
+                             const zero_point_t& src_zero_point,
+                             const zero_point_t& dst_zero_point,
+                             bool is_channels_last,
+                             const attr_t &attr = attr_t(),
+                             algorithm aalgorithm = algorithm::convolution_direct,
+                             prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_binary_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
+          src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
+          padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
+          dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      compute_binary_dispatch</*with_bias=*/true, reorder_src, reorder_weight>(
+          src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
+          padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
+          dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    }
+  }
+
+  // 2-in-1 compute (prepare & compute) for int8 with binary fusion
+  // Without bias.
+  template <bool reorder_src = true, bool reorder_weight = true>
+  static void compute_binary(const tensor &src,
+                             const tensor &other,
+                             const tensor &weights,
+                             const dims &dst_dims,
+                             tensor &dst,
+                             const dims &strides,
+                             const dims &dilates,
+                             const dims &padding_l,
+                             const dims &padding_r,
+                             int groups,
+                             const scale_t& src_scales,
+                             const scale_t& weights_scales,
+                             const scale_t& dst_scales,
+                             const zero_point_t& src_zero_point,
+                             const zero_point_t& dst_zero_point,
+                             bool is_channels_last,
+                             const attr_t &attr = attr_t(),
+                             algorithm aalgorithm = algorithm::convolution_direct,
+                             prop_kind aprop_kind = prop_kind::forward,
+                             const engine &aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_binary_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
+        src, other, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
+          dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
   }
 
   // Conv prepare with bias for fp32
@@ -515,6 +711,7 @@ struct convolution_forward
                       const dims& padding_l,
                       const dims& padding_r,
                       int groups,
+                      bool is_channels_last,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -522,11 +719,13 @@ struct convolution_forward
     if (bias.is_empty()) {
       do_prepare</*with_bias=*/false>(
           param, src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_l, padding_r, groups, is_channels_last,
+          attr, aalgorithm, aprop_kind, aengine);
     } else {
       do_prepare</*with_bias=*/true>(
           param, src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_l, padding_r, groups, is_channels_last,
+          attr, aalgorithm, aprop_kind, aengine);
     }
   }
 
@@ -542,6 +741,7 @@ struct convolution_forward
                       const dims& padding_l,
                       const dims& padding_r,
                       int groups,
+                      bool is_channels_last,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -549,7 +749,63 @@ struct convolution_forward
     static tensor dummy_bias;
     do_prepare</*with_bias=*/false>(
         param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, is_channels_last,
+        attr, aalgorithm, aprop_kind, aengine);
+  }
+
+  // Prepare for fp32 with bias
+  // This one does not have `is_channels_last` argument for compatibility
+  static void prepare(convolution_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    if (bias.is_empty()) {
+      do_prepare</*with_bias=*/false>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last,
+          attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      do_prepare</*with_bias=*/true>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last,
+          attr, aalgorithm, aprop_kind, aengine);
+    }
+  }
+
+  // Prepare for fp32 without bias
+  // This one does not have `is_channels_last` argument for compatibility
+  static void prepare(convolution_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    static tensor dummy_bias;
+    do_prepare</*with_bias=*/false>(
+        param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, is_channels_last,
+        attr, aalgorithm, aprop_kind, aengine);
   }
 
   // Conv prepare with bias for int8
@@ -571,6 +827,7 @@ struct convolution_forward
                       const scale_t& dst_scales,
                       const zero_point_t& src_zero_point,
                       const zero_point_t& dst_zero_point,
+                      bool is_channels_last = false,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -580,12 +837,14 @@ struct convolution_forward
       do_prepare</*with_bias=*/false>(
           param, src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, is_channels_last,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
       do_prepare</*with_bias=*/true>(
           param, src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, is_channels_last,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     }
   }
 
@@ -607,6 +866,7 @@ struct convolution_forward
                       const scale_t& dst_scales,
                       const zero_point_t& src_zero_point,
                       const zero_point_t& dst_zero_point,
+                      bool is_channels_last = false,
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       prop_kind aprop_kind = prop_kind::forward,
@@ -616,7 +876,78 @@ struct convolution_forward
     do_prepare</*with_bias=*/false>(
         param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        src_zero_point, dst_zero_point, is_channels_last,
+        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // Prepare for int8 with bias
+  // This one does not have `is_channels_last` argument for compatibility
+  static void prepare(convolution_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& bias,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales,
+                      const scale_t& weights_scales,
+                      const scale_t& dst_scales,
+                      const zero_point_t& src_zero_point,
+                      const zero_point_t& dst_zero_point,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    if (bias.is_empty()) {
+      do_prepare</*with_bias=*/false>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, is_channels_last,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    } else {
+      do_prepare</*with_bias=*/true>(
+          param, src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          src_zero_point, dst_zero_point, is_channels_last,
+          attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
+  }
+
+  // Prepare for int8 without bias
+  // This one does not have `is_channels_last` argument for compatibility
+  static void prepare(convolution_forward_params& param,
+                      const tensor& src,
+                      const tensor& weights,
+                      const dims& dst_dims,
+                      tensor& dst,
+                      const dims& strides,
+                      const dims& dilates,
+                      const dims& padding_l,
+                      const dims& padding_r,
+                      int groups,
+                      const scale_t& src_scales,
+                      const scale_t& weights_scales,
+                      const scale_t& dst_scales,
+                      const zero_point_t& src_zero_point,
+                      const zero_point_t& dst_zero_point,
+                      const attr_t& attr = attr_t(),
+                      algorithm aalgorithm = algorithm::convolution_direct,
+                      prop_kind aprop_kind = prop_kind::forward,
+                      const lowp_kind alowp_kind = u8s8,
+                      const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    static tensor dummy_bias;
+    do_prepare</*with_bias=*/false>(
+        param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+        src_zero_point, dst_zero_point, is_channels_last,
+        attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   // Conv computation with pre-prepared params, with bias
@@ -713,16 +1044,17 @@ struct convolution_forward
                          prop_kind aprop_kind = prop_kind::forward,
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     if (bias.is_empty()) {
       compute_dispatch</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
       compute_dispatch</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          src_zero_point, dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     }
   }
 
@@ -748,11 +1080,60 @@ struct convolution_forward
                          prop_kind aprop_kind = prop_kind::forward,
                          const lowp_kind alowp_kind = u8s8,
                          const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     static tensor dummy_bias;
     compute_dispatch</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        src_zero_point, dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+  }
+
+  // 2-in-1 Conv computation with bias for fp32
+  static void compute_v3(const tensor& src,
+                         const tensor& weights,
+                         const tensor& bias,
+                         const dims& dst_dims,
+                         tensor& dst,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         bool is_channels_last = false,
+                         const attr_t& attr = attr_t(),
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                         prop_kind aprop_kind = prop_kind::forward,
+                         const engine& aengine = engine::cpu_engine()) {
+    if (bias.is_empty()) {
+      compute_dispatch<false, true, true>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      compute_dispatch<true, true, true>(
+          src, weights, bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    }
+  }
+
+  // 2-in-1 Conv computation w/o bias for fp32
+  static void compute_v3(const tensor& src,
+                         const tensor& weights,
+                         const dims& dst_dims,
+                         tensor& dst,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         bool is_channels_last = false,
+                         const attr_t& attr = attr_t(),
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                         prop_kind aprop_kind = prop_kind::forward,
+                        const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_bias;
+    compute_dispatch<false, true, true>(
+        src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+        padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
   }
 
   // DEPRECATED
@@ -776,14 +1157,17 @@ struct convolution_forward
                       prop_kind aprop_kind = prop_kind::forward,
                       const engine& aengine = engine::cpu_engine()) {
     // Consider fp32 only for IPEX
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     if (bias.is_empty()) {
       compute_dispatch</*with_bias=*/false, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_l, padding_r, groups, is_channels_last,
+          attr, aalgorithm, aprop_kind, aengine);
     } else {
       compute_dispatch</*with_bias=*/true, true, true>(
           src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_l, padding_r, groups, is_channels_last,
+          attr, aalgorithm, aprop_kind, aengine);
     }
   }
 
@@ -806,10 +1190,11 @@ struct convolution_forward
                       prop_kind aprop_kind = prop_kind::forward,
                       const engine& aengine = engine::cpu_engine()) {
     // Consider fp32 only for IPEX
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     static tensor dummy_bias;
     compute_dispatch</*with_bias=*/false, true, true>(
         src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
   }
 
   // DEPRECATED
@@ -836,16 +1221,17 @@ struct convolution_forward
       prop_kind aprop_kind = prop_kind::forward,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     if (bias.is_empty()) {
       do_prepare</*with_bias=*/false>(
           param, src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     } else {
       do_prepare</*with_bias=*/true>(
           param, src, weights, bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     }
   }
 
@@ -871,11 +1257,12 @@ struct convolution_forward
       prop_kind aprop_kind = prop_kind::forward,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
+    bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     static tensor dummy_bias;
     do_prepare</*with_bias=*/false>(
         param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
         padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        zero_point_t(), zero_point_t(), attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+        zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
   // DEPRECATED
@@ -1012,10 +1399,36 @@ struct convolution_forward
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_query, weights_desc, tensor::desc(), dst_query, strides, dilates_,
-        padding_l, padding_r, op_attr, aalgorithm, apkind);
+        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, apkind);
 
     // embed group info into weights_desc
     return tensor::desc(pd.weights_desc(), groups);
+  }
+
+  static tensor::desc expected_weights_desc(
+      const dims& weights_dims,
+      data_type dtype = data_type::f32,
+      const dims& strides = {1, 1},
+      const dims& padding_l = {0, 0},
+      const dims& padding_r = {0, 0},
+      const dims& dilates = {1, 1},
+      int groups = 1,
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      data_type x_dtype = data_type::f32,
+      const dims& src_dims = dims(),
+      const attr_t& attr = attr_t(),
+      bool is_channels_last = false,
+      const engine& aengine = engine::cpu_engine()) {
+    if (is_channels_last) {
+      return expected_weights_desc<true>(
+          weights_dims, dtype, strides, padding_l, padding_r, dilates, groups,
+          aalgorithm, aprop_kind, x_dtype, src_dims, attr, aengine);
+    } else {
+      return expected_weights_desc<false>(
+          weights_dims, dtype, strides, padding_l, padding_r, dilates, groups,
+          aalgorithm, aprop_kind, x_dtype, src_dims, attr, aengine);
+    }
   }
 
   template <bool with_bias>
@@ -1028,6 +1441,7 @@ struct convolution_forward
       const dims& dilates,
       const dims& padding_l,
       const dims& padding_r,
+      bool is_channels_last = false,
       const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -1044,8 +1458,6 @@ struct convolution_forward
 
     // For nhwc path, weight uses format_tag::any,
     // while activation uses format_tag::nhwc.
-    bool is_channels_last =
-        src_desc.is_channels_last() || weights_desc.is_channels_last();
     auto ndims = src_desc.get_dims().size();
     if (is_channels_last) {
       auto memory_format = tag::nhwc;
@@ -1136,6 +1548,7 @@ private:
       const dims& padding_l,
       const dims& padding_r,
       int groups,
+      bool is_channels_last = false,
       const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -1155,7 +1568,7 @@ private:
     // Used for to_mkldnn() path
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
     dnnl::convolution_forward primitive(pd);
     convolution_forward_params params(std::move(pd), std::move(primitive), std::move(op_attr), groups);
     do_compute<with_bias, reorder_src, reorder_weight>(params, src, weights, bias, dst);
@@ -1179,6 +1592,7 @@ private:
       const scale_t& dst_scales,
       const zero_point_t& src_zero_point,
       const zero_point_t& dst_zero_point,
+      bool is_channels_last,
       const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -1201,7 +1615,7 @@ private:
     // Used for to_mkldnn() path
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
     dnnl::convolution_forward primitive(pd);
     conv_deconv_utils::obtain_runtime_zero_point(
       src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
@@ -1228,6 +1642,7 @@ private:
       const dims &padding_l,
       const dims &padding_r,
       int groups,
+      bool is_channels_last,
       const attr_t &attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
@@ -1235,8 +1650,40 @@ private:
     convolution_forward_params params;
     do_prepare<with_bias>(
         params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-        padding_r, groups, scale_t(), scale_t(), scale_t(), zero_point_t(),
-        zero_point_t(), attr, aalgorithm, aprop_kind, u8s8, aengine);
+        padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, u8s8, aengine);
+    do_compute_binary<with_bias, reorder_src, reorder_weight>(
+        params, src, other, weights, bias, dst);
+  }
+
+  // For int8 with binary post-op
+  template <bool with_bias, bool reorder_src, bool reorder_weight>
+  static void compute_binary_dispatch(
+      const tensor &src,
+      const tensor &other,
+      const tensor &weights,
+      const tensor &bias,
+      const dims &dst_dims,
+      tensor &dst,
+      const dims &strides,
+      const dims &dilates,
+      const dims &padding_l,
+      const dims &padding_r,
+      int groups,
+      const scale_t& src_scales,
+      const scale_t& weights_scales,
+      const scale_t& dst_scales,
+      const zero_point_t& src_zero_point,
+      const zero_point_t& dst_zero_point,
+      bool is_channels_last,
+      const attr_t &attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const engine &aengine = engine::cpu_engine()) {
+    convolution_forward_params params;
+    do_prepare<with_bias>(
+        params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
+        padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
+        dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, u8s8, aengine);
     do_compute_binary<with_bias, reorder_src, reorder_weight>(
         params, src, other, weights, bias, dst);
   }
@@ -1255,6 +1702,7 @@ private:
       const dims& padding_l,
       const dims& padding_r,
       int groups,
+      bool is_channels_last,
       const attr_t& attr,
       algorithm aalgorithm,
       prop_kind aprop_kind,
@@ -1272,7 +1720,7 @@ private:
 
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
 
     dnnl::convolution_forward primitive(pd);
 
@@ -1298,6 +1746,7 @@ private:
       const scale_t& dst_scales,
       const zero_point_t& src_zero_point,
       const zero_point_t& dst_zero_point,
+      bool is_channels_last,
       const attr_t& attr,
       algorithm aalgorithm,
       prop_kind aprop_kind,
@@ -1318,7 +1767,7 @@ private:
 
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, op_attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
 
     dnnl::convolution_forward primitive(pd);
 
@@ -1442,6 +1891,65 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
 
   using super = dnnl::convolution_backward_data;
 
+  static void compute_v2(const tensor& diff_dst,
+                         const tensor& weights,
+                         const dims& diff_src_dims,
+                         tensor& diff_src,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         const int groups,
+                         bool is_channels_last = false,
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                        const engine& aengine = engine::cpu_engine()) {
+    // make weights and dilates compatible with DNNL
+    auto weights_ = weights.make_grouped_weights(groups);
+    auto dilates_ = utils::get_compatible_dilates(dilates);
+    auto format_tag = tag::any;
+    auto ndims = diff_dst.get_desc().get_dims().size();
+    if (ndims == 4) {
+      if (is_channels_last) {
+        format_tag = tag::nhwc;
+      }
+    } else if (ndims == 5) {
+      if (is_channels_last) {
+        format_tag = tag::ndhwc;
+      }
+    }
+    auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
+    // align weight data type with diff_dst for bf16
+    auto weights_desc =
+        weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
+
+    auto diff_src_desc =
+        tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
+
+    auto forward_hints =
+        convolution_forward::get_primitive_desc</*with_bias=*/false>(
+            diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
+            dilates_, padding_l, padding_r, is_channels_last);
+
+    auto op_attr = dnnl::primitive_attr();
+    op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+
+    auto pd = primitive_desc(
+        {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
+         dilates_, padding_l, padding_r}, op_attr, aengine, forward_hints);
+
+    auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
+    auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
+    diff_src.reinit_if_possible(pd.diff_src_desc());
+
+    tensor scratchpad(pd.scratchpad_desc());
+
+    super(pd).execute(stream::default_stream(),
+                      {{DNNL_ARG_DIFF_DST, expected_diff_dst},
+                       {DNNL_ARG_WEIGHTS, expected_weights},
+                       {DNNL_ARG_DIFF_SRC, diff_src},
+                       {DNNL_ARG_SCRATCHPAD, scratchpad}});
+  }
+
   static void compute(const tensor& diff_dst,
                       const tensor& weights,
                       const dims& diff_src_dims,
@@ -1458,8 +1966,10 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto weights_ = weights.make_grouped_weights(groups);
     auto dilates_ = utils::get_compatible_dilates(dilates);
 
-    bool channels_last = diff_dst.get_desc().is_channels_last();
-    auto format_tag = channels_last ? (diff_src_dims.size() == 4 ? tag::nhwc : tag::ndhwc) : tag::any;
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
+    auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
+    bool is_channels_last = is_nhwc || is_ndhwc;
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     // align weight data type with diff_dst for bf16
     auto weights_desc =
@@ -1474,7 +1984,7 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto forward_hints =
         convolution_forward::get_primitive_desc</*with_bias=*/false>(
             diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
-            dilates_, padding_l, padding_r, op_attr);
+            dilates_, padding_l, padding_r, is_channels_last, op_attr);
 
     auto pd = primitive_desc(
         {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
@@ -1514,6 +2024,49 @@ struct convolution_backward_weights
 
   using super = dnnl::convolution_backward_weights;
 
+  static void compute_v2(const tensor& src,
+                         const tensor& diff_dst,
+                         const dims& diff_weights_dims,
+                         tensor& diff_weights,
+                         tensor& diff_bias,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         bool is_channels_last = false,
+                         const attr_t& attr = attr_t(),
+                         const data_type diff_weight_type = data_type::undef,
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                        const engine& aengine = engine::cpu_engine()) {
+    compute_impl</*with_diff_bias=*/true>(
+        src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
+        strides, dilates, padding_l, padding_r, groups, is_channels_last,
+        attr, diff_weight_type, aalgorithm, aengine);
+  }
+
+  static void compute_v2(const tensor& src,
+                         const tensor& diff_dst,
+                         const dims& diff_weights_dims,
+                         tensor& diff_weights,
+                         const dims& strides,
+                         const dims& dilates,
+                         const dims& padding_l,
+                         const dims& padding_r,
+                         int groups,
+                         bool is_channels_last = false,
+                         const attr_t& attr = attr_t(),
+                         const data_type diff_weight_type = data_type::undef,
+                         algorithm aalgorithm = algorithm::convolution_direct,
+                         const engine& aengine = engine::cpu_engine()) {
+    static tensor dummy_diff_bias;
+    compute_impl</*with_diff_bias=*/false>(
+        src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
+        strides, dilates, padding_l, padding_r, groups, is_channels_last,
+        attr, diff_weight_type, aalgorithm, aengine);
+  }
+
+  // DEPRECATED
   static void compute(const tensor& src,
                       const tensor& diff_dst,
                       const dims& diff_weights_dims,
@@ -1528,11 +2081,16 @@ struct convolution_backward_weights
                       const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
+    bool is_channels_last = is_nhwc || is_ndhwc;
     compute_impl</*with_diff_bias=*/true>(
         src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
-        strides, dilates, padding_l, padding_r, groups, attr, diff_weight_type, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, is_channels_last,
+        attr, diff_weight_type, aalgorithm, aengine);
   }
 
+  // DEPRECATED
   static void compute(const tensor& src,
                       const tensor& diff_dst,
                       const dims& diff_weights_dims,
@@ -1547,9 +2105,13 @@ struct convolution_backward_weights
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_diff_bias;
+    bool is_nhwc = diff_dst.get_desc().is_nhwc();
+    bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
+    bool is_channels_last = is_nhwc || is_ndhwc;
     compute_impl</*with_diff_bias=*/false>(
         src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
-        strides, dilates, padding_l, padding_r, groups, attr, diff_weight_type, aalgorithm, aengine);
+        strides, dilates, padding_l, padding_r, groups, is_channels_last,
+        attr, diff_weight_type, aalgorithm, aengine);
   }
 
  private:
@@ -1564,6 +2126,7 @@ struct convolution_backward_weights
                            const dims& padding_l,
                            const dims& padding_r,
                            const int groups,
+                           bool is_channels_last,
                            const attr_t& attr,
                            const data_type diff_weight_type,
                            algorithm aalgorithm,
@@ -1580,10 +2143,17 @@ struct convolution_backward_weights
         diff_weights_desc = diff_weights_desc.to_grouped(groups).to_format_any();
     }
 
-    bool channels_last = diff_dst.get_desc().is_channels_last();
-    auto format_tag = channels_last
-        ? (diff_dst.ndims() == 4 ? tag::nhwc : tag::ndhwc)
-        : tag::any;
+    auto format_tag = tag::any;
+    auto ndims = diff_dst.get_desc().get_dims().size();
+    if (ndims == 4) {
+      if (is_channels_last) {
+        format_tag = tag::nhwc;
+      }
+    } else if (ndims == 5) {
+      if (is_channels_last) {
+        format_tag = tag::ndhwc;
+      }
+    }
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     auto src_desc = src.get_desc().to_format(format_tag);
 
@@ -1602,7 +2172,7 @@ struct convolution_backward_weights
     auto forward_hints =
         convolution_forward::get_primitive_desc<with_diff_bias>(
             src_desc, weights_desc, diff_bias_desc, diff_dst_desc, strides,
-            dilates_, padding_l, padding_r,op_attr, aalgorithm,
+            dilates_, padding_l, padding_r, is_channels_last, op_attr, aalgorithm,
             prop_kind::forward, aengine);
 
     auto pd = with_diff_bias

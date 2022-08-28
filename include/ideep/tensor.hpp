@@ -148,92 +148,27 @@ class tensor : public memory {
       return true;
     }
 
-    inline bool is_nhwc(bool caffe2_use = false) const {
+    inline bool is_nhwc() const {
       if (!is_plain() || data.ndims != 4) return false;
       const auto &dims = data.dims;
       const auto &strides = blocking_strides();
-      // For caffe2 use, N111 is regarded as channels last.
-      if (caffe2_use) {
-        const auto n = 0, c = 1, h = 2, w = 3;
-        return strides[n] == dims[h] * dims[w] * dims[c]
-            && strides[h] == dims[w] * dims[c]
-            && strides[w] == dims[c]
-            && strides[c] == 1;
-      }
-
-      // From c10/core/MemoryFormat.h:117
-      int64_t min = 0;
-      // special case for trivial C dimension. default to NCHW
-      if (strides[1] == 0) {
-        return false;
-      }
-      // loop strides indices
-      for (auto& d : {1, 3, 2, 0}) {
-        if (dims[d] == 0) {
-          return false;
-        }
-        if (strides[d] < min) {
-          return false;
-        }
-        // Fallback to NCHW as default layout for ambiguous cases
-        // This is the flaw of implicit memory_format from strides.
-        // N111 tensor with identical strides for size 1 dimension;
-        // Two cases could lead us here:
-        // a. N111 contiguous Tensor ([N,1,1,1]@[1,1,1,1])
-        // b. N11W contiguous Tensor sliced on the W-dimension.
-        // ([N,1,1,1]@[W,W,W,W])
-        if (d == 0 && min == strides[1]) {
-          return false;
-        }
-        // This is necessary to:
-        // 1. distinguish the memory_format of N1H1;
-        //     [H, 1, 1, 1] channels_last stride
-        //     [H, H, 1, 1] contiguous stride
-        // 2. permutation of 1C1W:
-        //     [1, C, 1, H]@[HC, H, H, 1] transpose(1, 3)
-        //     [1, H, 1, C]@[HC, 1, H, H] shouldn't be identified as channels_last
-        min = strides[d];
-        if (dims[d] > 1) {
-          min *= dims[d];
-        }
-      }
-      return true;
+      const auto n = 0, c = 1, h = 2, w = 3;
+      return strides[n] == dims[h] * dims[w] * dims[c]
+          && strides[h] == dims[w] * dims[c]
+          && strides[w] == dims[c]
+          && strides[c] == 1;
     };
 
-    inline bool is_ndhwc(bool caffe2_use = false) const {
+    inline bool is_ndhwc() const {
       if (!is_plain() || data.ndims != 5) return false;
       const auto &dims = data.dims;
       const auto &strides = blocking_strides();
-      // For caffe2 use
-      if (caffe2_use) {
-        const auto n = 0, c = 1, d =2, h = 3, w = 4;
-        return strides[n] == dims[d] * dims[h] * dims[w] * dims[c]
-            && strides[d] == dims[h] * dims[w] * dims[c]
-            && strides[h] == dims[w] * dims[c]
-            && strides[w] == dims[c]
-            && strides[c] == 1;
-      }
-      // From c10/core/MemoryFormat.h:158
-      int64_t min = 0;
-      if (strides[1] == 0) {
-        return false;
-      }
-      for (auto& d : {1, 4, 3, 2, 0}) {
-        if (dims[d] == 0) {
-          return false;
-        }
-        if (strides[d] < min) {
-          return false;
-        }
-        if (d == 0 && min == strides[1]) {
-          return false;
-        }
-        min = strides[d];
-        if (dims[d] > 1) {
-          min *= dims[d];
-        }
-      }
-      return true;
+      const auto n = 0, c = 1, d =2, h = 3, w = 4;
+      return strides[n] == dims[d] * dims[h] * dims[w] * dims[c]
+          && strides[d] == dims[h] * dims[w] * dims[c]
+          && strides[h] == dims[w] * dims[c]
+          && strides[w] == dims[c]
+          && strides[c] == 1;
     }
 
     inline bool is_nchw() const {
@@ -739,23 +674,7 @@ class tensor : public memory {
       return *this;
     } else {
       tensor dst{expected_desc};
-      // Keep scale and zero point
-      if (has_scale()) {
-        dst.set_scale(get_scale());
-      }
-      if (has_zero_point()) {
-        dst.set_zero_point(get_zero_point());
-      }
-      // Try to reorder and catch possible runtime errors.
-      // If error occurs, it is reordered to plain format then to the desired format
-      try {
-        reorder_to(dst, aattr);
-      } catch (...) {
-        // A common error is 'could not create a reorder primitive descriptor'
-        // We won't distinguish between specific errors
-        ideep::tensor&& plain_weight = to_public(nullptr, get_data_type());
-        plain_weight.reorder_to(dst, aattr);
-      }
+      this->reorder_to(dst, aattr);
       return dst;
     }
   }

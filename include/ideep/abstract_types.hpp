@@ -52,9 +52,6 @@ using key_t = std::string;
 #endif
 
 const scale_t IDEEP_DEF_SCALE {1.0f};
-const zero_point_t IDEEP_DEF_ZP {0};
-const scale_t IDEEP_EMPTY_SCALE;
-const zero_point_t IDEEP_EMPTY_ZP;
 
 enum lowp_kind {
   u8s8 = 0,

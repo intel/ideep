@@ -1339,16 +1339,16 @@ struct convolution_forward
     kernel_size.push_back(dims_in[ndims - 1]);
     if (src_dims.empty()) {
       // Construct a dummy case. Shape from resnet50 model.
-      x_dims.push_back(32);
+      x_dims.push_back(1);
       x_dims.push_back(ic);
-      y_dims.push_back(32);
+      y_dims.push_back(1);
       y_dims.push_back(oc);
-      x_dims.push_back(14 * kernel_size[0]);
+      x_dims.push_back(4 * kernel_size[0]);
       if (4 == src_size) {
-        x_dims.push_back(14 * kernel_size[1]);
+        x_dims.push_back(8 * kernel_size[1]);
       } else if (5 == src_size) {
-        x_dims.push_back(14 * kernel_size[1]);
-        x_dims.push_back(14 * kernel_size[2]);
+        x_dims.push_back(8 * kernel_size[1]);
+        x_dims.push_back(8 * kernel_size[2]);
       }
     } else {
       // Use the real data
@@ -1806,10 +1806,10 @@ private:
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
     args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point});
+    auto& expected_bias = (with_bias && reorder_weight) ?
+        bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
+        bias;
     if (with_bias) {
-      auto& expected_bias = reorder_weight ?
-          bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
-          bias;
       args.insert({DNNL_ARG_BIAS, expected_bias});
     }
 

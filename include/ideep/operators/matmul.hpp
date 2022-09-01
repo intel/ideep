@@ -1146,10 +1146,10 @@ struct matmul_forward : public dnnl::matmul,
     args.insert({DNNL_ARG_SRC, expected_src});
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    auto& expected_bias = (with_bias && reorder_weight)
+        ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
+        : bias;
     if (with_bias) {
-      auto& expected_bias = reorder_weight
-          ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
-          : bias;
       args.insert({DNNL_ARG_BIAS, expected_bias});
     }
     // Do not reorder these params. They may have different shapes as dst
@@ -1225,10 +1225,10 @@ struct matmul_forward : public dnnl::matmul,
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
     args.insert(
         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other});
+    auto& expected_bias = (with_bias && reorder_weight)
+        ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
+        : bias;
     if (with_bias) {
-      auto& expected_bias = reorder_weight
-          ? bias.reorder_if_differ_in(pd.bias_desc(), bias_attr)
-          : bias;
       args.insert({DNNL_ARG_BIAS, expected_bias});
     }
     if (reorder_src) {

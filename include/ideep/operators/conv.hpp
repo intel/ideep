@@ -51,7 +51,7 @@ struct convolution_forward_params {
   // TO-DO: Use a better name, i.e., num_threads
   int pd_use_threads;
   // Param for static quantization
-  std::shared_ptr<convolution_forward_quant_params> sq_param_ptr;
+  std::shared_ptr<convolution_forward_quant_params> sq_param_ptr = nullptr;
 
   // Now we create scratchpad in do_compute
   // tensor scratchpad;
@@ -1222,16 +1222,29 @@ struct convolution_forward
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
-    if (bias.is_empty()) {
-      do_prepare</*with_bias=*/false>(
-          param, src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    bool is_fp32 = src_scales.empty() && weights_scales.empty() && dst_scales.empty();
+    if (is_fp32) {
+      if (bias.is_empty()) {
+        do_prepare</*with_bias=*/false>(
+            param, src, weights, bias, dst_dims, dst, strides, dilates,
+            padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+      } else {
+        do_prepare</*with_bias=*/true>(
+            param, src, weights, bias, dst_dims, dst, strides, dilates,
+            padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+      }
     } else {
-      do_prepare</*with_bias=*/true>(
-          param, src, weights, bias, dst_dims, dst, strides, dilates,
-          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+      if (bias.is_empty()) {
+        do_prepare</*with_bias=*/false>(
+            param, src, weights, bias, dst_dims, dst, strides, dilates,
+            padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+            zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+      } else {
+        do_prepare</*with_bias=*/true>(
+            param, src, weights, bias, dst_dims, dst, strides, dilates,
+            padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+            zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+      }
     }
   }
 
@@ -1258,15 +1271,23 @@ struct convolution_forward
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
+    bool is_fp32 = src_scales.empty() && weights_scales.empty() && dst_scales.empty();
     static tensor dummy_bias;
-    do_prepare</*with_bias=*/false>(
-        param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-        zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    if (is_fp32) {
+      do_prepare</*with_bias=*/false>(
+          param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
+    } else {
+      do_prepare</*with_bias=*/false>(
+          param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
+          padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
+          zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+    }
   }
 
   // DEPRECATED
   // compute with param and primitive. With bias
+  // Weight is supposed to be prepacked
   static void compute(
       const convolution_forward_params& param,
       const dnnl::convolution_forward& prim,
@@ -1276,16 +1297,17 @@ struct convolution_forward
       tensor& dst) {
     (void)prim; // Mark as unused
     if (bias.is_empty()) {
-      do_compute</*with_bias=*/false, true, true>(
+      do_compute</*with_bias=*/false, /*reorder_src*/true, /*reorder_weight*/false>(
           param, src, weights, bias, dst);
     } else {
-      do_compute</*with_bias=*/true, true, true>(
+      do_compute</*with_bias=*/true, /*reorder_src*/true, /*reorder_weight*/false>(
           param, src, weights, bias, dst);
     }
   }
 
   // DEPRECATED
   // compute with param and primitive. Without bias
+  // Weight is supposed to be prepacked
   static void compute(
       const convolution_forward_params& param,
       const dnnl::convolution_forward& prim,
@@ -1294,7 +1316,7 @@ struct convolution_forward
       tensor& dst) {
     (void)prim; // Mark as unused
     static tensor dummy_bias;
-    do_compute</*with_bias=*/false, true, true>(
+    do_compute</*with_bias=*/false, /*reorder_src*/true, /*reorder_weight*/false>(
         param, src, weights, dummy_bias, dst);
   }
 
@@ -1790,9 +1812,6 @@ private:
                          const tensor& bias,
                          tensor& dst) {
     auto scratchpad = tensor(param.pd.scratchpad_desc());
-    static tensor empty_src_zero_point;
-    auto& src_zero_point = param.sq_param_ptr ?
-        param.sq_param_ptr->src_zero_point : empty_src_zero_point;
 
     auto& expected_src = reorder_src ?
         src.reorder_if_differ_in(param.pd.src_desc()) : src;
@@ -1805,7 +1824,9 @@ private:
     args.insert({DNNL_ARG_SRC, expected_src});
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point});
+    if (param.sq_param_ptr) {
+      args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
+    }
     auto& expected_bias = (with_bias && reorder_weight) ?
         bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
         bias;
@@ -1823,6 +1844,9 @@ private:
         expected_dst = dst;
       } else {
         expected_dst.init(expected_dst_desc);
+        if (param.op_attr.has_op_kind(kind::sum)) {
+          expected_dst.feed_from(dst);
+        }
       }
       args.insert({DNNL_ARG_DST, expected_dst});
       primitive.execute(stream::default_stream(), args);

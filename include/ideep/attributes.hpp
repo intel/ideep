@@ -346,18 +346,10 @@ struct attr_t : public dnnl::primitive_attr {
     return *this;
   }
 
-  bool operator==(const attr_t& rhs) const {
+  bool has_same_postop_as(const attr_t& rhs) const {
     auto l_po = get_post_ops();
     auto r_po = rhs.get_post_ops();
-    if (l_po.len() != r_po.len() ||
-        get_output_scales() != rhs.get_output_scales() ||
-        get_fpmath_mode() != rhs.get_fpmath_mode() ||
-        get_scratchpad_mode() != rhs.get_scratchpad_mode()) {
-      return false;
-    }
-    if (get_zero_points(DNNL_ARG_SRC) != rhs.get_zero_points(DNNL_ARG_SRC) ||
-        get_zero_points(DNNL_ARG_WEIGHTS) != rhs.get_zero_points(DNNL_ARG_WEIGHTS) ||
-        get_zero_points(DNNL_ARG_DST) != rhs.get_zero_points(DNNL_ARG_DST)) {
+    if (l_po.len() != r_po.len()) {
       return false;
     }
     for (auto index = 0; index < l_po.len(); index++) {

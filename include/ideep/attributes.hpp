@@ -252,7 +252,8 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_hardsigmoid() {
+// Disable this fusion until newer oneDNN support it
+/*  static attr_t fuse_hardsigmoid() {
     constexpr float scale = 1.0f;
     constexpr float alpha = 1.0f / 6.0f;
     constexpr float beta = 1.0f / 2.0f;
@@ -263,7 +264,7 @@ struct attr_t : public dnnl::primitive_attr {
     attr.set_post_ops(po);
     return attr;
   }
-
+*/
   static attr_t fuse_binary(algorithm alg, memory::desc src_desc) {
     attr_t attr;
     post_ops po;

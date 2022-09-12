@@ -1838,20 +1838,25 @@ private:
     if (reorder_src) {
       auto expected_dst_desc = param.pd.dst_desc();
       tensor expected_dst;
-      // dst not init in FW or has same desc with expected desc.
-      if (dst.is_empty() || dst.get_desc() == expected_dst_desc) {
-        dst.reinit_if_possible(expected_dst_desc);
-        expected_dst = dst;
-      } else {
+      if (dst.is_empty() || dst.get_desc() != expected_dst_desc){
+        // If dst buffer are not given by user or user given dst buffer are not under expected format
+        // We need init a new one
         expected_dst.init(expected_dst_desc);
-        if (param.op_attr.has_op_kind(kind::sum)) {
+        if (!dst.is_empty() && param.op_attr.has_op_kind(kind::sum)) {
+          // We need copy the content of given buffer if matmul is fused with sum
           expected_dst.feed_from(dst);
         }
+      } else {
+        // The format of given dst buffer is expected
+        expected_dst = dst;
       }
       args.insert({DNNL_ARG_DST, expected_dst});
       primitive.execute(stream::default_stream(), args);
-      // dst has been init in FW side, but has diff desc with expected_dst.
-      if (dst.get_desc() != expected_dst.get_desc()) {
+      // reorder back to dst's buffer if needed
+      if (dst.is_empty() || dst.get_desc() == expected_dst.get_desc() ||
+          !dst.get_desc().has_same_shape_as(expected_dst.get_desc())) {
+        dst = expected_dst;
+      } else {
         dst.feed_from(expected_dst);
       }
     } else {

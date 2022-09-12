@@ -1304,7 +1304,7 @@ struct matmul_forward : public dnnl::matmul,
     }
 
     // Prepare tensor of src scales
-    auto src_scale_size = src_scales_in.size();
+    int src_scale_size = src_scales_in.size();
     tensor::desc src_scales_desc = {{src_scale_size}, data_type::f32, {scale_zp_stride}};
     tensor src_scales_m(src_scales_desc, reinterpret_cast<float*>(src_scales_in.data()), aengine);
 

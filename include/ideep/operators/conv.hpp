@@ -1839,11 +1839,11 @@ private:
       auto expected_dst_desc = param.pd.dst_desc();
       tensor expected_dst;
       if (dst.is_empty() || dst.get_desc() != expected_dst_desc){
-        // If dst buffer are not given by user or user given dst buffer are not under expected format
-        // We need init a new one
+        // If dst buffer is not given by user or the given buffer is not in expected format,
+        // We need to init a new one
         expected_dst.init(expected_dst_desc);
         if (!dst.is_empty() && param.op_attr.has_op_kind(kind::sum)) {
-          // We need copy the content of given buffer if matmul is fused with sum
+          // We need to copy the content of given buffer if the op is fused with sum
           expected_dst.feed_from(dst);
         }
       } else {

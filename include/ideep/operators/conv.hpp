@@ -2042,6 +2042,9 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     // diff_src has been init in FW side, but has diff desc with
     // expected_diff_src.
     if (diff_src.get_desc() != expected_diff_src_desc) {
+      if (!diff_src.get_desc().has_same_shape_as(expected_diff_src_desc)) {
+        diff_src.reinit_if_possible(expected_diff_src_desc);
+      }
       diff_src.feed_from(expected_diff_src);
     }
   }
@@ -2247,6 +2250,9 @@ struct convolution_backward_weights
     // diff_weights has been init in FW side, but has diff desc with
     // expected_diff_weights.
     if (diff_weights.get_desc() != expected_diff_weights_desc) {
+      if (!diff_weights.get_desc().has_same_shape_as(expected_diff_weights_desc)) {
+        diff_weights.reinit_if_possible(expected_diff_weights_desc);
+      }
       diff_weights.feed_from(expected_diff_weights);
     }
   }

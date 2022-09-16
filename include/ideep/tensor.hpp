@@ -163,6 +163,9 @@ class tensor : public memory {
       return true;
     }
 
+    // The logic of this function differs from PyTorch
+    // It may cause error in edge cases.
+    // Avoid using it to determine memory layout in PyTorch.
     inline bool is_nhwc() const {
       if (!is_plain() || data.ndims != 4) return false;
       const auto &dims = data.dims;
@@ -174,6 +177,9 @@ class tensor : public memory {
           && strides[c] == 1;
     };
 
+    // The logic of this function differs from PyTorch
+    // It may cause error in edge cases.
+    // Avoid using it to determine memory layout in PyTorch.
     inline bool is_ndhwc() const {
       if (!is_plain() || data.ndims != 5) return false;
       const auto &dims = data.dims;

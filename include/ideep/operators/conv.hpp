@@ -631,73 +631,6 @@ struct convolution_forward
         padding_l, padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
   }
 
-  // 2-in-1 compute (prepare & compute) for int8 with binary fusion
-  // With bias. Bias is not used if it is empty.
-  template <bool reorder_src = true, bool reorder_weight = true>
-  static void compute_binary(const tensor &src,
-                             const tensor &other,
-                             const tensor &weights,
-                             const tensor &bias,
-                             const dims &dst_dims,
-                             tensor &dst,
-                             const dims &strides,
-                             const dims &dilates,
-                             const dims &padding_l,
-                             const dims &padding_r,
-                             int groups,
-                             const scale_t& src_scales,
-                             const scale_t& weights_scales,
-                             const scale_t& dst_scales,
-                             const zero_point_t& src_zero_point,
-                             const zero_point_t& dst_zero_point,
-                             bool is_channels_last,
-                             const attr_t &attr = attr_t(),
-                             algorithm aalgorithm = algorithm::convolution_direct,
-                             prop_kind aprop_kind = prop_kind::forward,
-                             const engine &aengine = engine::cpu_engine()) {
-    if (bias.is_empty()) {
-      compute_binary_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
-          src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-          padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
-          dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
-    } else {
-      compute_binary_dispatch</*with_bias=*/true, reorder_src, reorder_weight>(
-          src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-          padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
-          dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
-    }
-  }
-
-  // 2-in-1 compute (prepare & compute) for int8 with binary fusion
-  // Without bias.
-  template <bool reorder_src = true, bool reorder_weight = true>
-  static void compute_binary(const tensor &src,
-                             const tensor &other,
-                             const tensor &weights,
-                             const dims &dst_dims,
-                             tensor &dst,
-                             const dims &strides,
-                             const dims &dilates,
-                             const dims &padding_l,
-                             const dims &padding_r,
-                             int groups,
-                             const scale_t& src_scales,
-                             const scale_t& weights_scales,
-                             const scale_t& dst_scales,
-                             const zero_point_t& src_zero_point,
-                             const zero_point_t& dst_zero_point,
-                             bool is_channels_last,
-                             const attr_t &attr = attr_t(),
-                             algorithm aalgorithm = algorithm::convolution_direct,
-                             prop_kind aprop_kind = prop_kind::forward,
-                             const engine &aengine = engine::cpu_engine()) {
-    static tensor dummy_bias;
-    compute_binary_dispatch</*with_bias=*/false, reorder_src, reorder_weight>(
-        src, other, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
-          dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
-  }
-
   // Conv prepare with bias for fp32
   // params will be initialized with PD/Primitive/groups ...
   static void prepare(convolution_forward_params& param,
@@ -1672,40 +1605,7 @@ private:
     convolution_forward_params params;
     do_prepare<with_bias>(
         params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-        padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, u8s8, aengine);
-    do_compute_binary<with_bias, reorder_src, reorder_weight>(
-        params, src, other, weights, bias, dst);
-  }
-
-  // For int8 with binary post-op
-  template <bool with_bias, bool reorder_src, bool reorder_weight>
-  static void compute_binary_dispatch(
-      const tensor &src,
-      const tensor &other,
-      const tensor &weights,
-      const tensor &bias,
-      const dims &dst_dims,
-      tensor &dst,
-      const dims &strides,
-      const dims &dilates,
-      const dims &padding_l,
-      const dims &padding_r,
-      int groups,
-      const scale_t& src_scales,
-      const scale_t& weights_scales,
-      const scale_t& dst_scales,
-      const zero_point_t& src_zero_point,
-      const zero_point_t& dst_zero_point,
-      bool is_channels_last,
-      const attr_t &attr = attr_t(),
-      algorithm aalgorithm = algorithm::convolution_direct,
-      prop_kind aprop_kind = prop_kind::forward,
-      const engine &aengine = engine::cpu_engine()) {
-    convolution_forward_params params;
-    do_prepare<with_bias>(
-        params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-        padding_r, groups, src_scales, weights_scales, dst_scales, src_zero_point,
-        dst_zero_point, is_channels_last, attr, aalgorithm, aprop_kind, u8s8, aengine);
+        padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
     do_compute_binary<with_bias, reorder_src, reorder_weight>(
         params, src, other, weights, bias, dst);
   }

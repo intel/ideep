@@ -43,6 +43,9 @@ struct deconv_forward_params {
   attr_t bias_attr;
   // Param for static quantization
   std::shared_ptr<deconv_forward_quant_params> sq_param_ptr;
+
+  // Deprecated. For compatibility
+  tensor input_zero_point;
 };
 
 struct convolution_transpose_forward : public dnnl::deconvolution_forward {
@@ -398,6 +401,20 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
+  // Deprecated
+  static void compute(const super::primitive_desc& pd,
+                      const super& primitive,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& expected_bias,
+                      tensor& dst,
+                      const tensor& src_zero_point,
+                      int groups) {
+    bool with_bias = (!expected_bias.is_empty());
+    do_compute(pd, primitive, src, weights, expected_bias,
+               with_bias, dst, src_zero_point, groups);
+  }
+
   template <bool is_channels_last = false>
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,   // [i, o, ...]
@@ -663,6 +680,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     param.primitive = std::move(super(param.pd));
     param.bias_attr = std::move(bias_attr);
     param.groups = groups;
+    param.input_zero_point = src_zero_point_m; // For compatibility
     param.sq_param_ptr =
         std::make_shared<deconv_forward_quant_params>(std::move(src_zero_point_m));
     IDEEP_ENFORCE(param.sq_param_ptr, "Failed to allocate memory for quantization parameters");
@@ -713,6 +731,35 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     }
   }
 
+  // Deprecated
+  static void do_compute(const super::primitive_desc& pd,
+                         const super& primitive,
+                         const tensor& src,
+                         const tensor& weights,
+                         const tensor& expected_bias,
+                         bool with_bias,
+                         tensor& dst,
+                         const tensor& src_zero_point,
+                         int groups) {
+    tensor scratchpad(pd.scratchpad_desc());
+    auto expected_weights = weights.make_grouped_weights(groups);
+    if (with_bias) {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    } else {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, src},
+                         {DNNL_ARG_WEIGHTS, expected_weights},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    }
+  }
 };
 
 struct convolution_transpose_backward_data

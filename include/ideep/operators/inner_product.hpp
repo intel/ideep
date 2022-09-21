@@ -561,11 +561,15 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       const engine& aengine = engine::cpu_engine()) {
     auto weights_ = weights;
     if (diff_dst.get_data_type() == data_type::bf16) {
-      weights_.init(weights.get_desc().to_type(data_type::bf16));
-      weights_.reorder_from(weights);
+      if (weights_.get_data_type() != data_type::bf16) {
+        weights_.init(weights.get_desc().to_type(data_type::bf16));
+        weights_.reorder_from(weights);
+      }
     } else if (diff_dst.get_data_type() == data_type::f16) {
-      weights_.init(weights.get_desc().to_type(data_type::f16));
-      weights_.reorder_from(weights);
+      if (weights_.get_data_type() != data_type::f16) {
+        weights_.init(weights.get_desc().to_type(data_type::f16));
+        weights_.reorder_from(weights);
+      }
     }
 
     // workaround: diff_src and weights from caffe2 may have different dims.

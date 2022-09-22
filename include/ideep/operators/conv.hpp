@@ -55,6 +55,9 @@ struct convolution_forward_params {
 
   // Now we create scratchpad in do_compute
   // tensor scratchpad;
+
+  // For compatibility.
+  tensor input_zero_point;
 };
 
 struct conv_deconv_utils {
@@ -1320,6 +1323,24 @@ struct convolution_forward
         param, src, weights, dummy_bias, dst);
   }
 
+  // Deprecated
+  static void compute(const super::primitive_desc pd,
+                      const super& primitive,
+                      const tensor& src,
+                      const tensor& weights,
+                      const tensor& expected_bias,
+                      tensor& dst,
+                      const tensor& src_zero_point,
+                      int groups) {
+    if (expected_bias.is_empty()) {
+      do_compute</*with_bias=*/false>(
+          pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
+    } else {
+      do_compute</*with_bias=*/true>(
+          pd, primitive, src, weights, expected_bias, dst, src_zero_point, groups);
+    }
+  }
+
   template <bool is_channels_last = false>
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
@@ -1798,6 +1819,7 @@ private:
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
 
     param = {std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr)};
+    param.input_zero_point = src_zp_tensor; // for compatibility
     param.sq_param_ptr =
         std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
   }
@@ -1911,6 +1933,38 @@ private:
                          {DNNL_ARG_SCRATCHPAD, scratchpad},
                          {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
                           expected_other}});
+    }
+  }
+
+  // Deprecated
+  // Do_compute with given primitive & src zero point
+  // Bias scale has been applied before passed in.
+  template <bool with_bias>
+  static void do_compute(const super::primitive_desc& pd,
+                         const super& primitive,
+                         const tensor& src,
+                         const tensor& weights,
+                         const tensor& expected_bias,
+                         tensor& dst,
+                         const tensor& src_zero_point,
+                         int groups) {
+    auto scratchpad = tensor(pd.scratchpad_desc());
+    auto weights_grouped = weights.make_grouped_weights(groups);
+    if (with_bias) {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, src},
+                         {DNNL_ARG_WEIGHTS, weights_grouped},
+                         {DNNL_ARG_BIAS, expected_bias},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
+    } else {
+      primitive.execute(stream::default_stream(),
+                        {{DNNL_ARG_SRC, src},
+                         {DNNL_ARG_WEIGHTS, weights_grouped},
+                         {DNNL_ARG_DST, dst},
+                         {DNNL_ARG_SCRATCHPAD, scratchpad},
+                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point}});
     }
   }
 };

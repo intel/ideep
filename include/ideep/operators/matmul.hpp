@@ -826,7 +826,10 @@ struct matmul_forward : public dnnl::matmul,
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     dst_data_type = dst_type == data_type::undef ? dst_data_type : dst_type;
-    tensor::desc dst_desc = tensor::desc(dst_dims, dst_data_type, tag::any);
+    /* rely on tensor descriptor class to se the format appropriately
+     * based on the tensor dimensions.
+     */
+    tensor::desc dst_desc = tensor::desc(dst_dims, dst_data_type);
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }

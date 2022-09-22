@@ -248,18 +248,20 @@ struct conv_deconv_utils {
     dil_compatible = utils::get_compatible_dilates(dilates);
 
     IDEEP_ENFORCE(utils::one_of(weight_grouped.get_data_type(),
-                                data_type::f32, data_type::bf16),
+                                data_type::f32, data_type::bf16, data_type::f16),
                   "Incorrect data type in weights");
 
     // align weights data type with src
-    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
-                                                            : data_type::f32;
+    dst_data_type = src.get_data_type() == data_type::bf16
+        ? data_type::bf16
+        : ((src.get_data_type() == data_type::f16) ? data_type::f16
+                                                   : data_type::f32);
     src_desc = src.get_desc().to_type(dst_data_type);
     weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
 
     if (with_bias) {
       IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
-                                  data_type::f32, data_type::bf16),
+                                  data_type::f32, data_type::bf16, data_type::f16),
                     "Incorrect data type in bias");
       bias_desc = bias.get_desc();
     }
@@ -1318,7 +1320,8 @@ struct convolution_forward
           + (padding_l[d-2] + padding_r[d-2])) / strides[d-2] + 1;
       y_dims.push_back(out_size);
     }
-    x_dtype = dtype == data_type::bf16 ? dtype : x_dtype;
+    x_dtype =
+        (dtype == data_type::bf16 || dtype == data_type::f16) ? dtype : x_dtype;
     auto y_dtype = dtype != data_type::s8 ? dtype : data_type::s32;
     tensor::desc src_desc(x_dims, x_dtype);
     tensor::desc dst_desc(y_dims, y_dtype);
@@ -1847,7 +1850,7 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
       }
     }
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
-    // align weight data type with diff_dst for bf16
+    // align weight data type with diff_dst for bf16 and f16
     auto weights_desc =
         weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
 
@@ -1900,7 +1903,7 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto format_tag = is_nhwc ? tag::nhwc : (is_ndhwc ? tag::ndhwc : tag::any);
     bool is_channels_last = is_nhwc || is_ndhwc;
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
-    // align weight data type with diff_dst for bf16
+    // align weight data type with diff_dst for bf16 and f16
     auto weights_desc =
         weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
 

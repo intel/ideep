@@ -513,9 +513,13 @@ enum task_type {
      std::vector<int64_t> dst_strides = (ndims == 3) ?
          std::vector<int64_t>({dst_dims[2]* dst_dims[1], dst_dims[1], 1}) :
          std::vector<int64_t>({dst_dims[1], 1});
+
+     /* rely on tensor descriptor class to se the format appropriately
+      * based on the tensor dimensions.
+      */
      tensor::desc dst_desc = is_dynamic ?
          tensor::desc(dst_dims, dst_data_type, dst_strides) :
-         tensor::desc(dst_dims, dst_data_type, tag::any);
+         tensor::desc(dst_dims, dst_data_type);
      auto key = utils::create_key(
          src_desc,
          weights_desc,

@@ -292,11 +292,13 @@ struct convolution_forward
     if (bias.is_empty()) {
       compute_binary_dispatch</*with_bias=*/false>(
           src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-          padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind,
+          aengine);
     } else {
       compute_binary_dispatch</*with_bias=*/true>(
           src, other, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-          padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+          padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind,
+          aengine);
     }
   }
 
@@ -321,7 +323,8 @@ struct convolution_forward
     static tensor dummy_bias;
     compute_binary_dispatch</*with_bias=*/false>(
         src, other, weights, dummy_bias, dst_dims, dst, strides, dilates,
-        padding_l, padding_r, groups, attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, groups, is_channels_last, attr, aalgorithm,
+        aprop_kind, aengine);
   }
 
   // 2-in-1 compute (prepare & compute) with bias
@@ -863,33 +866,54 @@ private:
     // allocate scratchpad
     tensor scratchpad(pd.scratchpad_desc());
 
-    params = {std::move(pd), bias_attr, scale_t(), zero_point_t(),
-             groups, std::move(scratchpad)};
+    params = {std::move(pd),  bias_attr, scale_t(),
+              zero_point_t(), groups,std::move(scratchpad)};
 
     do_compute<with_bias>(params, src, weights, bias, dst);
   }
 
   template <bool with_bias>
-  static void compute_binary_dispatch(const tensor &src,
-                                      const tensor &other,
-                                      const tensor &weights,
-                                      const tensor &bias,
-                                      const dims &dst_dims,
-                                      tensor &dst,
-                                      const dims &strides,
-                                      const dims &dilates,
-                                      const dims &padding_l,
-                                      const dims &padding_r,
-                                      int groups,
-                                      const attr_t &attr = attr_t(),
-                                      algorithm aalgorithm = algorithm::convolution_direct,
-                                      prop_kind aprop_kind = prop_kind::forward,
-                                      const engine &aengine = engine::cpu_engine()) {
+  static void compute_binary_dispatch(
+      const tensor &src,
+      const tensor &other,
+      const tensor &weights,
+      const tensor &bias,
+      const dims &dst_dims,
+      tensor &dst,
+      const dims &strides,
+      const dims &dilates,
+      const dims &padding_l,
+      const dims &padding_r,
+      int groups,
+      bool is_channels_last,
+      const attr_t &attr = attr_t(),
+      algorithm aalgorithm = algorithm::convolution_direct,
+      prop_kind aprop_kind = prop_kind::forward,
+      const engine &aengine = engine::cpu_engine()) {
     convolution_forward_params params;
-    do_prepare<with_bias, /*keep_format=*/false>(
-        params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-        padding_r, groups, scale_t(), scale_t(), scale_t(), zero_point_t(),
-        zero_point_t(), attr, aalgorithm, aprop_kind, u8s8, aengine);
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
+    attr_t op_attr, src_attr, weights_attr, bias_attr;
+    tensor weights_grouped;
+    dims dil_compatible;
+
+    conv_deconv_utils::prepare_parameters(
+        src, weights, bias, dst_dims, dst, dilates, groups, scale_t(),
+        scale_t(), scale_t(), zero_point_t(), zero_point_t(), attr, u8s8,
+        with_bias, false, weights_grouped, dil_compatible, op_attr, src_attr,
+        weights_attr, bias_attr, src_desc, weights_desc, bias_desc, dst_desc);
+    auto ndims = src_desc.get_dims().size();
+
+    auto pd = get_primitive_desc<with_bias, false>(
+        src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
+        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind,
+        aengine);
+
+    // allocate scratchpad
+    tensor scratchpad(pd.scratchpad_desc());
+
+    params = {std::move(pd),  bias_attr, scale_t(),
+              zero_point_t(), groups, std::move(scratchpad)};
+
     do_compute_binary<with_bias>(params, src, other, weights, bias, dst);
   }
 

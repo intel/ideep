@@ -595,13 +595,19 @@ struct convolution_forward
       x_dims.push_back(ic);
       y_dims.push_back(1);
       y_dims.push_back(oc);
+      auto valid_x_dim = [=](int idx, int64_t scale) {
+        return std::max(strides[idx] +
+                            ((kernel_size[idx] - 1) * (dilates_[idx] + 1) + 1) -
+                            (padding_l[idx] + padding_r[idx]),
+                        scale * kernel_size[idx]);
+      };
       if (4 == src_size) {
-        x_dims.push_back(4 * kernel_size[0]);
-        x_dims.push_back(4 * kernel_size[1]);
+        x_dims.push_back(valid_x_dim(0, 4));
+        x_dims.push_back(valid_x_dim(1, 4));
       } else {
-        x_dims.push_back(8 * kernel_size[0]);
-        x_dims.push_back(8 * kernel_size[1]);
-        x_dims.push_back(8 * kernel_size[2]);
+        x_dims.push_back(valid_x_dim(0, 8));
+        x_dims.push_back(valid_x_dim(1, 8));
+        x_dims.push_back(valid_x_dim(2, 8));
       }
     } else {
       // Use the real data

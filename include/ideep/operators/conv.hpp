@@ -1449,31 +1449,32 @@ struct convolution_forward
     return fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
-            {aprop_kind,
-             aalgorithm,
-             src_desc_query,
-             weights_desc_query,
-             bias_desc_query,
-             dst_desc_query,
-             strides,
-             dilates,
-             padding_l,
-             padding_r},
-            attr,
-            aengine);
+            aengine,
+            aprop_kind,
+            aalgorithm,
+            src_desc_query,
+            weights_desc_query,
+            bias_desc_query,
+            dst_desc_query,
+            strides,
+            dilates,
+            padding_l,
+            padding_r,
+            attr
+            );
       } else {
         return primitive_desc(
-            {aprop_kind,
-             aalgorithm,
-             src_desc_query,
-             weights_desc_query,
-             dst_desc_query,
-             strides,
-             dilates,
-             padding_l,
-             padding_r},
-            attr,
-            aengine);
+            aengine,
+            aprop_kind,
+            aalgorithm,
+            src_desc_query,
+            weights_desc_query,
+            dst_desc_query,
+            strides,
+            dilates,
+            padding_l,
+            padding_r,
+            attr);
       }
     });
   }
@@ -1872,8 +1873,8 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
-         dilates_, padding_l, padding_r}, op_attr, aengine, forward_hints);
+        aengine, aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
+        dilates_, padding_l, padding_r, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
@@ -1925,8 +1926,8 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
             dilates_, padding_l, padding_r, is_channels_last, op_attr);
 
     auto pd = primitive_desc(
-        {aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
-         dilates_, padding_l, padding_r}, op_attr, aengine, forward_hints);
+        aengine, aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
+        dilates_, padding_l, padding_r, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
@@ -2117,12 +2118,12 @@ struct convolution_backward_weights
             prop_kind::forward, aengine);
 
     auto pd = with_diff_bias
-        ? primitive_desc({aalgorithm, src_desc, diff_weights_desc,
-                          diff_bias_desc, diff_dst_desc, strides, dilates_,
-                          padding_l, padding_r}, op_attr, aengine, forward_hints)
-        : primitive_desc({aalgorithm, src_desc, diff_weights_desc,
-                          diff_dst_desc, strides, dilates_,
-                          padding_l, padding_r}, op_attr, aengine, forward_hints);
+        ? primitive_desc(aengine, aalgorithm, src_desc, diff_weights_desc,
+                         diff_bias_desc, diff_dst_desc, strides, dilates_,
+                         padding_l, padding_r, forward_hints, op_attr)
+        : primitive_desc(aengine, aalgorithm, src_desc, diff_weights_desc,
+                         diff_dst_desc, strides, dilates_,
+                         padding_l, padding_r, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());

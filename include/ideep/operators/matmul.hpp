@@ -677,7 +677,7 @@ struct matmul_forward : public dnnl::matmul,
     attr_t attr;
     // If runtime src zero point is not set here, slow ref kernel will be used for quantization
     attr.set_zero_points(DNNL_ARG_SRC, /* mask */ 0, {DNNL_RUNTIME_S32_VAL});
-    auto pd = primitive_desc({x_desc, weights_desc, y_desc}, attr, aengine);
+    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc, attr);
     return pd.weights_desc();
   }
 
@@ -844,10 +844,10 @@ struct matmul_forward : public dnnl::matmul,
     param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
-            {src_desc, weights_desc, bias_desc, dst_desc}, op_attr, aengine);
+            aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
       } else {
         return primitive_desc(
-            {src_desc, weights_desc, dst_desc}, op_attr, aengine);
+            aengine, src_desc, weights_desc, dst_desc, op_attr);
       }
     });
     param.primitive = std::move(super(param.pd));
@@ -996,10 +996,10 @@ struct matmul_forward : public dnnl::matmul,
     param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
-            {src_desc, weights_desc, bias_desc, dst_desc}, op_attr, aengine);
+            aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
       } else {
         return primitive_desc(
-            {src_desc, weights_desc, dst_desc}, op_attr, aengine);
+            aengine, src_desc, weights_desc, dst_desc, op_attr);
       }
     });
     param.primitive = std::move(super(param.pd));
@@ -1103,7 +1103,7 @@ struct matmul_forward : public dnnl::matmul,
     }
 
     // Create pd and primitive
-    param.pd = primitive_desc({src_desc, weights.get_desc(), dst_desc}, op_attr, aengine);
+    param.pd = primitive_desc(aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
     param.primitive = super(param.pd);
 
     // Create src reorder primitive with runtime scales/zero point

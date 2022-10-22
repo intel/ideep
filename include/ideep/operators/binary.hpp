@@ -20,7 +20,7 @@ struct binary : public dnnl::binary {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aalgorithm, src0_desc, src1_desc, dst_desc}, op_attr, aengine);
+        aengine, aalgorithm, src0_desc, src1_desc, dst_desc, op_attr);
 
     tensor scratchpad(pd.scratchpad_desc());
 

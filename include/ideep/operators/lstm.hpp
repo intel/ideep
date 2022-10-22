@@ -53,19 +53,19 @@ struct lstm_forward_inference : public dnnl::lstm_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aprop,
-         direction,
-         src_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc,
-         weights_layer_desc,
-         weights_iter_desc,
-         bias_desc,
-         dst_layer_desc,
-         dst_iter_desc,
-         dst_iter_c_desc},
-        op_attr,
-        aengine);
+        aengine,
+        aprop,
+        direction,
+        src_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc,
+        weights_layer_desc,
+        weights_iter_desc,
+        bias_desc,
+        dst_layer_desc,
+        dst_iter_desc,
+        dst_iter_c_desc,
+        op_attr);
 
     auto expected_weights_layer =
         weights_layer.reorder_if_differ_in(pd.weights_layer_desc(), op_attr);
@@ -126,19 +126,19 @@ struct lstm_forward_inference : public dnnl::lstm_forward {
         output_sizes, src_layer.get_data_type(), tag::tnc);
 
     auto pd = primitive_desc(
-        {aprop,
-         direction,
-         src_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc,
-         weights_layer_desc,
-         weights_iter_desc,
-         bias_desc,
-         dst_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc},
-        op_attr,
-        aengine);
+        aengine,
+        aprop,
+        direction,
+        src_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc,
+        weights_layer_desc,
+        weights_iter_desc,
+        bias_desc,
+        dst_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc,
+        op_attr);
 
     auto expected_weights_layer = pd.weights_layer_desc();
     auto expected_weights_iter = pd.weights_iter_desc();
@@ -183,19 +183,19 @@ struct lstm_forward_training : public dnnl::lstm_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {prop_kind::forward_training,
-         direction,
-         src_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc,
-         weights_layer_desc,
-         weights_iter_desc,
-         bias_desc,
-         dst_layer_desc,
-         dst_iter_desc,
-         dst_iter_c_desc},
-        op_attr,
-        aengine);
+        aengine,
+        prop_kind::forward_training,
+        direction,
+        src_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc,
+        weights_layer_desc,
+        weights_iter_desc,
+        bias_desc,
+        dst_layer_desc,
+        dst_iter_desc,
+        dst_iter_c_desc,
+        op_attr);
     return pd;
   }
 
@@ -265,18 +265,18 @@ struct lstm_forward_training : public dnnl::lstm_forward {
         output_sizes, src_layer.get_data_type(), tag::tnc);
 
     auto pd = primitive_desc(
-        {aprop,
-         direction,
-         src_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc,
-         weights_layer_desc,
-         weights_iter_desc,
-         bias_desc,
-         dst_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc},
-        aengine);
+        aengine,
+        aprop,
+        direction,
+        src_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc,
+        weights_layer_desc,
+        weights_iter_desc,
+        bias_desc,
+        dst_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc);
 
     auto expected_weights_layer = pd.weights_layer_desc();
     auto expected_weights_iter = pd.weights_iter_desc();
@@ -344,29 +344,29 @@ struct lstm_backward : public dnnl::lstm_backward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aprop,
-         direction,
-         src_layer_desc,
-         src_iter_desc,
-         src_iter_c_desc,
-         weights_layer_desc,
-         weights_iter_desc,
-         bias_desc,
-         dst_layer_desc,
-         dst_iter_desc,
-         dst_iter_c_desc,
-         diff_src_layer_desc,
-         diff_src_iter_desc,
-         diff_src_iter_c_desc,
-         diff_weights_layer_desc,
-         diff_weights_iter_desc,
-         diff_bias_desc,
-         diff_dst_layer_desc,
-         diff_dst_iter_desc,
-         diff_dst_iter_c_desc},
-        op_attr,
         aengine,
-        forward_hints);
+        aprop,
+        direction,
+        src_layer_desc,
+        src_iter_desc,
+        src_iter_c_desc,
+        weights_layer_desc,
+        weights_iter_desc,
+        bias_desc,
+        dst_layer_desc,
+        dst_iter_desc,
+        dst_iter_c_desc,
+        diff_src_layer_desc,
+        diff_src_iter_desc,
+        diff_src_iter_c_desc,
+        diff_weights_layer_desc,
+        diff_weights_iter_desc,
+        diff_bias_desc,
+        diff_dst_layer_desc,
+        diff_dst_iter_desc,
+        diff_dst_iter_c_desc,
+        forward_hints,
+        op_attr);
 
     auto expected_weights_layer =
         weights_layer.reorder_if_differ_in(pd.weights_layer_desc());

@@ -25,12 +25,12 @@ class tensor : public memory {
     desc() : memory::desc(){};
 
     // copy ctor
-    desc(const desc& adesc) : memory::desc(adesc.get()) {
+    desc(const desc& adesc) : memory::desc(adesc) {
       set_g(adesc.g());
     };
 
     // supplement group info for memory::desc
-    desc(const memory::desc& adesc, dim groups = 1) : memory::desc(adesc.get()) {
+    desc(const memory::desc& adesc, dim groups = 1) : memory::desc(adesc) {
       set_g(groups);
     };
 
@@ -55,21 +55,6 @@ class tensor : public memory {
       set_g(1);
     }
 
-    // internal ndims
-    inline int get_internal_ndims() const {
-      return memory::desc::get_ndims();
-    }
-
-    // internal dims
-    inline dims get_internal_dims() const {
-      return memory::desc::get_dims();
-    }
-
-    // internal strides
-    inline dims get_internal_strides() const {
-      return memory::desc::get_strides();
-    }
-
     void to_bytes(utils::bytestring& bytes) const {
       utils::to_bytes(bytes, get_data_type());
       utils::to_bytes(bytes, format_kind());
@@ -78,16 +63,20 @@ class tensor : public memory {
       auto paddim = get_padded_dims(); // padded_dims();
       auto padoff = get_padded_offsets(); // padded_offsets();
 
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+
       for (int i = 0; i < get_internal_ndims(); i++) {
-        utils::to_bytes(bytes, get_internal_dims()[i]);
+        utils::to_bytes(bytes, c_dims[i]);
         utils::to_bytes(bytes, paddim[i]);
         utils::to_bytes(bytes, padoff[i]);
       }
 
       if (is_blocking_desc()) {
-        auto stride = get_internal_strides(); // blocking_strides();
+        dim_t *c_strides = nullptr;
+        dnnl_memory_desc_query(get(), dnnl_query_strides, &c_strides);
         for (int i = 0; i < get_internal_ndims(); i++) {
-          utils::to_bytes(bytes, stride[i]);
+          utils::to_bytes(bytes, c_strides[i]);
         }
         for (int i = 0; i < get_inner_nblks(); i++) {
           utils::to_bytes(bytes, get_inner_idxs()[i]);
@@ -103,27 +92,30 @@ class tensor : public memory {
 
     /// Return size of specified dimension
     inline dim_t get_dim(int index) const {
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
       if (!is_grouped()) {
         if (index < 0 || index >= get_internal_ndims())
           return static_cast<dim_t>(0);
-        return get_internal_dims()[index];
+        return c_dims[index];
       } else {
         if (index < 0 || index >= get_internal_ndims() - 1)
           return static_cast<dim_t>(0);
         return index == 0 ?
-            get_internal_dims()[0] * get_internal_dims()[1] :
-            get_internal_dims()[index + 1];
+            c_dims[0] * c_dims[1] :
+            c_dims[index + 1];
       }
     }
 
     /// Returns dimension vector
     inline dims get_dims() const {
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
       if (!is_grouped()) {
-        return get_internal_dims();
+        return dims(c_dims, c_dims + get_internal_ndims());
       } else {
-        auto orig_dims = get_internal_dims();
-        auto ret = dims(orig_dims.begin() + 1, orig_dims.end());
-        ret[0] *= orig_dims[0]; // g == data.dims[0]
+        auto ret = dims(c_dims + 1, c_dims + get_internal_ndims());
+        ret[0] *= c_dims[0]; // g == data.dims[0]
         return ret;
       }
     }
@@ -136,11 +128,12 @@ class tensor : public memory {
     inline dims get_strides() const {
       IDEEP_ENFORCE(is_plain(), "Call to_public() before get_strides()");
       // const auto& strides = blocking_strides();
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       if (!is_grouped()) {
-        return get_internal_strides();
+        return dims(strides, strides + get_internal_ndims());
       } else {
-        auto strides = get_internal_strides();
-        auto ret = dims(strides.begin() + 1, strides.end());
+        auto ret = dims(strides + 1, strides + get_internal_ndims());
         ret[0] = std::min(strides[0], strides[1]);
         return ret;
       }
@@ -156,9 +149,13 @@ class tensor : public memory {
     inline dim_t nelems(bool with_padding = false) const {
       if (is_zero())
         return 0;
-      auto dims = with_padding ? get_padded_dims() : get_internal_dims();
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      dim_t *c_padded_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_padded_dims, &c_padded_dims);
+      auto dims = with_padding ? c_padded_dims : c_dims;
       return std::accumulate(
-          dims.begin(), dims.end(), 1, std::multiplies<dim_t>());
+          dims, dims + get_internal_ndims(), 1, std::multiplies<dim_t>());
     }
 
     inline bool is_plain() const {
@@ -173,7 +170,8 @@ class tensor : public memory {
       if (!is_plain())
         return false;
 
-      const auto& strides = get_internal_strides(); // blocking_strides();
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       for (int i = 0; i < get_internal_ndims() - 1; i++) {
         if (strides[i] < strides[i + 1]) {
           return false;
@@ -187,8 +185,10 @@ class tensor : public memory {
     // Avoid using it to determine memory layout in PyTorch.
     inline bool is_nhwc() const {
       if (!is_plain() || get_internal_ndims() != 4) return false;
-      const auto &dims = get_internal_dims();
-      const auto &strides = get_internal_strides(); // blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto n = 0, c = 1, h = 2, w = 3;
       return strides[n] == dims[h] * dims[w] * dims[c]
           && strides[h] == dims[w] * dims[c]
@@ -201,8 +201,10 @@ class tensor : public memory {
     // Avoid using it to determine memory layout in PyTorch.
     inline bool is_ndhwc() const {
       if (!is_plain() || get_internal_ndims() != 5) return false;
-      const auto &dims = get_internal_dims();
-      const auto &strides = get_internal_strides(); // blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto n = 0, c = 1, d =2, h = 3, w = 4;
       return strides[n] == dims[d] * dims[h] * dims[w] * dims[c]
           && strides[d] == dims[h] * dims[w] * dims[c]
@@ -214,8 +216,10 @@ class tensor : public memory {
     inline bool is_nchw() const {
       if (!is_plain() || get_internal_ndims() != 4)
         return false;
-      const auto& dims = get_internal_dims();
-      const auto& strides = get_internal_strides(); // blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto n = 0, c = 1, h = 2, w = 3;
       return strides[n] == dims[c] * dims[h] * dims[w] &&
           strides[c] == dims[h] * dims[w] && strides[h] == dims[w] &&
@@ -227,8 +231,10 @@ class tensor : public memory {
       if (!is_plain() ||
           !(ndims == 4 || ndims == 5 || ndims == 3))
         return false;
-      const auto& dims = get_internal_dims();
-      const auto& strides = get_internal_strides(); // blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       if (ndims == 4) {
         const auto n = 0, c = 1, h = 2, w = 3;
         return strides[n] == dims[h] * dims[w] * dims[c] &&
@@ -250,8 +256,10 @@ class tensor : public memory {
     inline bool is_iohw() const {
       if (!is_plain() || get_internal_ndims() != 4)
         return false;
-      const auto& dims = get_internal_dims();
-      const auto& strides = get_internal_strides(); // blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto o = 0, i = 1, h = 2, w = 3;
       return strides[i] == dims[o] * dims[h] * dims[w] &&
           strides[o] == dims[h] * dims[w] && strides[h] == dims[w] &&
@@ -271,7 +279,8 @@ class tensor : public memory {
       for (auto i = 0; i < get_inner_nblks(); i++) {
         block_dims[get_inner_idxs()[i]] *= get_inner_blks()[i];
       }
-      auto desc_dims = get_internal_dims();
+      dim_t *desc_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &desc_dims);
       for (auto i = 0; i < get_internal_ndims(); i++) {
         if (desc_dims[i] < block_dims[i])
           continue;
@@ -307,8 +316,13 @@ class tensor : public memory {
     desc to_type(data_type atype) const {
       // auto ret = clone();
       // ret.data.data_type = static_cast<dnnl_data_type_t>(atype);
-      auto md = memory::desc(get_internal_dims(), atype, get_internal_strides());
-      desc ret(md);
+      // dim_t *strides = nullptr;
+      // dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
+      // auto md = memory::desc(get_internal_dims(), atype, tag::any); // This does not work
+      if (atype == get_data_type()) return clone();
+      dnnl_memory_desc_t desc_t = nullptr;
+      dnnl_memory_desc_to_data_type(&desc_t, convert_to_c(atype), get());
+      desc ret(desc_t);
       ret.set_g(g());
       return ret;
     }
@@ -323,7 +337,11 @@ class tensor : public memory {
     bool has_same_shape_as(const desc& that) const {
       if (get_internal_ndims() != that.get_internal_ndims())
         return false;
-      return get_internal_dims() == that.get_internal_dims();
+      dim_t *this_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &this_dims);
+      dim_t *that_dims = nullptr;
+      dnnl_memory_desc_query(that.get(), dnnl_query_dims, &that_dims);
+      return utils::array_cmp(this_dims, that_dims, get_internal_ndims());
     }
 
     // to be replaced with memory_desc_permute_axes in DNNL v1.3
@@ -479,8 +497,20 @@ class tensor : public memory {
 
    private:
     /// Returns dimension vector
-    // inline dims get_internal_dims() const {
-    //   return dims(data.dims, data.dims + data.ndims);
+    inline dims get_internal_dims() const {
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      return dims(c_dims, c_dims + get_internal_ndims());
+    }
+
+    // internal ndims
+    inline int get_internal_ndims() const {
+      return memory::desc::get_ndims();
+    }
+
+    // internal strides
+    // inline dims get_internal_strides() const {
+    //   return memory::desc::get_strides();
     // }
 
     // const dims_t& padded_offsets() const {
@@ -1260,13 +1290,14 @@ class tensor : public memory {
 
  private:
   void reset_internal(const desc& adesc, const engine& aengine, void* ahandle) {
-    // dnnl_memory_t result;
-    // error::wrap_c_api(
-    //     dnnl_memory_create(&result, &adesc.data, aengine.get(), ahandle),
-    //     "could not create a memory");
-    // reset(result);
-    memory result(adesc, aengine, ahandle);
-    reset(result.get());
+    dnnl_memory_t result;
+    dnnl_memory_desc_t memory_desc = adesc.get();
+    error::wrap_c_api(
+        dnnl_memory_create(&result, memory_desc, aengine.get(), ahandle),
+        "could not create a memory");
+    reset(result);
+    // memory result(adesc, aengine, ahandle);
+    // reset(result.get());
   }
 
   inline void to_format(const desc& adesc) {

@@ -3,6 +3,7 @@
 
 #include "attributes.hpp"
 #include "utils.hpp"
+#include <iostream>
 
 namespace ideep {
 
@@ -15,7 +16,6 @@ class tensor : public memory {
   using descriptor = tensor::desc; // for backward compatibility
 
   struct desc : public memory::desc {
-    using super = memory::desc;
     friend class tensor;
 
     // avoid conflicts with function desc::dims() and desc::data_type()
@@ -94,12 +94,13 @@ class tensor : public memory {
     inline dim_t get_dim(int index) const {
       dim_t *c_dims = nullptr;
       dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      int internal_ndims = get_internal_ndims();
       if (!is_grouped()) {
-        if (index < 0 || index >= get_internal_ndims())
+        if (index < 0 || index >= internal_ndims)
           return static_cast<dim_t>(0);
         return c_dims[index];
       } else {
-        if (index < 0 || index >= get_internal_ndims() - 1)
+        if (index < 0 || index >= internal_ndims - 1)
           return static_cast<dim_t>(0);
         return index == 0 ?
             c_dims[0] * c_dims[1] :
@@ -111,10 +112,11 @@ class tensor : public memory {
     inline dims get_dims() const {
       dim_t *c_dims = nullptr;
       dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      int internal_ndims = get_internal_ndims();
       if (!is_grouped()) {
-        return dims(c_dims, c_dims + get_internal_ndims());
+        return dims(c_dims, c_dims + internal_ndims);
       } else {
-        auto ret = dims(c_dims + 1, c_dims + get_internal_ndims());
+        auto ret = dims(c_dims + 1, c_dims + internal_ndims);
         ret[0] *= c_dims[0]; // g == data.dims[0]
         return ret;
       }
@@ -346,8 +348,13 @@ class tensor : public memory {
 
     // to be replaced with memory_desc_permute_axes in DNNL v1.3
     desc permute(const std::vector<int>& permute_axes = {}) const {
-      auto permuted_md = super::permute_axes(permute_axes);
-      return desc(permuted_md);
+      if (get_internal_ndims() <= 1) {
+        return clone();
+      }
+      auto permuted_md = memory::desc::permute_axes(permute_axes);
+      auto ret = desc(permuted_md);
+      ret.set_g(g());
+      return ret;
       // if (data.ndims <= 1) {
       //   return clone();
       // }
@@ -424,7 +431,9 @@ class tensor : public memory {
      */
     desc to_dims(const dims& adims) const {
       IDEEP_ENFORCE(adims.size() == get_internal_ndims(), "Rank mismatched.");
-      return desc(super::reshape(adims));
+      auto ret = desc(memory::desc::reshape(adims));
+      ret.set_g(g());
+      return ret;
 
       // dnnl_memory_desc_t md;
       // md.ndims = data.ndims;
@@ -565,12 +574,9 @@ class tensor : public memory {
   };
 
   desc get_desc() const {
-    // const dnnl_memory_desc_t* cdesc;
-    // error::wrap_c_api(
-    //     dnnl_memory_get_memory_desc(get(), &cdesc),
-    //     "could not get memory descriptor from a memory");
-    // return desc(*cdesc);
-    return desc(memory::get_desc());
+    auto ret = desc(memory::get_desc());
+    ret.set_g(groups_);
+    return ret;
   }
 
   // For backward compatibility. Will be deprecated.
@@ -657,6 +663,7 @@ class tensor : public memory {
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
+    groups_ = adesc.g();
     reset_internal(adesc, aengine, ahandle);
   }
 
@@ -666,6 +673,7 @@ class tensor : public memory {
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
+    groups_ = adesc.g();
     reset_internal(adesc, aengine, buffer_.get());
   }
 
@@ -678,6 +686,7 @@ class tensor : public memory {
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
+    groups_ = adesc.g();
     reset_internal(adesc, aengine, buffer_.get());
   }
 
@@ -745,7 +754,8 @@ class tensor : public memory {
         scale_(t.scale_),
         zero_point_(t.zero_point_),
         buffer_(t.buffer_),
-        eng_(t.eng_) {}
+        eng_(t.eng_),
+        groups_(t.groups_) {}
 
   /// Move constructor
   tensor(tensor&& t)
@@ -754,7 +764,8 @@ class tensor : public memory {
         scale_(std::move(t.scale_)),
         zero_point_(std::move(t.zero_point_)),
         buffer_(std::move(t.buffer_)),
-        eng_(std::move(t.eng_)) {}
+        eng_(std::move(t.eng_)),
+        groups_(t.groups_) {}
 
   /// Assignment operator
   tensor& operator=(const tensor& t) {
@@ -764,6 +775,7 @@ class tensor : public memory {
     zero_point_ = t.zero_point_;
     workspace_ = t.workspace_;
     eng_ = t.eng_;
+    groups_ = t.groups_;
     return *this;
   }
 
@@ -775,6 +787,7 @@ class tensor : public memory {
     zero_point_ = std::move(t.zero_point_);
     workspace_ = std::move(t.workspace_);
     eng_ = std::move(t.eng_);
+    groups_ = t.groups_;
     return *this;
   }
 
@@ -1339,6 +1352,7 @@ class tensor : public memory {
   std::shared_ptr<zero_point_t> zero_point_;
   std::shared_ptr<void> buffer_;
   engine eng_;
+  int groups_;
 };
 
 } // namespace ideep

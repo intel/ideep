@@ -65,6 +65,19 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
+  static attr_t fuse_swish_sum(
+      float sum_scale = 1.0,
+      float swish_scale = 1.0,
+      float swish_alpha = 1.0,
+      float swish_beta = 0.f) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(swish_scale, algorithm::eltwise_swish, swish_alpha, swish_beta);
+    po.append_sum(sum_scale);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t fuse_relu(
       float scale = 1.0,
       float alpha = 0.f,

@@ -1693,7 +1693,7 @@ private:
     convolution_forward_params params;
     do_prepare<with_bias>(
         params, src, weights, bias, dst_dims, dst, strides, dilates, padding_l,
-        padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, u8s8, aengine);
+        padding_r, groups, is_channels_last, attr, aalgorithm, aprop_kind, aengine);
     do_compute_binary<with_bias, reorder_src, reorder_weight>(
         params, src, other, weights, bias, dst);
   }

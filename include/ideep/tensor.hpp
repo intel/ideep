@@ -3,7 +3,6 @@
 
 #include "attributes.hpp"
 #include "utils.hpp"
-#include <iostream>
 
 namespace ideep {
 
@@ -322,9 +321,8 @@ class tensor : public memory {
       // dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       // auto md = memory::desc(get_internal_dims(), atype, tag::any); // This does not work
       if (atype == get_data_type()) return clone();
-      dnnl_memory_desc_t desc_t = nullptr;
-      dnnl_memory_desc_to_data_type(&desc_t, convert_to_c(atype), get());
-      desc ret(desc_t);
+      IDEEP_ENFORCE(is_plain(), "ideep::tensor::desc::to_type() only supports plain format.");
+      desc ret(memory::desc(get_internal_dims(), atype, memory::desc::get_strides()));
       ret.set_g(g());
       return ret;
     }
@@ -652,6 +650,24 @@ class tensor : public memory {
       data_type adata_type,
       const engine& aengine = engine::cpu_engine()) {
     init(adims, adata_type, aengine);
+  }
+
+  tensor(
+      const scale_t& scales,
+      const engine& aengine = engine::cpu_engine()) {
+    init({(int)scales.size()}, data_type::f32, aengine);
+    auto data_ptr = reinterpret_cast<float *>(get_data_handle());
+    for (size_t i = 0; i < scales.size(); ++i) // fill in zero point data
+      data_ptr[i] = scales[i];
+  }
+
+  tensor(
+      const zero_point_t& zero_points,
+      const engine& aengine = engine::cpu_engine()) {
+    init({(int)zero_points.size()}, data_type::s32, aengine);
+    auto data_ptr = reinterpret_cast<int32_t *>(get_data_handle());
+    for (size_t i = 0; i < zero_points.size(); ++i) // fill in zero point data
+      data_ptr[i] = zero_points[i];
   }
 
   /// Function that refill tensor with new description. Specifiy extra buffer.
@@ -1075,11 +1091,31 @@ class tensor : public memory {
     auto pd = dnnl::reorder::primitive_desc(*this, dst, op_attr);
 
     tensor scratchpad(pd.scratchpad_desc());
+    exec_args args;
+    args.insert({DNNL_ARG_FROM, const_cast<tensor&>(*this)});
+    args.insert({DNNL_ARG_TO, dst});
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    tensor o_scale_m;
+    if (op_attr.has_output_scales()) {
+      scale_t&& output_scales = op_attr.get_output_scales().first;
+      o_scale_m = tensor(output_scales);
+      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
+    }
+    tensor src_zp_m, dst_zp_m;
+    if (op_attr.has_zero_points()) {
+      const auto& all_zp = op_attr.get_all_zero_points();
+      if (all_zp.count(DNNL_ARG_SRC)) {
+        src_zp_m = tensor(all_zp.at(DNNL_ARG_SRC));
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zp_m});
+      }
+      if (all_zp.count(DNNL_ARG_DST)) {
+        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+      }
+    }
     dnnl::reorder(pd).execute(
         stream::default_stream(),
-        {{DNNL_ARG_FROM, const_cast<tensor&>(*this)},
-         {DNNL_ARG_TO, dst},
-         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+        args);
   }
 
   /// Convert the tensor to public format, and f32 data type by default
@@ -1132,9 +1168,6 @@ class tensor : public memory {
     } else if (src.has_scale()) {
       src_scale = src.get_scale();
       dst_scale.assign(src_scale.size(), 1.0f);
-    } else {
-      dst_scale = IDEEP_DEF_SCALE;
-      src_scale = IDEEP_DEF_SCALE;
     }
     IDEEP_ENFORCE(
         dst_scale.size() == src_scale.size(), "Invalid tensor scales");
@@ -1148,10 +1181,18 @@ class tensor : public memory {
       auto mask_dst = this->make_grouped_weights(groups, is_deconv_weights);
       auto mask_src = src.make_grouped_weights(groups, is_deconv_weights);
       int mask = utils::tensor_scale_mask(src_scale.size(), true);
-      mask_src.reorder_to(mask_dst, {mask, scales});
+      if (scales.empty()) {
+        mask_src.reorder_to(mask_dst);
+      } else {
+        mask_src.reorder_to(mask_dst, {mask, scales});
+      }
     } else {
       int mask = utils::tensor_scale_mask(src_scale.size(), false);
-      src.reorder_to(*this, {mask, scales});
+      if (scales.empty()) {
+        src.reorder_to(*this);
+      } else {
+        src.reorder_to(*this, {mask, scales});
+      }
     }
   }
 

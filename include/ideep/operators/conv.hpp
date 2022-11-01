@@ -147,7 +147,7 @@ struct conv_deconv_utils {
       op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
       zero_point_t src_zero_point_in_attr;
       int zp_mask = utils::tensor_zp_mask(1);
-      attr.get_zero_points(DNNL_ARG_SRC, zp_mask, src_zero_point_in_attr);
+      std::tie(src_zero_point_in_attr, zp_mask) = attr.get_zero_points(DNNL_ARG_SRC);
       if (src_zero_point_in_attr == zero_point_t({DNNL_RUNTIME_S32_VAL})) { // runtime src zero point
         op_attr.set_zero_points(DNNL_ARG_SRC,
                                 zp_mask,
@@ -157,9 +157,9 @@ struct conv_deconv_utils {
                                 ideep::utils::tensor_zp_mask(src_zero_point_size),
                                 src_zero_point);
       }
-      op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
-                              ideep::utils::tensor_zp_mask(weights_zero_point_size),
-                              zero_point_t(1, weights_zero_point[0]));
+      // op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
+      //                         ideep::utils::tensor_zp_mask(weights_zero_point_size),
+      //                         zero_point_t(1, weights_zero_point[0]));
       if (dst_data_type != data_type::f32) {
         op_attr.set_zero_points(DNNL_ARG_DST,
                                 ideep::utils::tensor_zp_mask(dst_zero_point_size),
@@ -285,12 +285,17 @@ struct conv_deconv_utils {
   static void obtain_runtime_zero_point(const tensor& input,
                                         const zero_point_t& input_zero_point,
                                         const int& arg_idx,
-                                        const dnnl::primitive_attr& op_attr,
+                                        const attr_t& op_attr,
                                         const engine& aengine,
                                         tensor& zero_point /* Output */) {
     zero_point_t src_zero_point_in_attr;
     int zp_mask = utils::tensor_zp_mask(1);
-    op_attr.get_zero_points(arg_idx, zp_mask, src_zero_point_in_attr);
+    if (op_attr.has_zero_points()) {
+      const auto& all_zp = op_attr.get_all_zero_points();
+      if (all_zp.count(DNNL_ARG_SRC)) {
+        std::tie(src_zero_point_in_attr, zp_mask) = op_attr.get_zero_points(arg_idx);
+      }
+    }
     dim src_zero_point_size = 1;
     const zero_point_t* zero_point_data = NULL;
     const zero_point_t default_zero_point = {0};
@@ -1583,7 +1588,7 @@ private:
         padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
     dnnl::convolution_forward primitive(pd);
     conv_deconv_utils::obtain_runtime_zero_point(
-      src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
+      src, src_zero_point, DNNL_ARG_SRC, attr_t(pd.get_primitive_attr()),
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
     convolution_forward_params params(
         std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr));
@@ -1704,7 +1709,7 @@ private:
     dnnl::convolution_forward primitive(pd);
 
     conv_deconv_utils::obtain_runtime_zero_point(
-      src, src_zero_point, DNNL_ARG_SRC, pd.get_primitive_attr(),
+      src, src_zero_point, DNNL_ARG_SRC, attr_t(pd.get_primitive_attr()),
       ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
 
     param = {std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr)};
@@ -1742,6 +1747,22 @@ private:
         bias;
     if (with_bias) {
       args.insert({DNNL_ARG_BIAS, expected_bias});
+    }
+    // Output scale
+    tensor o_scale_m;
+    if (param.op_attr.has_output_scales()) {
+      scale_t&& output_scales = param.op_attr.get_output_scales().first;
+      o_scale_m = tensor(output_scales);
+      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
+    }
+    // dst zero points
+    tensor dst_zp_m;
+    if (param.op_attr.has_zero_points()) {
+      const auto& all_zp = param.op_attr.get_all_zero_points();
+      if (all_zp.count(DNNL_ARG_DST)) {
+        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+      }
     }
 
     // Deal with dst tensor
@@ -1801,26 +1822,31 @@ private:
     if (reorder_src) {
       dst.reinit_if_possible(pd.dst_desc());
     }
+
+    exec_args args;
+    args.insert({DNNL_ARG_SRC, expected_src});
+    args.insert({DNNL_ARG_WEIGHTS, expected_weights});
+    args.insert({DNNL_ARG_DST, dst});
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    args.insert({DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                 expected_other});
+    if (param.op_attr.has_output_scales()) {
+      scale_t&& output_scales = param.op_attr.get_output_scales().first;
+      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, tensor(output_scales)});
+    }
+    if (param.op_attr.has_zero_points()) {
+      for (auto& zp : param.op_attr.get_all_zero_points()) {
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | zp.first, tensor(zp.second)});
+      }
+    }
     if (with_bias) {
       auto& expected_bias = reorder_weight ?
           bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr) :
           bias;
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad},
-                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                          expected_other}});
+      args.insert({DNNL_ARG_BIAS, expected_bias});
+      primitive.execute(stream::default_stream(), args);
     } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad},
-                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-                          expected_other}});
+      primitive.execute(stream::default_stream(), args);
     }
   }
 };

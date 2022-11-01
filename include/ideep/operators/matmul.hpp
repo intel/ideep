@@ -961,8 +961,8 @@ struct matmul_forward : public dnnl::matmul,
                                utils::tensor_zp_mask(src_zero_point.size()),
                                src_zero_point);
     }
-    op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
-                            utils::tensor_zp_mask(1), zero_point_t(1,wei_zero_point[0]));
+    // op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
+    //                         utils::tensor_zp_mask(1), zero_point_t(1,wei_zero_point[0]));
     if (dst_data_type != data_type::f32) {
       op_attr.set_zero_points(DNNL_ARG_DST,
                               utils::tensor_zp_mask(dst_zero_point.size()), dst_zero_point);
@@ -1086,7 +1086,7 @@ struct matmul_forward : public dnnl::matmul,
     // fill primitive attr
     op_attr.set_output_scales(utils::op_scale_mask(1/* scale_size */), {DNNL_RUNTIME_F32_VAL});
     op_attr.set_zero_points(DNNL_ARG_SRC, utils::tensor_zp_mask(1), {DNNL_RUNTIME_S32_VAL});
-    op_attr.set_zero_points(DNNL_ARG_WEIGHTS, utils::tensor_zp_mask(1), {DNNL_RUNTIME_S32_VAL});
+    // op_attr.set_zero_points(DNNL_ARG_WEIGHTS, utils::tensor_zp_mask(1), {DNNL_RUNTIME_S32_VAL});
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     // Src attr for reorder
@@ -1154,6 +1154,26 @@ struct matmul_forward : public dnnl::matmul,
         : bias;
     if (with_bias) {
       args.insert({DNNL_ARG_BIAS, expected_bias});
+    }
+    // Output scale
+    tensor o_scale_m;
+    if (param.op_attr.has_output_scales()) {
+      scale_t&& output_scales = param.op_attr.get_output_scales().first;
+      o_scale_m = tensor(output_scales);
+      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
+    }
+    // dst zero points
+    tensor src_zp_m, dst_zp_m;
+    if (param.op_attr.has_zero_points()) {
+      const auto& all_zp = param.op_attr.get_all_zero_points();
+      if (all_zp.count(DNNL_ARG_SRC)) {
+        src_zp_m = tensor(all_zp.at(DNNL_ARG_SRC));
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zp_m});
+      }
+      if (all_zp.count(DNNL_ARG_DST)) {
+        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+      }
     }
     // Do not reorder these params. They may have different shapes as dst
     for (int i = 0; i < bin_post_params.size(); i++) {

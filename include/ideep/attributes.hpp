@@ -389,9 +389,8 @@ struct attr_t : public dnnl::primitive_attr {
         dnnl_primitive_attr_clone(&result, rhs.get()),
         "could not clone primitive attributes");
     this->reset(result);
-    int c_mask, z_mask;
+    int c_mask;
     scale_t scales;
-    zero_point_t zero_points;
     std::tie(scales, c_mask) = rhs.get_output_scales();
     if (scales_) {
       *scales_ = scales;

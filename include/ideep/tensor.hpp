@@ -803,7 +803,7 @@ class tensor : public memory {
     zero_point_ = std::move(t.zero_point_);
     workspace_ = std::move(t.workspace_);
     eng_ = std::move(t.eng_);
-    groups_ = t.groups_;
+    groups_ = std::move(t.groups_);
     return *this;
   }
 

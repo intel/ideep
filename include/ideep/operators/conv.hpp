@@ -172,7 +172,11 @@ struct conv_deconv_utils {
         src_attr = {0, src_scales_in};
       }
 
-      weights_desc = weight_grouped.get_desc().to_type(data_type::s8);
+      // weights_desc = weight_grouped.get_desc().to_type(data_type::s8);
+      weights_desc = tensor::desc(weight_grouped.get_dims(), data_type::s8, tag::any);
+      if (groups > 1) {
+        weights_desc = weights_desc.to_grouped(groups);
+      }
       if (weight_grouped.get_data_type() == data_type::f32) {
         weights_attr = {utils::tensor_scale_mask(scale_size, groups > 1),
                         weights_scales_in};
@@ -200,7 +204,11 @@ struct conv_deconv_utils {
       dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
                                                               : data_type::f32;
       src_desc = src.get_desc().to_type(dst_data_type);
-      weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
+      // weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
+      weights_desc = tensor::desc(weight_grouped.get_dims(), dst_data_type, tag::any);
+      if (groups > 1) {
+        weights_desc = weights_desc.to_grouped(groups);
+      }
 
       if (with_bias) {
         IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
@@ -257,7 +265,11 @@ struct conv_deconv_utils {
         : ((src.get_data_type() == data_type::f16) ? data_type::f16
                                                    : data_type::f32);
     src_desc = src.get_desc().to_type(dst_data_type);
-    weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
+    // weights_desc = weight_grouped.get_desc().to_type(dst_data_type);
+    weights_desc = tensor::desc(weight_grouped.get_dims(), dst_data_type, tag::any);
+    if (groups > 1) {
+      weights_desc = weights_desc.to_grouped(groups);
+    }
 
     if (with_bias) {
       IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
@@ -1884,8 +1896,12 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     }
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     // align weight data type with diff_dst for bf16 and f16
-    auto weights_desc =
-        weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
+    // auto weights_desc =
+    //     weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
+    auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
+    if (groups > 1) {
+      weights_desc = weights_desc.to_grouped(groups);
+    }
 
     auto diff_src_desc =
         tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
@@ -1937,8 +1953,12 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     bool is_channels_last = is_nhwc || is_ndhwc;
     auto diff_dst_desc = diff_dst.get_desc().to_format(format_tag);
     // align weight data type with diff_dst for bf16 and f16
-    auto weights_desc =
-        weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
+    // auto weights_desc =
+    //     weights_.get_desc().to_format_any().to_type(diff_dst.get_data_type());
+    auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
+    if (groups > 1) {
+      weights_desc = weights_desc.to_grouped(groups);
+    }
 
     auto diff_src_desc = 
         tensor::desc(diff_src_dims, diff_dst_desc.get_data_type(), format_tag);
@@ -2132,7 +2152,11 @@ struct convolution_backward_weights
     // with other input desc, expect for bias_desc
     auto weights_desc = diff_weights_desc;
     if (diff_weight_type_in != diff_dst_type) {
-      weights_desc = weights_desc.to_type(diff_dst_type);
+      // weights_desc = weights_desc.to_type(diff_dst_type);
+      weights_desc = tensor::desc(diff_weights_desc.get_dims(), diff_dst_type, tag::any);
+      if (groups > 1) {
+        weights_desc = weights_desc.to_grouped(groups);
+      }
     }
     auto op_attr = attr;
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);

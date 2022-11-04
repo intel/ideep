@@ -806,7 +806,8 @@ struct matmul_forward : public dnnl::matmul,
     dst_data_type = src.get_data_type() == data_type::bf16 ?
                     data_type::bf16 : data_type::f32;
     src_desc = src.get_desc().to_type(dst_data_type);
-    weights_desc = weights.get_desc().to_type(dst_data_type);
+    // weights_desc = weights.get_desc().to_type(dst_data_type);
+    weights_desc = tensor::desc(weights.get_dims(), dst_data_type, tag::any);
     if (with_bias) {
       IDEEP_ENFORCE(bias.get_data_type() == data_type::f32 ||
                     bias.get_data_type() == data_type::bf16,

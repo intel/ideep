@@ -205,12 +205,10 @@ struct batch_normalization_backward
       float epsilon,
       const tensor& dst = tensor(),
       const batch_normalization_flag flags =
-          batch_normalization_flag::use_scale |
-          batch_normalization_flag::use_shift,
+          batch_normalization_flag::use_scale,
       const engine& aengine = engine::cpu_engine()) {
     // TODO: support no-affine model
-    auto pd_flags = flags | batch_normalization_flag::use_scale |
-                    batch_normalization_flag::use_shift;
+    auto pd_flags = flags | batch_normalization_flag::use_scale;
     bool with_workspace =
         (bool)(flags & batch_normalization_flag::fuse_norm_relu);
     // workaround: use src.get_desc() once issue intel/mkl-dnn#588 is resolved
@@ -250,7 +248,7 @@ struct batch_normalization_backward
         {DNNL_ARG_MEAN, expected_mean},
         {DNNL_ARG_VARIANCE, expected_variance},
         {DNNL_ARG_DIFF_SRC, diff_src},
-        {DNNL_ARG_DIFF_WEIGHTS/* DNNL_ARG_DIFF_SCALE_SHIFT */, diff_scale_shift},
+        {DNNL_ARG_DIFF_SCALE/* DNNL_ARG_DIFF_SCALE_SHIFT */, diff_scale_shift},
         {DNNL_ARG_SCRATCHPAD, scratchpad}};
     if (with_workspace) {
       args.insert({DNNL_ARG_WORKSPACE, dst.get_workspace()});

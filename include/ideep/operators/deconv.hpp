@@ -21,25 +21,30 @@ struct deconv_forward_params {
   deconv_forward_params(
       dnnl::deconvolution_forward::primitive_desc&& pd,
       dnnl::deconvolution_forward&& primitive,
-      int groups)
+      int groups,
+      attr_t&& op_attr)
       : pd(std::move(pd)),
         primitive(std::move(primitive)),
         groups(groups),
+        op_attr(std::move(op_attr)),
         bias_attr(attr_t()) {}
 
   deconv_forward_params(
       dnnl::deconvolution_forward::primitive_desc&& pd,
       dnnl::deconvolution_forward&& primitive,
       int groups,
+      attr_t&& op_attr,
       attr_t&& bias_attr)
       : pd(std::move(pd)),
         primitive(std::move(primitive)),
         groups(groups),
+        op_attr(std::move(op_attr)),
         bias_attr(std::move(bias_attr)) {}
 
   dnnl::deconvolution_forward::primitive_desc pd;
   dnnl::deconvolution_forward primitive;
   int groups;
+  attr_t op_attr;
   attr_t bias_attr;
   // Param for static quantization
   std::shared_ptr<deconv_forward_quant_params> sq_param_ptr;
@@ -624,6 +629,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                   aprop_kind, aengine);
 
     param.primitive = std::move(super(param.pd));
+    param.op_attr = std::move(op_attr);
     param.bias_attr = std::move(bias_attr);
     param.groups = groups;
   }
@@ -672,6 +678,7 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     conv_deconv_utils::obtain_runtime_zero_point(src, src_zero_point, DNNL_ARG_SRC,
                                                  op_attr, aengine, src_zero_point_m);
     param.primitive = std::move(super(param.pd));
+    param.op_attr = std::move(op_attr);
     param.bias_attr = std::move(bias_attr);
     param.groups = groups;
     param.sq_param_ptr =
@@ -689,9 +696,6 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                          const tensor& bias,
                          tensor& dst) {
     auto scratchpad = tensor(param.pd.scratchpad_desc());
-    static tensor empty_src_zero_point;
-    auto& src_zero_point = param.sq_param_ptr ?
-        param.sq_param_ptr->src_zero_point : empty_src_zero_point;
     auto& expected_src = reorder_src ?
         src.reorder_if_differ_in(param.pd.src_desc()) : src;
     auto&& grouped_weights = weights.make_grouped_weights(param.groups, /*is_deconv=*/true);
@@ -703,25 +707,37 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     }
     auto& primitive = param.primitive;
 
-    if (with_bias) {
-      auto& expected_bias = reorder_weight ?
-          bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
-          bias;
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_BIAS, expected_bias},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
-    } else {
-      primitive.execute(stream::default_stream(),
-                        {{DNNL_ARG_SRC, expected_src},
-                         {DNNL_ARG_WEIGHTS, expected_weights},
-                         {DNNL_ARG_DST, dst},
-                         {DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point},
-                         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+    exec_args args;
+    args.insert({DNNL_ARG_SRC, expected_src});
+    args.insert({DNNL_ARG_WEIGHTS, expected_weights});
+    args.insert({DNNL_ARG_DST, dst});
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    if (param.sq_param_ptr) {
+      args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
     }
+    auto& expected_bias = (with_bias && reorder_weight) ?
+        bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
+        bias;
+    if (with_bias) {
+      args.insert({DNNL_ARG_BIAS, expected_bias});
+    }
+    // Output scale
+    tensor o_scale_m;
+    if (param.op_attr.has_output_scales()) {
+      scale_t&& output_scales = param.op_attr.get_output_scales().first;
+      o_scale_m = tensor(output_scales);
+      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
+    }
+    // dst zero points
+    tensor dst_zp_m;
+    if (param.op_attr.has_zero_points()) {
+      const auto& all_zp = param.op_attr.get_all_zero_points();
+      if (all_zp.count(DNNL_ARG_DST)) {
+        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+      }
+    }
+    primitive.execute(stream::default_stream(), args);
   }
 
 };

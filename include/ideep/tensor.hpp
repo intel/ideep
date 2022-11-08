@@ -314,15 +314,26 @@ class tensor : public memory {
       return desc(*this);
     }
 
-    desc to_type(data_type atype) const {
-      // auto ret = clone();
-      // ret.data.data_type = static_cast<dnnl_data_type_t>(atype);
-      // dim_t *strides = nullptr;
-      // dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
-      // auto md = memory::desc(get_internal_dims(), atype, tag::any); // This does not work
+    desc to_type(data_type atype, engine aengine = engine::cpu_engine()) const {
+      // We cannot change data type of a desc directly.
+      // Case 1: Return a copy of this if no change is needed.
       if (atype == get_data_type()) return clone();
-      IDEEP_ENFORCE(is_plain(), "ideep::tensor::desc::to_type() only supports plain format.");
-      desc ret(memory::desc(get_internal_dims(), atype, memory::desc::get_strides()));
+      // IDEEP_ENFORCE(is_plain(), "ideep::tensor::desc::to_type() only supports plain format.");
+      // Case 2: For desc of plain layout, we can create a new desc with strides
+      if (is_plain()) {
+        desc ret(memory::desc(get_internal_dims(), atype, memory::desc::get_strides()));
+        ret.set_g(g());
+        return ret;
+      }
+      // Case 3: For blocked layout, we cannot create a new desc with strides
+      // Use binary primitive desc to query a desc so that we can
+      // change the data type and keep the layout
+      auto& src0_desc = *this;
+      auto src1_desc = desc(get_internal_dims(), atype, tag::any);
+      auto dst_desc = desc(get_internal_dims(), atype, tag::any);
+      auto pd = dnnl::binary::primitive_desc(
+          aengine, algorithm::binary_add, src0_desc, src1_desc, dst_desc);
+      auto ret = desc(pd.dst_desc());
       ret.set_g(g());
       return ret;
     }

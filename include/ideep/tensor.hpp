@@ -3,6 +3,7 @@
 
 #include "attributes.hpp"
 #include "utils.hpp"
+#include <iostream>
 
 namespace ideep {
 
@@ -967,6 +968,7 @@ class tensor : public memory {
       if (old_desc_trans.is_nhwc()) {
         // giohw (acbde) => gihwo (acdeb)
         grouped_desc = grouped_desc.to_format(format_tag::acdeb);
+        grouped_desc.set_g(groups);
       } else if (old_desc_trans.is_ndhwc()) {
         // giodhw (acbdef) => gidhwo (acdefb)
         // TODO: onednn doesn't have the tag of acdefb for now
@@ -991,6 +993,7 @@ class tensor : public memory {
              /*h*/ w * o,
              /*w*/ o}};
         grouped_desc = new_desc;
+        grouped_desc.set_g(groups);
       }
     } else {
       // conv: judge whether is channels last on oihw format

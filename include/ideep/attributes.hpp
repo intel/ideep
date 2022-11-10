@@ -212,8 +212,8 @@ struct attr_t : public dnnl::primitive_attr {
 
   static attr_t fuse_hardswish(
       float scale = 1.0,
-      float alpha = 1.0,
-      float beta = 0.f) {
+      float alpha = 1.0f / 6.0f,
+      float beta = 0.5f) {
     attr_t attr;
     post_ops po;
     po.append_eltwise(scale, algorithm::eltwise_hardswish, alpha, beta);

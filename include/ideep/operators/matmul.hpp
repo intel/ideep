@@ -1076,10 +1076,10 @@ struct matmul_forward : public dnnl::matmul,
         // User should prepare all post-ops in argument 'attr'.
         new_pops.append_sum(sum_coeff);
       } else if (kind::eltwise == pops.kind(i)) {
-        float scale = 1.0, alpha = 1.0, beta = 0.0;
+        float alpha = 1.0, beta = 0.0;
         dnnl::algorithm alg;
-        pops.get_params_eltwise(i, scale, alg, alpha, beta);
-        new_pops.append_eltwise(scale, alg, alpha, beta);
+        pops.get_params_eltwise(i, alg, alpha, beta);
+        new_pops.append_eltwise(alg, alpha, beta);
       }
     }
     op_attr.set_post_ops(new_pops);

@@ -90,6 +90,14 @@ struct attr_t : public dnnl::primitive_attr {
   }
 
   // Helper factory
+  static inline attr_t fuse_eltwise(algorithm alg, float alpha, float beta) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(alg, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t fuse_sum(float scale = 1.0) {
     attr_t attr;
     post_ops po;
@@ -100,214 +108,160 @@ struct attr_t : public dnnl::primitive_attr {
 
   static attr_t fuse_swish_sum(
       float sum_scale = 1.0,
-      float swish_scale = 1.0,
       float swish_alpha = 1.0,
       float swish_beta = 0.f) {
     attr_t attr;
     post_ops po;
-    po.append_eltwise(swish_scale, algorithm::eltwise_swish, swish_alpha, swish_beta);
+    po.append_eltwise(algorithm::eltwise_swish, swish_alpha, swish_beta);
     po.append_sum(sum_scale);
     attr.set_post_ops(po);
     return attr;
   }
 
+  // Deprecated
   static attr_t fuse_relu(
-      float scale = 1.0,
+      float scale = 1.0f, // unused since onednn 3.0
       float alpha = 0.f,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_relu, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_relu, alpha, beta);
   }
 
+  static attr_t fuse_relu_v2(
+      float alpha = 0.f,
+      float beta = 0.f) {
+    return fuse_eltwise(algorithm::eltwise_relu, alpha, beta);
+  }
+
+  // Deprecated
   static attr_t fuse_gelu(
-      float scale = 1.0,
+      float scale, // unused since onednn 3.0
       float alpha = 0.f,
       float beta = 0.f,
       algorithm gelu_type = algorithm::eltwise_gelu_erf) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, gelu_type, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(gelu_type, alpha, beta);
+  }
+
+  static attr_t fuse_gelu(
+      float alpha = 0.f,
+      float beta = 0.f,
+      algorithm gelu_type = algorithm::eltwise_gelu_erf) {
+    return fuse_eltwise(gelu_type, alpha, beta);
+  }
+
+  // Deprecated
+  static attr_t fuse_elu(
+      float scale, // unused since onednn 3.0
+      float alpha = 0.f,
+      float beta = 1.0) {
+    return fuse_eltwise(algorithm::eltwise_elu, alpha, beta);
   }
 
   static attr_t fuse_elu(
-      float scale = 1.0,
       float alpha = 0.f,
       float beta = 1.0) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_elu, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_elu, alpha, beta);
   }
 
   static attr_t fuse_sigmoid(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_logistic, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_logistic, alpha, beta);
   }
 
   static attr_t fuse_swish(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_swish, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_swish, alpha, beta);
   }
 
   static attr_t fuse_tanh(
-      float scale = 1.0,
       float alpha = 0.f,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_tanh, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_tanh, alpha, beta);
   }
 
   static attr_t fuse_mish(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_mish, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_mish, alpha, beta);
   }
 
   static attr_t residual(
       float sum_scale = 1.0,
-      float relu_scale = 1.0,
       float alpha = 0.f,
       float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_sum(sum_scale);
-    po.append_eltwise(relu_scale, algorithm::eltwise_relu, alpha, beta);
+    po.append_eltwise(algorithm::eltwise_relu, alpha, beta);
     attr.set_post_ops(po);
     return attr;
   }
 
   static attr_t fuse_clamp(float lower_bound = -1.0, float upper_bound = 1.0) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(1.0, algorithm::eltwise_clip, lower_bound, upper_bound);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_clip, lower_bound, upper_bound);
   }
 
   static attr_t fuse_hardswish(
-      float scale = 1.0,
       float alpha = 1.0f / 6.0f,
       float beta = 0.5f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_hardswish, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_clip, alpha, beta);
   }
 
   static attr_t fuse_abs(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_abs, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_abs, alpha, beta);
   }
 
   static attr_t fuse_exp(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_exp, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_exp, alpha, beta);
   }
 
   static attr_t fuse_square(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_square, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_square, alpha, beta);
   }
 
   static attr_t fuse_log(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_log, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_log, alpha, beta);
   }
 
   static attr_t fuse_round(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_round, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_round, alpha, beta);
   }
 
   static attr_t fuse_sqrt(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_sqrt, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_sqrt, alpha, beta);
+  }
+
+  // Deprecated
+  static attr_t fuse_pow(
+      float scale, // unused since onednn 3.0
+      float alpha = 1.0,
+      float beta = 0.f) {
+    return fuse_eltwise(algorithm::eltwise_pow, alpha, beta);
   }
 
   static attr_t fuse_pow(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_pow, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_pow, alpha, beta);
   }
 
   static attr_t fuse_hardsigmoid() {
-    constexpr float scale = 1.0f;
     constexpr float alpha = 1.0f / 6.0f;
     constexpr float beta = 1.0f / 2.0f;
-
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_hardsigmoid, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_hardsigmoid, alpha, beta);
   }
 
   static attr_t fuse_binary(algorithm alg, memory::desc src_desc) {
@@ -351,7 +305,7 @@ struct attr_t : public dnnl::primitive_attr {
         po.get_params_sum(index, scale);
         break;
       case kind::eltwise:
-        po.get_params_eltwise(index, scale, alg, alpha, beta);
+        po.get_params_eltwise(index, alg, alpha, beta);
         break;
       case kind::binary:
         po.get_params_binary(index, alg, binary_src_desc);

@@ -398,7 +398,12 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         src_zero_point, dst_zero_point, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
   }
 
-  template <bool is_channels_last = false>
+  /// @param is_channels_last Indicate whether weight is channels-last or not.
+  /// @param transposed If true, return weight desc in [i, o, ...] or [g, i/g, o, ...]
+  ///                   format, which is used by PyTorch/Aten. If false, return desc in
+  ///                   [o, i, ...] or [g, o, i/g, ...] format used by oneDNN. By default
+  ///                   it is true for backward compatibility (e.g. Caffe2)
+  template <bool is_channels_last = false, bool transposed = true>
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,   // [i, o, ...]
       data_type dtype = data_type::f32,
@@ -481,11 +486,19 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
 
     // embed group info into weights_desc
     if (grouped) {
-      // [g, o, i/g, ...] -> [g, i/g, o, ...]
-      return tensor::desc(pd.weights_desc(), groups).transpose(1, 2);
+      if (transposed) {
+        // [g, o, i/g, ...] -> [g, i/g, o, ...]
+        return tensor::desc(pd.weights_desc(), groups).transpose(1, 2);
+      } else {
+        return tensor::desc(pd.weights_desc(), groups);
+      }
     } else {
-      // [o, i, ...] -> [i, o, ...]
-      return tensor::desc(pd.weights_desc(), groups).transpose(0, 1);
+      if (transposed) {
+        // [o, i, ...] -> [i, o, ...]
+        return tensor::desc(pd.weights_desc(), groups).transpose(0, 1);
+      } else {
+        return tensor::desc(pd.weights_desc(), groups);
+      }
     } 
   }
 

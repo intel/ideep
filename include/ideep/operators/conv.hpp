@@ -5,13 +5,24 @@ namespace ideep {
 struct convolution_forward_quant_params {
   convolution_forward_quant_params() {}
 
-  convolution_forward_quant_params(tensor&& src_zero_point)
-                                  : src_zero_point(std::move(src_zero_point)) {}
+  convolution_forward_quant_params(tensor&& src_scales,
+                                   tensor&& weight_scales,
+                                   tensor&& dst_scales,
+                                   tensor&& src_zero_point,
+                                   tensor&& dst_zero_point)
+                                  : src_scales(std::move(src_scales)),
+                                    weight_scales(std::move(weight_scales)),
+                                    dst_scales(std::move(dst_scales)),
+                                    src_zero_point(std::move(src_zero_point)),
+                                    dst_zero_point(std::move(dst_zero_point)) {}
 
-  // Due to oneDNN's mechanism of conv, zero point is set to
-  // runtime value when weight is prepacked without input info in framework.
-  // So, the true zero point is set at primitive execution time
+  // Since oneDNN 3.0, scales/zero points are required to set at runtime
+  // Zero points of weights are always 0
+  tensor src_scales;
+  tensor weight_scales;
+  tensor dst_scales;
   tensor src_zero_point;
+  tensor dst_zero_point;
 };
 
 struct convolution_forward_params {
@@ -51,7 +62,11 @@ struct convolution_forward_params {
   // TO-DO: Use a better name, i.e., num_threads
   int pd_use_threads;
   // Param for static quantization
-  std::shared_ptr<convolution_forward_quant_params> sq_param_ptr = nullptr;
+  // std::shared_ptr<convolution_forward_quant_params> sq_param_ptr = nullptr;
+
+  // Keep {dnnl_arg, tensor} pairs of scales and zero points for primitive execution
+  std::shared_ptr<std::unordered_map<int, tensor>> all_scales = nullptr;
+  std::shared_ptr<std::unordered_map<int, tensor>> all_zero_points = nullptr;
 
   // Now we create scratchpad in do_compute
   // tensor scratchpad;
@@ -126,7 +141,7 @@ struct conv_deconv_utils {
       const auto& dst_zero_point = dst.has_zero_point() ? dst.get_zero_point() :
                                    dst_zero_points.empty() ? default_zero_point : dst_zero_points;
       const auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
-      const auto weights_zero_point_size = 1;
+      // const auto weights_zero_point_size = 1;
       const auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
       IDEEP_ENFORCE(src_zero_point_size == 1 && dst_zero_point_size == 1,
                     "DNNL only support 1-dim zero_point");
@@ -144,27 +159,40 @@ struct conv_deconv_utils {
           op_attr = attr_t::fuse_sum(sum_scale);
         }
       }
-      op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
-      zero_point_t src_zero_point_in_attr;
-      int zp_mask = utils::tensor_zp_mask(1);
-      std::tie(src_zero_point_in_attr, zp_mask) = attr.get_zero_points(DNNL_ARG_SRC);
-      if (src_zero_point_in_attr == zero_point_t({DNNL_RUNTIME_S32_VAL})) { // runtime src zero point
-        op_attr.set_zero_points(DNNL_ARG_SRC,
-                                zp_mask,
-                                src_zero_point_in_attr);
-      } else {
-        op_attr.set_zero_points(DNNL_ARG_SRC,
-                                ideep::utils::tensor_zp_mask(src_zero_point_size),
-                                src_zero_point);
-      }
+      // Set scales to op_attr
+      // op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);
+      auto src_scale_mask = utils::tensor_scale_mask(src_scales_in.size(), groups > 1);
+      op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, src_scales_in);
+      auto wei_scale_mask = utils::tensor_scale_mask(weights_scales_in.size(), groups > 1);
+      op_attr.set_scales(DNNL_ARG_WEIGHTS, wei_scale_mask, weights_scales_in);
+      auto dst_scale_mask = utils::tensor_scale_mask(dst_scales_in.size(), groups > 1);
+      op_attr.set_scales(DNNL_ARG_DST, dst_scale_mask, dst_scales_in);
+      // Set zero points to op_attr (weight zero point is always 0. Do not set.)
+      auto src_zp_mask = utils::tensor_zp_mask(src_zero_point_size);
+      op_attr.set_zero_points(DNNL_ARG_SRC, src_zp_mask, src_zero_point);
+      auto dst_zp_mask = utils::tensor_zp_mask(dst_zero_point_size);
+      op_attr.set_zero_points(DNNL_ARG_DST, dst_zp_mask, dst_zero_point);
+
+      // zero_point_t src_zero_point_in_attr;
+      // int zp_mask = utils::tensor_zp_mask(1);
+      // std::tie(src_zero_point_in_attr, zp_mask) = attr.get_zero_points(DNNL_ARG_SRC);
+      // if (src_zero_point_in_attr == zero_point_t({DNNL_RUNTIME_S32_VAL})) { // runtime src zero point
+      //   op_attr.set_zero_points(DNNL_ARG_SRC,
+      //                           zp_mask,
+      //                           src_zero_point_in_attr);
+      // } else {
+      //   op_attr.set_zero_points(DNNL_ARG_SRC,
+      //                           ideep::utils::tensor_zp_mask(src_zero_point_size),
+      //                           src_zero_point);
+      // }
       // op_attr.set_zero_points(DNNL_ARG_WEIGHTS,
       //                         ideep::utils::tensor_zp_mask(weights_zero_point_size),
       //                         zero_point_t(1, weights_zero_point[0]));
-      if (dst_data_type != data_type::f32) {
-        op_attr.set_zero_points(DNNL_ARG_DST,
-                                ideep::utils::tensor_zp_mask(dst_zero_point_size),
-                                dst_zero_point);
-      }
+      // if (dst_data_type != data_type::f32) {
+      //   op_attr.set_zero_points(DNNL_ARG_DST,
+      //                           ideep::utils::tensor_zp_mask(dst_zero_point_size),
+      //                           dst_zero_point);
+      // }
 
       src_desc = {src.get_dims(),
                   alowp_kind == u8s8 ? data_type::u8 : data_type::s8, tag::any};
@@ -1585,7 +1613,7 @@ private:
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     tensor weights_grouped;
     dims dil_compatible;
-    tensor src_zp_tensor;
+    // tensor src_zp_tensor;
 
     conv_deconv_utils::prepare_parameters(
         src, weights, bias, dst_dims, dst, dilates, groups,
@@ -1599,15 +1627,42 @@ private:
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
         padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
     dnnl::convolution_forward primitive(pd);
-    conv_deconv_utils::obtain_runtime_zero_point(
-      src, src_zero_point, DNNL_ARG_SRC, attr_t(pd.get_primitive_attr()),
-      ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
-    convolution_forward_params params(
+    // conv_deconv_utils::obtain_runtime_zero_point(
+    //   src, src_zero_point, DNNL_ARG_SRC, attr_t(pd.get_primitive_attr()),
+    //   ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
+    convolution_forward_params param(
         std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr));
-    params.sq_param_ptr =
-        std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
-    IDEEP_ENFORCE(params.sq_param_ptr, "Failed to allocate memory for parameters");
-    do_compute<with_bias, reorder_src, reorder_weight>(params, src, weights, bias, dst);
+    // params.sq_param_ptr =
+    //     std::make_shared<convolution_forward_quant_params>(
+    //         tensor(op_attr.get_scales(DNNL_ARG_SRC).first),
+    //         tensor(op_attr.get_scales(DNNL_ARG_WEIGHTS).first),
+    //         tensor(op_attr.get_scales(DNNL_ARG_DST).first),
+    //         tensor(op_attr.get_zero_points(DNNL_ARG_SRC).first),
+    //         tensor(op_attr.get_zero_points(DNNL_ARG_DST).first));
+    // IDEEP_ENFORCE(params.sq_param_ptr, "Failed to allocate memory for parameters");
+    if (param.op_attr.has_scales()) {
+      if (!param.all_scales) {
+        param.all_scales.reset(new std::unordered_map<int, tensor>);
+      }
+      for (auto& arg_scale_pair : param.op_attr.get_all_scales()) {
+        int dnnl_arg = arg_scale_pair.first;
+        const scale_t& scale = arg_scale_pair.second.first;
+        tensor scales_m = tensor(scale);
+        param.all_scales->insert({dnnl_arg, scales_m});
+      }
+    }
+    if (param.op_attr.has_zero_points()) {
+      if (!param.all_zero_points) {
+        param.all_zero_points.reset(new std::unordered_map<int, tensor>);
+      }
+      for (auto& arg_zp_pair : param.op_attr.get_all_zero_points()) {
+        int dnnl_arg = arg_zp_pair.first;
+        const zero_point_t& zp = arg_zp_pair.second.first;
+        tensor zp_m = tensor(zp);
+        param.all_zero_points->insert({dnnl_arg, zp_m});
+      }
+    }
+    do_compute<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, dst);
   }
 
   // For fp32 with binary post-op
@@ -1705,7 +1760,7 @@ private:
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     tensor weights_grouped;
     dims dil_compatible;
-    tensor src_zp_tensor;
+    // tensor src_zp_tensor;
 
     conv_deconv_utils::prepare_parameters(
         src, weights, bias, dst_dims, dst, dilates, groups,
@@ -1720,13 +1775,41 @@ private:
 
     dnnl::convolution_forward primitive(pd);
 
-    conv_deconv_utils::obtain_runtime_zero_point(
-      src, src_zero_point, DNNL_ARG_SRC, attr_t(pd.get_primitive_attr()),
-      ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
+    // conv_deconv_utils::obtain_runtime_zero_point(
+    //   src, src_zero_point, DNNL_ARG_SRC, attr_t(pd.get_primitive_attr()),
+    //   ideep::engine(pd.get_engine().get_kind()), src_zp_tensor);
 
     param = {std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr)};
-    param.sq_param_ptr =
-        std::make_shared<convolution_forward_quant_params>(std::move(src_zp_tensor));
+    // params.sq_param_ptr =
+    //     std::make_shared<convolution_forward_quant_params>(
+    //         tensor(op_attr.get_scales(DNNL_ARG_SRC).first),
+    //         tensor(op_attr.get_scales(DNNL_ARG_WEIGHTS).first),
+    //         tensor(op_attr.get_scales(DNNL_ARG_DST).first),
+    //         tensor(op_attr.get_zero_points(DNNL_ARG_SRC).first),
+    //         tensor(op_attr.get_zero_points(DNNL_ARG_DST).first));
+    // IDEEP_ENFORCE(params.sq_param_ptr, "Failed to allocate memory for parameters");
+    if (param.op_attr.has_scales()) {
+      if (!param.all_scales) {
+        param.all_scales.reset(new std::unordered_map<int, tensor>);
+      }
+      for (auto& arg_scale_pair : param.op_attr.get_all_scales()) {
+        int dnnl_arg = arg_scale_pair.first;
+        const scale_t& scale = arg_scale_pair.second.first;
+        tensor scales_m(scale);
+        param.all_scales->insert({dnnl_arg, scales_m});
+      }
+    }
+    if (param.op_attr.has_zero_points()) {
+      if (!param.all_zero_points) {
+        param.all_zero_points.reset(new std::unordered_map<int, tensor>);
+      }
+      for (auto& arg_zp_pair : param.op_attr.get_all_zero_points()) {
+        int dnnl_arg = arg_zp_pair.first;
+        const zero_point_t& zp = arg_zp_pair.second.first;
+        tensor zp_m(zp);
+        param.all_zero_points->insert({dnnl_arg, zp_m});
+      }
+    }
   }
 
   // do_compute with given primitive/pd, under the precondition
@@ -1751,31 +1834,49 @@ private:
     args.insert({DNNL_ARG_SRC, expected_src});
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    if (param.sq_param_ptr) {
-      args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
-    }
-    auto& expected_bias = (with_bias && reorder_weight) ?
-        bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
-        bias;
+    // if (param.sq_param_ptr) {
+    //   args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, param.sq_param_ptr->src_scales});
+    //   args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, param.sq_param_ptr->wei_scales});
+    //   args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, param.sq_param_ptr->dst_scales});
+    //   args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
+    //   args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, param.sq_param_ptr->dst_zero_point});
+    // }
+    // auto& expected_bias = (with_bias && reorder_weight) ?
+    //     bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
+    //     bias;
     if (with_bias) {
-      args.insert({DNNL_ARG_BIAS, expected_bias});
+      args.insert({DNNL_ARG_BIAS, bias});
     }
-    // Output scale
-    tensor o_scale_m;
-    if (param.op_attr.has_output_scales()) {
-      scale_t&& output_scales = param.op_attr.get_output_scales().first;
-      o_scale_m = tensor(output_scales);
-      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
-    }
-    // dst zero points
-    tensor dst_zp_m;
-    if (param.op_attr.has_zero_points()) {
-      const auto& all_zp = param.op_attr.get_all_zero_points();
-      if (all_zp.count(DNNL_ARG_DST)) {
-        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
-        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+    if (param.all_scales && !param.all_scales->empty()) {
+      for (auto& arg_scale_pair : *param.all_scales) {
+        int dnnl_arg = arg_scale_pair.first;
+        tensor& scales_m = arg_scale_pair.second;
+        args.insert({DNNL_ARG_ATTR_SCALES | dnnl_arg, scales_m});
       }
     }
+    if (param.all_zero_points && !param.all_zero_points->empty()) {
+      for (auto& arg_zp_pair : *param.all_zero_points) {
+        int dnnl_arg = arg_zp_pair.first;
+        tensor& zp_m = arg_zp_pair.second;
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | dnnl_arg, zp_m});
+      }
+    }
+    // Output scale
+    // tensor o_scale_m;
+    // if (param.op_attr.has_output_scales()) {
+    //   scale_t&& output_scales = param.op_attr.get_output_scales().first;
+    //   o_scale_m = tensor(output_scales);
+    //   args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
+    // }
+    // dst zero points
+    // tensor dst_zp_m;
+    // if (param.op_attr.has_zero_points()) {
+    //   const auto& all_zp = param.op_attr.get_all_zero_points();
+    //   if (all_zp.count(DNNL_ARG_DST)) {
+    //     dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
+    //     args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+    //   }
+    // }
 
     // Deal with dst tensor
     if (reorder_src) {
@@ -1842,24 +1943,33 @@ private:
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
     args.insert({DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
                  expected_other});
-    if (param.op_attr.has_output_scales()) {
-      scale_t&& output_scales = param.op_attr.get_output_scales().first;
-      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, tensor(output_scales)});
+    if (param.all_scales && !param.all_scales->empty()) {
+      for (auto& arg_scale_pair : *param.all_scales) {
+        int dnnl_arg = arg_scale_pair.first;
+        tensor& scales_m = arg_scale_pair.second;
+        args.insert({DNNL_ARG_ATTR_SCALES | dnnl_arg, scales_m});
+      }
     }
-    if (param.op_attr.has_zero_points()) {
-      for (auto& zp : param.op_attr.get_all_zero_points()) {
-        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | zp.first, tensor(zp.second)});
+    if (param.all_zero_points && !param.all_zero_points->empty()) {
+      for (auto& arg_zp_pair : *param.all_zero_points) {
+        int dnnl_arg = arg_zp_pair.first;
+        tensor& zp_m = arg_zp_pair.second;
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | dnnl_arg, zp_m});
       }
     }
     if (with_bias) {
-      auto& expected_bias = reorder_weight ?
-          bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr) :
-          bias;
-      args.insert({DNNL_ARG_BIAS, expected_bias});
-      primitive.execute(stream::default_stream(), args);
-    } else {
-      primitive.execute(stream::default_stream(), args);
+      args.insert({DNNL_ARG_BIAS, bias});
     }
+    primitive.execute(stream::default_stream(), args);
+    // if (with_bias) {
+    //   auto& expected_bias = reorder_weight ?
+    //       bias.reorder_if_differ_in(pd.bias_desc(), param.bias_attr) :
+    //       bias;
+    //   args.insert({DNNL_ARG_BIAS, expected_bias});
+    //   primitive.execute(stream::default_stream(), args);
+    // } else {
+    //   primitive.execute(stream::default_stream(), args);
+    // }
   }
 };
 

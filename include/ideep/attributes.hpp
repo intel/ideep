@@ -7,7 +7,13 @@
 namespace ideep {
 
 using post_ops = dnnl::post_ops;
-using zero_point_map = std::unordered_map<int, zero_point_t>;
+using scale_mask_pair = std::pair<scale_t, int>;
+using zp_mask_pair = std::pair<zero_point_t, int>;
+// Map DNNL arg to pair of scales and mask
+using scale_map = std::unordered_map<int, scale_mask_pair>;
+// Map DNNL arg to pair of zero points and mask
+using zero_point_map = std::unordered_map<int, zp_mask_pair>;
+static const scale_map empty_scale_map;
 static const zero_point_map empty_zp_map;
 
 /// Attribute class for extra information into computations
@@ -20,10 +26,22 @@ struct attr_t : public dnnl::primitive_attr {
 
   attr_t(const dnnl::primitive_attr& other) : dnnl::primitive_attr(other) {}
 
+  /// @param arg Parameter argument index
+  attr_t(int arg, int mask, const scale_t& scales) {
+    set_scales_mask(arg, mask);
+    if (!scales_) {
+      scales_.reset(new scale_map());
+    }
+    (*scales_)[arg] = std::make_pair(scales, mask);
+  }
+
+  // Defualt arg = DNNL_ARG_DST
   attr_t(int mask, const scale_t& scales) {
-    // set_output_scales(mask, scales);
-    set_output_scales_mask(mask);
-    scales_.reset(new scale_t(scales));
+    set_scales_mask(DNNL_ARG_DST, mask);
+    if (!scales_) {
+      scales_.reset(new scale_map());
+    }
+    (*scales_)[DNNL_ARG_DST] = std::make_pair(scales, mask);
   }
 
   attr_t(dnnl_fpmath_mode_t fpmath_mode,
@@ -39,54 +57,62 @@ struct attr_t : public dnnl::primitive_attr {
     return *this;
   }
 
-  void set_output_scales(int mask, const scale_t& scales) {
-    set_output_scales_mask(mask);
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  void set_scales(int arg, int mask, const scale_t& scales) {
+    set_scales_mask(arg, mask);
     if (!scales_) {
-      scales_.reset(new scale_t(scales));
-    } else {
-      *scales_ = scales;
+      scales_.reset(new scale_map());
     }
+    (*scales_)[arg] = std::make_pair(scales, mask);
   }
 
-  std::pair<scale_t, int> get_output_scales() const {
-    if (!scales_) {
-      return std::make_pair(scale_t(), 0);
-    }
-    int c_mask = utils::op_scale_mask(scales_->size());
-    return std::make_pair(*scales_, c_mask);
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  scale_mask_pair& get_scales(int arg) const {
+    IDEEP_ENFORCE(has_scales_for(arg),
+                  "Scales for arg not found!");
+    return (*scales_)[arg];
   }
 
-  bool has_output_scales() const {
+  const scale_map& get_all_scales() const {
+    return scales_ ? *scales_ : empty_scale_map;
+  }
+
+  bool has_scales() const {
     return (scales_ && !(*scales_).empty());
   }
 
-  // @param arg DNNL_ARGS
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  bool has_scales_for(int arg) const {
+    return has_scales() && scales_->count(arg);
+  }
+
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
   void set_zero_points(int arg, int mask, const zero_point_t& zero_points) {
     set_zero_points_mask(arg, mask);
     if (!zero_points_) {
       zero_points_.reset(new zero_point_map());
     }
-    (*zero_points_)[arg] = zero_points;
+    (*zero_points_)[arg] = std::make_pair(zero_points, mask);
   }
 
-  std::pair<zero_point_t, int> get_zero_points(int arg) const {
-    if (!zero_points_ || !zero_points_->count(arg)) {
-      return std::make_pair(zero_point_t(), 0);
-    }
-    auto& zp = (*zero_points_)[arg];
-    int mask = utils::tensor_zp_mask(zp.size());
-    return std::make_pair(zp, mask);
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  zp_mask_pair& get_zero_points(int arg) const {
+    IDEEP_ENFORCE(has_zero_points_for(arg),
+                  "Zero point for arg not found!");
+    return (*zero_points_)[arg];
   }
 
   const zero_point_map& get_all_zero_points() const {
-    if (!zero_points_) {
-      return empty_zp_map;
-    }
-    return *zero_points_;
+    return zero_points_ ? *zero_points_ : empty_zp_map;
   }
 
   bool has_zero_points() const {
     return (zero_points_ && !(*zero_points_).empty());
+  }
+
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  bool has_zero_points_for(int arg) const {
+    return has_zero_points() && zero_points_->count(arg);
   }
 
   // Helper factory
@@ -205,7 +231,7 @@ struct attr_t : public dnnl::primitive_attr {
   static attr_t fuse_hardswish(
       float alpha = 1.0f / 6.0f,
       float beta = 0.5f) {
-    return fuse_eltwise(algorithm::eltwise_clip, alpha, beta);
+    return fuse_eltwise(algorithm::eltwise_hardswish, alpha, beta);
   }
 
   static attr_t fuse_abs(
@@ -334,6 +360,7 @@ struct attr_t : public dnnl::primitive_attr {
     return true;
   }
 
+  // deep data copy
   attr_t& operator=(const attr_t& rhs) {
     if (this == &rhs) {
       return *this;
@@ -343,18 +370,19 @@ struct attr_t : public dnnl::primitive_attr {
         dnnl_primitive_attr_clone(&result, rhs.get()),
         "could not clone primitive attributes");
     this->reset(result);
-    int c_mask;
-    scale_t scales;
-    std::tie(scales, c_mask) = rhs.get_output_scales();
-    if (scales_) {
-      *scales_ = scales;
-    } else {
-      scales_.reset(new scale_t(scales));
+    if (rhs.has_scales()) {
+      if (scales_) {
+        *scales_ = rhs.get_all_scales();
+      } else {
+        scales_.reset(new scale_map(rhs.get_all_scales()));
+      }
     }
-    if (zero_points_) {
-      *zero_points_ = rhs.get_all_zero_points();
-    } else {
-      zero_points_.reset(new zero_point_map(rhs.get_all_zero_points()));
+    if (rhs.has_zero_points()) {
+      if (zero_points_) {
+        *zero_points_ = rhs.get_all_zero_points();
+      } else {
+        zero_points_.reset(new zero_point_map(rhs.get_all_zero_points()));
+      }
     }
     return *this;
   }
@@ -416,17 +444,20 @@ struct attr_t : public dnnl::primitive_attr {
     }
 
     // encode output scales
-    if (has_output_scales()) {
-      auto scales = get_output_scales();
-      utils::to_bytes(bytes, scales.first);
-      utils::to_bytes(bytes, scales.second);
+    if (has_scales()) {
+      for (auto& scales : get_all_scales()) {
+        utils::to_bytes(bytes, scales.first); // dnnl arg index
+        utils::to_bytes(bytes, scales.second.first); // scale vector
+        utils::to_bytes(bytes, scales.second.second); // mask
+      }
     }
 
     // encode zero points
     if (has_zero_points()) {
       for (auto& zp : get_all_zero_points()) {
-        utils::to_bytes(bytes, zp.first);
-        utils::to_bytes(bytes, zp.second);
+        utils::to_bytes(bytes, zp.first); // dnnl arg index
+        utils::to_bytes(bytes, zp.second.first); // zero point vector
+        utils::to_bytes(bytes, zp.second.second); // mask
       }
     }
 
@@ -436,9 +467,8 @@ struct attr_t : public dnnl::primitive_attr {
   }
 
 private:
-  std::shared_ptr<scale_t> scales_;
-  // Map key: DNNL ARG (e.g. DNNL_ARG_SRC)
-  std::shared_ptr<std::unordered_map<int, zero_point_t>> zero_points_;
+  std::shared_ptr<scale_map> scales_;
+  std::shared_ptr<zero_point_map> zero_points_;
 };
 
 } // namespace ideep

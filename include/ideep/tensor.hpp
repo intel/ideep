@@ -905,11 +905,15 @@ class tensor : public memory {
   tensor reorder_if_differ_in(
       const desc& expected_desc,
       const attr_t& aattr = attr_t()) const {
-    auto output_scales = std::get<0>(aattr.get_output_scales());
-    auto is_empty_or_ones = output_scales.empty() ||
-        std::all_of(output_scales.begin(), output_scales.end(), [](float i) {
-                              return 1.0 == i;
-                            });
+    bool is_empty_or_ones = true;
+    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
+      if (aattr.has_scales_for(arg)){
+        auto& scales = aattr.get_scales(arg).first;
+        is_empty_or_ones = is_empty_or_ones &&
+            (scales.empty() ||
+            std::all_of(scales.begin(), scales.end(), [](float i) {return 1.0 == i;}));
+      }
+    }
     if (expected_desc == get_desc() && is_empty_or_ones) {
       return *this;
     } else {
@@ -1109,22 +1113,22 @@ class tensor : public memory {
     args.insert({DNNL_ARG_FROM, const_cast<tensor&>(*this)});
     args.insert({DNNL_ARG_TO, dst});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    tensor o_scale_m;
-    if (op_attr.has_output_scales()) {
-      scale_t&& output_scales = op_attr.get_output_scales().first;
-      o_scale_m = tensor(output_scales);
-      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
-    }
-    tensor src_zp_m, dst_zp_m;
-    if (op_attr.has_zero_points()) {
-      const auto& all_zp = op_attr.get_all_zero_points();
-      if (all_zp.count(DNNL_ARG_SRC)) {
-        src_zp_m = tensor(all_zp.at(DNNL_ARG_SRC));
-        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zp_m});
+    const static std::vector<int> args_for_scales = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
+    std::vector<tensor> scale_tensors(args_for_scales.size());
+    for (size_t i = 0; i < args_for_scales.size(); ++i) {
+      int arg = args_for_scales[i];
+      if (op_attr.has_scales_for(arg)) {
+        scale_tensors[i] = tensor(op_attr.get_scales(arg).first);
+        args.insert({DNNL_ARG_ATTR_SCALES | arg, scale_tensors[i]});
       }
-      if (all_zp.count(DNNL_ARG_DST)) {
-        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
-        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+    }
+    const static std::vector<int> args_for_zp = {DNNL_ARG_SRC, DNNL_ARG_DST};
+    std::vector<tensor> zp_tensors(args_for_zp.size());
+    for (size_t i = 0; i < args_for_zp.size(); ++i) {
+      int arg = args_for_scales[i];
+      if (op_attr.has_zero_points_for(arg)) {
+        zp_tensors[i] = tensor(op_attr.get_zero_points(arg).first);
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | arg, zp_tensors[i]});
       }
     }
     dnnl::reorder(pd).execute(

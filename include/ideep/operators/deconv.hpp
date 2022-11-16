@@ -47,7 +47,10 @@ struct deconv_forward_params {
   attr_t op_attr;
   attr_t bias_attr;
   // Param for static quantization
-  std::shared_ptr<deconv_forward_quant_params> sq_param_ptr;
+  // std::shared_ptr<deconv_forward_quant_params> sq_param_ptr;
+  // Keep {dnnl_arg, tensor} pairs of scales and zero points for primitive execution
+  std::shared_ptr<std::unordered_map<int, tensor>> all_scales = nullptr;
+  std::shared_ptr<std::unordered_map<int, tensor>> all_zero_points = nullptr;
 };
 
 struct convolution_transpose_forward : public dnnl::deconvolution_forward {
@@ -681,9 +684,31 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     param.op_attr = std::move(op_attr);
     param.bias_attr = std::move(bias_attr);
     param.groups = groups;
-    param.sq_param_ptr =
-        std::make_shared<deconv_forward_quant_params>(std::move(src_zero_point_m));
-    IDEEP_ENFORCE(param.sq_param_ptr, "Failed to allocate memory for quantization parameters");
+    if (param.op_attr.has_scales()) {
+      if (!param.all_scales) {
+        param.all_scales.reset(new std::unordered_map<int, tensor>);
+      }
+      for (auto& arg_scale_pair : param.op_attr.get_all_scales()) {
+        int dnnl_arg = arg_scale_pair.first;
+        const scale_t& scale = arg_scale_pair.second.first;
+        tensor scales_m(scale);
+        param.all_scales->insert({dnnl_arg, scales_m});
+      }
+    }
+    if (param.op_attr.has_zero_points()) {
+      if (!param.all_zero_points) {
+        param.all_zero_points.reset(new std::unordered_map<int, tensor>);
+      }
+      for (auto& arg_zp_pair : param.op_attr.get_all_zero_points()) {
+        int dnnl_arg = arg_zp_pair.first;
+        const zero_point_t& zp = arg_zp_pair.second.first;
+        tensor zp_m(zp);
+        param.all_zero_points->insert({dnnl_arg, zp_m});
+      }
+    }
+    // param.sq_param_ptr =
+    //     std::make_shared<deconv_forward_quant_params>(std::move(src_zero_point_m));
+    // IDEEP_ENFORCE(param.sq_param_ptr, "Failed to allocate memory for quantization parameters");
   }
 
   // For fp32 and int8
@@ -712,29 +737,27 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
     args.insert({DNNL_ARG_DST, dst});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    if (param.sq_param_ptr) {
-      args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
-    }
-    auto& expected_bias = (with_bias && reorder_weight) ?
-        bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
-        bias;
+    // if (param.sq_param_ptr) {
+    //   args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
+    // }
+    // auto& expected_bias = (with_bias && reorder_weight) ?
+    //     bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
+    //     bias;
     if (with_bias) {
-      args.insert({DNNL_ARG_BIAS, expected_bias});
+      args.insert({DNNL_ARG_BIAS, bias});
     }
-    // Output scale
-    tensor o_scale_m;
-    if (param.op_attr.has_output_scales()) {
-      scale_t&& output_scales = param.op_attr.get_output_scales().first;
-      o_scale_m = tensor(output_scales);
-      args.insert({DNNL_ARG_ATTR_OUTPUT_SCALES, o_scale_m});
+    if (param.all_scales && !param.all_scales->empty()) {
+      for (auto& arg_scale_pair : *param.all_scales) {
+        int dnnl_arg = arg_scale_pair.first;
+        tensor& scales_m = arg_scale_pair.second;
+        args.insert({DNNL_ARG_ATTR_SCALES | dnnl_arg, scales_m});
+      }
     }
-    // dst zero points
-    tensor dst_zp_m;
-    if (param.op_attr.has_zero_points()) {
-      const auto& all_zp = param.op_attr.get_all_zero_points();
-      if (all_zp.count(DNNL_ARG_DST)) {
-        dst_zp_m = tensor(all_zp.at(DNNL_ARG_DST));
-        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST, dst_zp_m});
+    if (param.all_zero_points && !param.all_zero_points->empty()) {
+      for (auto& arg_zp_pair : *param.all_zero_points) {
+        int dnnl_arg = arg_zp_pair.first;
+        tensor& zp_m = arg_zp_pair.second;
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | dnnl_arg, zp_m});
       }
     }
     primitive.execute(stream::default_stream(), args);

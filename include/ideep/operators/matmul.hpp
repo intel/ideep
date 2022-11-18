@@ -916,7 +916,7 @@ struct matmul_forward : public dnnl::matmul,
         std::vector<int64_t>({src_dims[1], 1});
     src_desc = tensor::desc(src_dims, src_data_type, tag::any);
     if (src.get_data_type() == data_type::f32) {
-      src_attr = {0, src_scales_in};
+      src_attr.set_scales(DNNL_ARG_DST, /* mask */ 0, src_scales_in);
     }
 
     int scale_size = (weights_scales_in.size() > 1) ? weights.get_dim(1) : 1;
@@ -1350,7 +1350,7 @@ struct matmul_forward : public dnnl::matmul,
     exec_args args;
     args.insert({DNNL_ARG_SRC, expected_src});
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
-    args.insert({DNNL_ARG_WEIGHTS, expected_dst});
+    args.insert({DNNL_ARG_DST, expected_dst});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
     if (with_bias) {
       args.insert({DNNL_ARG_BIAS, bias});
@@ -1369,8 +1369,10 @@ struct matmul_forward : public dnnl::matmul,
         args.insert({DNNL_ARG_ATTR_ZERO_POINTS | dnnl_arg, zp_m});
       }
     }
+    // Src scales and zero point are obtained at runtime thus set separately
     args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, src_scales_m});
     args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, src_zero_point_m});
+
     primitive.execute(stream::default_stream(), args);
   }
 

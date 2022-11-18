@@ -37,8 +37,6 @@ struct lstm_forward_inference : public dnnl::lstm_forward {
 
     attr_t op_attr = attr;
     if (src_layer.get_data_type() == data_type::u8) {
-      // weights_layer_desc = weights_layer_desc.to_type(data_type::s8);
-      // weights_iter_desc = weights_iter_desc.to_type(data_type::s8);
       weights_layer_desc = tensor::desc(weights_layer.get_dims(), data_type::s8, tag::any);
       weights_iter_desc = tensor::desc(weights_iter.get_dims(), data_type::s8, tag::any);
 
@@ -116,8 +114,6 @@ struct lstm_forward_inference : public dnnl::lstm_forward {
 
     attr_t op_attr;
     if (src_layer.get_data_type() == data_type::u8) {
-      // weights_layer_desc = weights_layer_desc.to_type(data_type::s8);
-      // weights_iter_desc = weights_iter_desc.to_type(data_type::s8);
       weights_layer_desc = tensor::desc(weights_layer.get_dims(), data_type::s8, tag::any);
       weights_iter_desc = tensor::desc(weights_iter.get_dims(), data_type::s8, tag::any);
 
@@ -336,8 +332,6 @@ struct lstm_backward : public dnnl::lstm_backward {
     auto diff_src_layer_desc = src_layer_desc.to_type(data_type::f32);
     auto diff_src_iter_desc = src_iter_desc.to_type(data_type::f32);
     auto diff_src_iter_c_desc = src_iter_c_desc.to_type(data_type::f32);
-    // auto diff_weights_layer_desc = weights_layer_desc.to_type(data_type::f32);
-    // auto diff_weights_iter_desc = weights_iter_desc.to_type(data_type::f32);
     auto diff_weights_layer_desc = tensor::desc(weights_layer.get_dims(), data_type::f32, tag::any);
     auto diff_weights_iter_desc = tensor::desc(weights_iter.get_dims(), data_type::f32, tag::any);
     auto diff_bias_desc = bias_desc.to_type(data_type::f32);

@@ -46,8 +46,6 @@ struct deconv_forward_params {
   int groups;
   attr_t op_attr;
   attr_t bias_attr;
-  // Param for static quantization
-  // std::shared_ptr<deconv_forward_quant_params> sq_param_ptr;
   // Keep {dnnl_arg, tensor} pairs of scales and zero points for primitive execution
   std::shared_ptr<std::unordered_map<int, tensor>> all_scales = nullptr;
   std::shared_ptr<std::unordered_map<int, tensor>> all_zero_points = nullptr;
@@ -684,6 +682,8 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     param.op_attr = std::move(op_attr);
     param.bias_attr = std::move(bias_attr);
     param.groups = groups;
+
+    // Prepare tensors for scales and zero points
     if (param.op_attr.has_scales()) {
       if (!param.all_scales) {
         param.all_scales.reset(new std::unordered_map<int, tensor>);
@@ -706,9 +706,6 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
         param.all_zero_points->insert({dnnl_arg, zp_m});
       }
     }
-    // param.sq_param_ptr =
-    //     std::make_shared<deconv_forward_quant_params>(std::move(src_zero_point_m));
-    // IDEEP_ENFORCE(param.sq_param_ptr, "Failed to allocate memory for quantization parameters");
   }
 
   // For fp32 and int8
@@ -737,15 +734,10 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
     args.insert({DNNL_ARG_WEIGHTS, expected_weights});
     args.insert({DNNL_ARG_DST, dst});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    // if (param.sq_param_ptr) {
-    //   args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_SRC, param.sq_param_ptr->src_zero_point});
-    // }
-    // auto& expected_bias = (with_bias && reorder_weight) ?
-    //     bias.reorder_if_differ_in(param.pd.bias_desc(), param.bias_attr) :
-    //     bias;
     if (with_bias) {
       args.insert({DNNL_ARG_BIAS, bias});
     }
+    // Insert tensors of scales and zero points to args
     if (param.all_scales && !param.all_scales->empty()) {
       for (auto& arg_scale_pair : *param.all_scales) {
         int dnnl_arg = arg_scale_pair.first;

@@ -558,17 +558,6 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
     auto weights_ = weights;
-    // if (diff_dst.get_data_type() == data_type::bf16) {
-    //   if (weights_.get_data_type() != data_type::bf16) {
-    //     weights_.init(weights.get_desc().to_type(data_type::bf16));
-    //     weights_.reorder_from(weights);
-    //   }
-    // } else if (diff_dst.get_data_type() == data_type::f16) {
-    //   if (weights_.get_data_type() != data_type::f16) {
-    //     weights_.init(weights.get_desc().to_type(data_type::f16));
-    //     weights_.reorder_from(weights);
-    //   }
-    // }
 
     // workaround: diff_src and weights from caffe2 may have different dims.
     // It would be better for caffe2 to do this reshape anyway.
@@ -579,7 +568,6 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     }
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
-    // auto weights_desc = weights_.get_desc();
     auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
     auto diff_src_desc =
         tensor::desc(diff_src_dims, diff_dst.get_data_type(), tag::any);

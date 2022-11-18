@@ -243,12 +243,11 @@ struct batch_normalization_backward
     exec_args args{
         {DNNL_ARG_SRC, expected_src},
         {DNNL_ARG_DIFF_DST, expected_diff_dst},
-        // {DNNL_ARG_WEIGHTS/* DNNL_ARG_SCALE_SHIFT */, scale}, // only need scale
         {DNNL_ARG_SCALE, scale},
         {DNNL_ARG_MEAN, expected_mean},
         {DNNL_ARG_VARIANCE, expected_variance},
         {DNNL_ARG_DIFF_SRC, diff_src},
-        {DNNL_ARG_DIFF_SCALE/* DNNL_ARG_DIFF_SCALE_SHIFT */, diff_scale_shift},
+        {DNNL_ARG_DIFF_SCALE, diff_scale_shift},
         {DNNL_ARG_SCRATCHPAD, scratchpad}};
     if (with_workspace) {
       args.insert({DNNL_ARG_WORKSPACE, dst.get_workspace()});

@@ -58,10 +58,10 @@ class tensor : public memory {
     void to_bytes(utils::bytestring& bytes) const {
       utils::to_bytes(bytes, get_data_type());
       utils::to_bytes(bytes, format_kind());
-      utils::to_bytes(bytes, get_submemory_offset() /* offset0() */);
+      utils::to_bytes(bytes, get_submemory_offset());
 
-      auto paddim = get_padded_dims(); // padded_dims();
-      auto padoff = get_padded_offsets(); // padded_offsets();
+      auto paddim = get_padded_dims();
+      auto padoff = get_padded_offsets();
 
       dim_t *c_dims = nullptr;
       dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
@@ -122,11 +122,6 @@ class tensor : public memory {
       }
     }
 
-    /// Returns descriptor data type
-    // inline data_type get_data_type() const {
-    //   return static_cast<data_type>(data.data_type);
-    // }
-
     inline dims get_strides() const {
       IDEEP_ENFORCE(is_plain(), "Call to_public() before get_strides()");
       // const auto& strides = blocking_strides();
@@ -140,11 +135,6 @@ class tensor : public memory {
         return ret;
       }
     }
-
-    /** returns true if memory descriptor is zero */
-    // bool is_zero() const {
-    //   return data.ndims == 0;
-    // }
 
     /** returns the number of elements including padding if \param with_padding
      * is true, and the number of data elements otherwise */
@@ -319,7 +309,6 @@ class tensor : public memory {
       // We cannot change data type of a desc directly.
       // Case 1: Return a copy of this if no change is needed.
       if (atype == get_data_type()) return clone();
-      // IDEEP_ENFORCE(is_plain(), "ideep::tensor::desc::to_type() only supports plain format.");
       // Case 2: For desc of plain layout, we can create a new desc with strides
       if (is_plain()) {
         desc ret(memory::desc(get_internal_dims(), atype, memory::desc::get_strides()));
@@ -365,68 +354,6 @@ class tensor : public memory {
       auto ret = desc(permuted_md);
       ret.set_g(g());
       return ret;
-      // if (data.ndims <= 1) {
-      //   return clone();
-      // }
-
-      // auto perms = permute_axes;
-      // if (perms.empty()) {
-      //   perms.resize(data.ndims);
-      //   std::iota(perms.rbegin(), perms.rend(), 0);
-      // } else {
-      //   IDEEP_ENFORCE(
-      //       perms.size() == data.ndims,
-      //       "Axes should be size like source tensor.");
-      //   auto perms_sorted = perms;
-      //   std::sort(perms_sorted.begin(), perms_sorted.end());
-      //   for (auto i = 0; i < perms_sorted.size(); ++i) {
-      //     IDEEP_ENFORCE(
-      //         perms_sorted[i] == i,
-      //         "Axes should be a permutation of 0 to ndim.");
-      //   }
-      //   if (perms_sorted == perms) {
-      //     return clone();
-      //   }
-      // }
-
-      // desc new_desc{};
-      // auto ndims = data.ndims;
-      // new_desc.data.ndims = data.ndims;
-      // new_desc.data.data_type = data.data_type;
-      // new_desc.data.format_kind = data.format_kind;
-      // new_desc.data.offset0 = data.offset0;
-      // new_desc.set_g(g());
-
-      // // permute dims, padded_dims, padded_offsets, strides
-      // auto& new_dims = new_desc.data.dims;
-      // auto& old_dims = data.dims;
-      // auto& new_stride = new_desc.data.format_desc.blocking.strides;
-      // auto& old_stride = data.format_desc.blocking.strides;
-      // auto& new_paddim = new_desc.data.padded_dims;
-      // auto& old_paddim = data.padded_dims;
-      // auto& new_padoff = new_desc.data.padded_offsets;
-      // auto& old_padoff = data.padded_offsets;
-      // for (int i = 0; i < ndims; i++) {
-      //   new_dims[i] = old_dims[perms[i]];
-      //   new_stride[i] = old_stride[perms[i]];
-      //   new_paddim[i] = old_paddim[perms[i]];
-      //   new_padoff[i] = old_padoff[perms[i]];
-      // }
-
-      // // permute blocking
-      // auto inner_nblks = data.format_desc.blocking.inner_nblks;
-      // new_desc.data.format_desc.blocking.inner_nblks = inner_nblks;
-      // auto& old_inner_idxs = data.format_desc.blocking.inner_idxs;
-      // auto& new_inner_idxs = new_desc.data.format_desc.blocking.inner_idxs;
-      // auto& old_inner_blks = data.format_desc.blocking.inner_blks;
-      // auto& new_inner_blks = new_desc.data.format_desc.blocking.inner_blks;
-      // for (int i = 0; i < inner_nblks; i++) {
-      //   new_inner_idxs[i] = perms[old_inner_idxs[i]];
-      //   new_inner_blks[i] = old_inner_blks[i];
-      // }
-      // new_desc.data.extra = data.extra;
-
-      // return new_desc;
     }
 
     desc transpose(dim dim0, dim dim1) const {
@@ -444,75 +371,7 @@ class tensor : public memory {
       auto ret = desc(memory::desc::reshape(adims));
       ret.set_g(g());
       return ret;
-
-      // dnnl_memory_desc_t md;
-      // md.ndims = data.ndims;
-      // md.data_type = data.data_type;
-
-      // auto& blk = blocking_desc();
-
-      // dims_t blocks;
-      // for (auto i = 0; i < data.ndims; i++)
-      //   blocks[i] = 1;
-
-      // dim_t block_size = 1;
-      // for (int iblk = 0; iblk < blk.inner_nblks; ++iblk) {
-      //   blocks[blk.inner_idxs[iblk]] *= blk.inner_blks[iblk];
-      //   block_size *= blk.inner_blks[iblk];
-      // }
-
-      // for (int d = 0; d < data.ndims; ++d) {
-      //   md.dims[d] = adims[d];
-      //   md.padded_dims[d] = utils::rnd_up(adims[d], blocks[d]);
-      //   md.padded_offsets[d] = 0;
-      // }
-      // md.offset0 = 0;
-
-      // md.format_kind = dnnl_blocked;
-      // auto& mblk = md.format_desc.blocking;
-      // mblk = blk;
-
-      // for (auto i = 0; i < data.ndims; i++)
-      //   mblk.strides[i] = blk.strides[i];
-
-      // int perm[DNNL_MAX_NDIMS];
-      // for (int d = 0; d < data.ndims; ++d)
-      //   perm[d] = d;
-
-      // utils::simultaneous_sort(
-      //     mblk.strides, perm, data.ndims, [](dim_t a, dim_t b) {
-      //       return b - a;
-      //     });
-
-      // dim_t stride = block_size;
-      // for (int _d = data.ndims - 1; _d >= 0; --_d) {
-      //   const int d = perm[_d];
-      //   md.format_desc.blocking.strides[d] = stride;
-      //   stride *= md.padded_dims[d] / blocks[d];
-      // }
-
-      // md.extra = dnnl_memory_extra_desc_t{};
-
-      // return desc(md);
     }
-
-    // const blocking_desc_t& blocking_desc() const {
-    //   IDEEP_ENFORCE(
-    //       is_blocking_desc(),
-    //       "Cannot get blocking desc on a non-blocking desc");
-    //   return data.format_desc.blocking;
-    // }
-
-    // dims_t& blocking_strides() const {
-    //   IDEEP_ENFORCE(
-    //       is_blocking_desc(),
-    //       "Cannot get blocking desc on a non-blocking desc");
-    //   return const_cast<dnnl_memory_desc_t&>(data).format_desc.blocking.strides;
-    // }
-
-    // const dims_t& padded_dims() const {
-      // return data.padded_dims;
-    // }
 
    private:
     /// Returns dimension vector
@@ -526,23 +385,6 @@ class tensor : public memory {
     inline int get_internal_ndims() const {
       return memory::desc::get_ndims();
     }
-
-    // internal strides
-    // inline dims get_internal_strides() const {
-    //   return memory::desc::get_strides();
-    // }
-
-    // const dims_t& padded_offsets() const {
-    //   return data.padded_offsets;
-    // }
-
-    // dim_t offset0() const {
-    //   return data.offset0;
-    // }
-
-    // inline format_kind_t format_kind() const {
-    //   return data.format_kind;
-    // }
 
     bool is_blocking_desc() const {
       return get_format_kind() == format_kind::blocked;
@@ -558,16 +400,10 @@ class tensor : public memory {
     }
 
     void set_g(dim groups) {
-      // auto reserved_size = sizeof(((dnnl_memory_extra_desc_t*)0)->reserved);
-      // auto offset = reserved_size / sizeof(dim) - 1;
-      // reinterpret_cast<dim*>(data.extra.reserved)[offset] = groups;
       this->groups = groups;
     }
 
     dim g() const {
-      // auto reserved_size = sizeof(((dnnl_memory_extra_desc_t*)0)->reserved);
-      // auto offset = reserved_size / sizeof(dim) - 1;
-      // return reinterpret_cast<const dim*>(data.extra.reserved)[offset];
       return groups;
     }
 
@@ -1368,8 +1204,6 @@ class tensor : public memory {
         dnnl_memory_create(&result, memory_desc, aengine.get(), ahandle),
         "could not create a memory");
     reset(result);
-    // memory result(adesc, aengine, ahandle);
-    // reset(result.get());
   }
 
   inline void to_format(const desc& adesc) {

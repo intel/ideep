@@ -140,10 +140,6 @@ struct conv_deconv_utils {
       IDEEP_ENFORCE(src_zero_point_size == 1 && dst_zero_point_size == 1,
                     "DNNL only support 1-dim zero_point");
 
-      scale_t bias_scales, op_scales;
-      std::tie(bias_scales, op_scales) = utils::compute_scales(
-          src_scales_in[0], dst_scales_in[0], weights_scales_in);
-
       if (attr.has_op_kind(kind::sum)) {
         float sum_scale =
             dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
@@ -154,12 +150,25 @@ struct conv_deconv_utils {
         }
       }
       // Set scales to op_attr
-      auto src_scale_mask = utils::tensor_scale_mask(src_scales_in.size(), groups > 1);
-      op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, src_scales_in);
-      auto wei_scale_mask = utils::tensor_scale_mask(weights_scales_in.size(), groups > 1);
-      op_attr.set_scales(DNNL_ARG_WEIGHTS, wei_scale_mask, weights_scales_in);
-      auto dst_scale_mask = utils::tensor_scale_mask(dst_scales_in.size(), groups > 1);
-      op_attr.set_scales(DNNL_ARG_DST, dst_scale_mask, dst_scales_in);
+      int src_scale_mask = 0;
+      op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, {1.0f / src_scales_in[0]});
+      auto find_weight_scale_mask = [](int size, bool is_grouped, bool is_deconv) {
+        if (size <= 1) return 0;
+        if (is_grouped) {
+          if (is_deconv) return 4;
+          else return 2;
+        }
+        return is_deconv ? 2 : 1;
+      };
+      // auto wei_scale_mask = utils::tensor_scale_mask(weights_scales_in.size(), groups > 1);
+      auto wei_scale_mask = find_weight_scale_mask(weights_scales_in.size(), groups > 1, is_deconv);
+      auto wei_scales = weights_scales_in;
+      for (auto& s : wei_scales) {
+        s = 1.0 / s;
+      }
+      op_attr.set_scales(DNNL_ARG_WEIGHTS, wei_scale_mask, wei_scales);
+      int dst_scale_mask = 0;
+      op_attr.set_scales(DNNL_ARG_DST, dst_scale_mask, {1.0f / dst_scales_in[0]});
 
       // Set zero points to op_attr (weight zero point is always 0. Do not set.)
       auto src_zp_mask = utils::tensor_zp_mask(src_zero_point_size);
@@ -184,10 +193,6 @@ struct conv_deconv_utils {
 
       if (with_bias) {
         bias_desc = {bias.get_dims(), data_type::f32, tag::any}; // Use f32 instead of s32 to improve accuracy
-        if (bias.get_data_type() == data_type::f32) {
-          bias_attr = {utils::tensor_scale_mask(scale_size, false),
-                        bias_scales};
-        }
       }
     } else {
       if (src.has_scale()) {

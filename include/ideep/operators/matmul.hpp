@@ -956,10 +956,17 @@ struct matmul_forward : public dnnl::matmul,
       op_attr = attr_t::fuse_sum(sum_scale);
     }
 
+    for (auto& s : src_scales_in) {
+      s = 1.0 / s;
+    }
     op_attr.set_scales(DNNL_ARG_SRC, utils::op_scale_mask(src_scales_in.size()), src_scales_in);
-    op_attr.set_scales(DNNL_ARG_WEIGHTS, utils::op_scale_mask(weights_scales_in.size()), weights_scales_in);
+    auto wei_scales = weights_scales_in;
+    for (auto& s : wei_scales) {
+      s = 1.0 / s;
+    }
+    op_attr.set_scales(DNNL_ARG_WEIGHTS, utils::op_scale_mask(wei_scales.size()), wei_scales);
     for (auto& s : dst_scales_in) {
-      s *= dst_coeff;
+      s = dst_coeff / s;
     }
     op_attr.set_scales(DNNL_ARG_DST, utils::op_scale_mask(dst_scales_in.size()), dst_scales_in);
     op_attr.set_zero_points(DNNL_ARG_SRC,
@@ -1075,14 +1082,38 @@ struct matmul_forward : public dnnl::matmul,
         std::vector<int64_t>({src_dims[1], 1});
     src_desc = tensor::desc(src_dims, src_data_type, src_strides);
 
+    // Post-ops
+    auto pops = attr.get_post_ops();
+    dnnl::post_ops new_pops;
+    for (int i = 0; i < pops.len(); ++i) {
+      // Only sum and eltwise is supported now
+      if (kind::sum == pops.kind(i)) {
+        // The parameter sum_coeff is passed in explicitly now due to legacy code.
+        // TO-DO:
+        // Remove the argument 'sum_coeff'.
+        // User should prepare all post-ops in argument 'attr'.
+        new_pops.append_sum(sum_coeff);
+      } else if (kind::eltwise == pops.kind(i)) {
+        float alpha = 1.0, beta = 0.0;
+        dnnl::algorithm alg;
+        pops.get_params_eltwise(i, alg, alpha, beta);
+        new_pops.append_eltwise(alg, alpha, beta);
+      }
+    }
+    op_attr.set_post_ops(new_pops);
+
     // Scales and zero points of src are obtained at runtime. So only set mask here
     // Weight zero point is always 0. Do not set.
     // Dst is in fp32, no scales or zero points.
     op_attr.set_scales_mask(DNNL_ARG_SRC, utils::op_scale_mask(1/* scale_size */));
     op_attr.set_zero_points_mask(DNNL_ARG_SRC, utils::tensor_zp_mask(1));
+    auto wei_scales = weights_scales_in;
+    for (auto& s : wei_scales) {
+      s = 1.0 / s;
+    }
     op_attr.set_scales(DNNL_ARG_WEIGHTS,
-                       utils::op_scale_mask(weights_scales_in.size()),
-                       weights_scales_in);
+                       utils::op_scale_mask(wei_scales.size()),
+                       wei_scales);
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     // Src attr for reorder
@@ -1097,9 +1128,32 @@ struct matmul_forward : public dnnl::matmul,
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_type);
     }
+    tensor::desc bias_desc;
+    if (with_bias) {
+      tag bia_tag = bias.get_dims().size() == 2 ? tag::ab : tag::abc;
+      bias_desc = {bias.get_dims(), data_type::f32, bia_tag};
+    }
+
 
     // Create pd and primitive
-    param.pd = primitive_desc(aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
+    // param.pd = primitive_desc(aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
+    auto key = utils::create_key(
+        src_desc,
+        weights.get_desc(),
+        bias_desc,
+        dst_desc,
+        op_attr,
+        with_bias,
+        omp_get_max_threads());
+    param.pd = fetch_or_create(key, [&]() {
+      if (with_bias) {
+        return primitive_desc(
+            aengine, src_desc, weights.get_desc(), bias_desc, dst_desc, op_attr);
+      } else {
+        return primitive_desc(
+            aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
+      }
+    });
     param.primitive = super(param.pd);
 
     // Create src reorder primitive with runtime scales/zero point
@@ -1318,6 +1372,9 @@ struct matmul_forward : public dnnl::matmul,
     const dim scale_zp_stride = 1;
 
     // Prepare tensor of src scales
+    for (auto& s : src_scales_in) {
+      s = 1.0 / s;
+    }
     int src_scale_size = src_scales_in.size();
     tensor::desc src_scales_desc = {{src_scale_size}, data_type::f32, {scale_zp_stride}};
     tensor src_scales_m(src_scales_desc, reinterpret_cast<float*>(src_scales_in.data()), aengine);

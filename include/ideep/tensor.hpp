@@ -3,7 +3,6 @@
 
 #include "attributes.hpp"
 #include "utils.hpp"
-#include <iostream>
 
 namespace ideep {
 
@@ -741,16 +740,25 @@ class tensor : public memory {
   tensor reorder_if_differ_in(
       const desc& expected_desc,
       const attr_t& aattr = attr_t()) const {
-    bool is_empty_or_ones = true;
-    for (int arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
-      if (aattr.has_scales_for(arg)){
-        auto& scales = aattr.get_scales(arg).first;
-        is_empty_or_ones = is_empty_or_ones &&
+    // Check desc, scales and zero points
+    bool reorder_not_needed = (expected_desc == get_desc());
+    if (reorder_not_needed && aattr.has_scales()) {
+      for (auto& arg_scale_pair : aattr.get_all_scales()) {
+        const scale_t& scales = arg_scale_pair.second.first;
+        reorder_not_needed = reorder_not_needed &&
             (scales.empty() ||
-            std::all_of(scales.begin(), scales.end(), [](float i) {return 1.0 == i;}));
+             std::all_of(scales.begin(), scales.end(), [](float i) {return 1.0 == i;}));
       }
     }
-    if (expected_desc == get_desc() && is_empty_or_ones) {
+    if (reorder_not_needed && aattr.has_zero_points()) {
+      for (auto& arg_zp_pair : aattr.get_all_zero_points()) {
+        const zero_point_t& zp = arg_zp_pair.second.first;
+        reorder_not_needed = reorder_not_needed &&
+            (zp.empty() ||
+             std::all_of(zp.begin(), zp.end(), [](int i) {return 0 == i;}));
+      }
+    }
+    if (reorder_not_needed) {
       return *this;
     } else {
       tensor dst{expected_desc};
@@ -949,19 +957,19 @@ class tensor : public memory {
     args.insert({DNNL_ARG_FROM, const_cast<tensor&>(*this)});
     args.insert({DNNL_ARG_TO, dst});
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    const static std::vector<int> args_for_scales = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-    std::vector<tensor> scale_tensors(args_for_scales.size());
-    for (size_t i = 0; i < args_for_scales.size(); ++i) {
-      int arg = args_for_scales[i];
+    // Insert scales and zero points
+    const static std::vector<int> args_for_scales_zp = {DNNL_ARG_SRC, DNNL_ARG_DST};
+    std::vector<tensor> scale_tensors(args_for_scales_zp.size());
+    for (size_t i = 0; i < args_for_scales_zp.size(); ++i) {
+      int arg = args_for_scales_zp[i];
       if (op_attr.has_scales_for(arg)) {
         scale_tensors[i] = tensor(op_attr.get_scales(arg).first);
         args.insert({DNNL_ARG_ATTR_SCALES | arg, scale_tensors[i]});
       }
     }
-    const static std::vector<int> args_for_zp = {DNNL_ARG_SRC, DNNL_ARG_DST};
-    std::vector<tensor> zp_tensors(args_for_zp.size());
-    for (size_t i = 0; i < args_for_zp.size(); ++i) {
-      int arg = args_for_scales[i];
+    std::vector<tensor> zp_tensors(args_for_scales_zp.size());
+    for (size_t i = 0; i < args_for_scales_zp.size(); ++i) {
+      int arg = args_for_scales_zp[i];
       if (op_attr.has_zero_points_for(arg)) {
         zp_tensors[i] = tensor(op_attr.get_zero_points(arg).first);
         args.insert({DNNL_ARG_ATTR_ZERO_POINTS | arg, zp_tensors[i]});

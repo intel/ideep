@@ -1748,9 +1748,10 @@ private:
       if (!param.all_scales) {
         param.all_scales.reset(new std::unordered_map<int, tensor>);
       }
+      // get_all_scales() returns unordered_map<int, pair of scale and mask>
       for (auto& arg_scale_pair : param.op_attr.get_all_scales()) {
         int dnnl_arg = arg_scale_pair.first;
-        const scale_t& scale = arg_scale_pair.second.first;
+        const scale_t& scale = std::get<0>(std::get<1>(arg_scale_pair));
         tensor scales_m(scale);
         param.all_scales->insert({dnnl_arg, scales_m});
       }
@@ -1759,9 +1760,10 @@ private:
       if (!param.all_zero_points) {
         param.all_zero_points.reset(new std::unordered_map<int, tensor>);
       }
+      // get_all_zero_points() returns unordered_map<int, pair of zp and mask>
       for (auto& arg_zp_pair : param.op_attr.get_all_zero_points()) {
         int dnnl_arg = arg_zp_pair.first;
-        const zero_point_t& zp = arg_zp_pair.second.first;
+        const zero_point_t& zp = std::get<0>(std::get<1>(arg_zp_pair));
         tensor zp_m(zp);
         param.all_zero_points->insert({dnnl_arg, zp_m});
       }
@@ -1797,14 +1799,14 @@ private:
     if (param.all_scales && !param.all_scales->empty()) {
       for (auto& arg_scale_pair : *param.all_scales) {
         int dnnl_arg = arg_scale_pair.first;
-        tensor& scales_m = arg_scale_pair.second;
+        tensor& scales_m = std::get<1>(arg_scale_pair);
         args.insert({DNNL_ARG_ATTR_SCALES | dnnl_arg, scales_m});
       }
     }
     if (param.all_zero_points && !param.all_zero_points->empty()) {
       for (auto& arg_zp_pair : *param.all_zero_points) {
         int dnnl_arg = arg_zp_pair.first;
-        tensor& zp_m = arg_zp_pair.second;
+        tensor& zp_m = std::get<1>(arg_zp_pair);
         args.insert({DNNL_ARG_ATTR_ZERO_POINTS | dnnl_arg, zp_m});
       }
     }

@@ -915,6 +915,9 @@ struct matmul_forward : public dnnl::matmul,
         std::vector<int64_t>({src_dims[1] * src_dims[2], src_dims[1], 1}) :
         std::vector<int64_t>({src_dims[1], 1});
     src_desc = tensor::desc(src_dims, src_data_type, tag::any);
+    for (auto& s : src_scales_in) {
+      s = 1.0 / s;
+    }
     if (src.get_data_type() == data_type::f32) {
       src_attr.set_scales(DNNL_ARG_DST, /* mask */ 0, src_scales_in);
     }
@@ -956,9 +959,6 @@ struct matmul_forward : public dnnl::matmul,
       op_attr = attr_t::fuse_sum(sum_scale);
     }
 
-    for (auto& s : src_scales_in) {
-      s = 1.0 / s;
-    }
     op_attr.set_scales(DNNL_ARG_SRC, utils::op_scale_mask(src_scales_in.size()), src_scales_in);
     auto wei_scales = weights_scales_in;
     for (auto& s : wei_scales) {

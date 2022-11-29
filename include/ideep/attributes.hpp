@@ -167,7 +167,7 @@ struct attr_t : public dnnl::primitive_attr {
     return fuse_eltwise(gelu_type, alpha, beta);
   }
 
-  static attr_t fuse_gelu(
+  static attr_t fuse_gelu_v2(
       float alpha = 0.f,
       float beta = 0.f,
       algorithm gelu_type = algorithm::eltwise_gelu_erf) {
@@ -182,7 +182,7 @@ struct attr_t : public dnnl::primitive_attr {
     return fuse_eltwise(algorithm::eltwise_elu, alpha, beta);
   }
 
-  static attr_t fuse_elu(
+  static attr_t fuse_elu_v2(
       float alpha = 0.f,
       float beta = 1.0) {
     return fuse_eltwise(algorithm::eltwise_elu, alpha, beta);
@@ -278,7 +278,7 @@ struct attr_t : public dnnl::primitive_attr {
     return fuse_eltwise(algorithm::eltwise_pow, alpha, beta);
   }
 
-  static attr_t fuse_pow(
+  static attr_t fuse_pow_v2(
       float alpha = 1.0,
       float beta = 0.f) {
     return fuse_eltwise(algorithm::eltwise_pow, alpha, beta);

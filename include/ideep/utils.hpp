@@ -280,6 +280,15 @@ inline int tensor_scale_mask(dim scale_size, bool grouped) {
   return scale_size > 1 ? grouped ? 3 : 1 : 0;
 }
 
+inline int conv_weight_scale_mask(int scale_size, bool is_grouped, bool is_deconv) {
+  if (scale_size <= 1) return 0;
+  if (is_grouped) {
+    if (is_deconv) return 4;
+    else return 2;
+  }
+  return is_deconv ? 2 : 1;
+}
+
 inline int tensor_zp_mask(dim zp_size) {
   return zp_size > 1 ? 1 : 0;
 }

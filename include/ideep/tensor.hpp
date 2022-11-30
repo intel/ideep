@@ -11,7 +11,6 @@ class tensor : public memory {
   using dim_t = dnnl_dim_t;
   using dims_t = dnnl_dims_t;
   using format_kind_t = memory::format_kind;
-  // using blocking_desc_t = dnnl_blocking_desc_t;
   using descriptor = tensor::desc; // for backward compatibility
 
   struct desc : public memory::desc {
@@ -123,7 +122,6 @@ class tensor : public memory {
 
     inline dims get_strides() const {
       IDEEP_ENFORCE(is_plain(), "Call to_public() before get_strides()");
-      // const auto& strides = blocking_strides();
       dim_t *strides = nullptr;
       dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       if (!is_grouped()) {

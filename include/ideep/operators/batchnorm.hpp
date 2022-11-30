@@ -68,13 +68,6 @@ struct batch_normalization_forward_inference
         aengine, prop_kind::forward_inference,
         src_desc, src_desc, epsilon, pd_flags, attr);
 
-    // tensor scale_shift{pd.weights_desc()};
-    // auto* scale_shift_buf = static_cast<char*>(scale_shift.get_data_handle());
-    // std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
-    // std::memcpy(
-    //     scale_shift_buf + scale.get_size(),
-    //     shift.get_data_handle(),
-    //     shift.get_size());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     dst.reinit_if_possible(pd.dst_desc());
     tensor scratchpad(pd.scratchpad_desc());
@@ -85,7 +78,6 @@ struct batch_normalization_forward_inference
       super(pd).execute(
           stream::default_stream(),
           {{DNNL_ARG_SRC, expected_src},
-           // {DNNL_ARG_WEIGHTS/* DNNL_ARG_SCALE_SHIFT */, scale_shift},
            {DNNL_ARG_SCALE, scale},
            {DNNL_ARG_SHIFT, shift},
            {DNNL_ARG_VARIANCE, expected_var},
@@ -96,7 +88,6 @@ struct batch_normalization_forward_inference
       super(pd).execute(
           stream::default_stream(),
           {{DNNL_ARG_SRC, expected_src},
-           // {DNNL_ARG_WEIGHTS/* DNNL_ARG_SCALE_SHIFT */, scale_shift},
            {DNNL_ARG_SCALE, scale},
            {DNNL_ARG_SHIFT, shift},
            {DNNL_ARG_DST, dst},
@@ -139,13 +130,6 @@ struct batch_normalization_forward_training
         prop_kind::forward_training, src_desc, src_desc, epsilon, pd_flags,
         op_attr);
 
-    // tensor scale_shift(pd.weights_desc());
-    // auto* scale_shift_buf = static_cast<char*>(scale_shift.get_data_handle());
-    // std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
-    // std::memcpy(
-    //     scale_shift_buf + scale.get_size(),
-    //     shift.get_data_handle(),
-    //     shift.get_size());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     mean.reinit_if_possible(pd.mean_desc());
     variance.reinit_if_possible(pd.variance_desc());
@@ -154,7 +138,6 @@ struct batch_normalization_forward_training
 
     exec_args args{
         {DNNL_ARG_SRC, expected_src},
-        // {DNNL_ARG_WEIGHTS/* DNNL_ARG_SCALE_SHIFT */, scale_shift},
         {DNNL_ARG_SCALE, scale},
         {DNNL_ARG_SHIFT, shift},
         {DNNL_ARG_MEAN, mean},

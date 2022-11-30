@@ -675,9 +675,6 @@ struct convolution_transpose_forward : public dnnl::deconvolution_forward {
                   strides, dil_compatible, padding_l, padding_r, op_attr, aalgorithm,
                   aprop_kind, aengine);
 
-    tensor src_zero_point_m;
-    conv_deconv_utils::obtain_runtime_zero_point(src, src_zero_point, DNNL_ARG_SRC,
-                                                 op_attr, aengine, src_zero_point_m);
     param.primitive = std::move(super(param.pd));
     param.op_attr = std::move(op_attr);
     param.bias_attr = std::move(bias_attr);

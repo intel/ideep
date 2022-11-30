@@ -5,21 +5,15 @@ namespace ideep {
 
 // Parameters for dynamic quantization
 struct matmul_forward_dyn_quant_params {
-  scale_t weight_scales; // to compute output scales
-  tensor wei_zero_point_m; // for matmul computation
   tensor::desc src_desc; // to create src tensor
   dnnl::reorder::primitive src_reorder; // to reorder src
 
   matmul_forward_dyn_quant_params() {}
 
   matmul_forward_dyn_quant_params(
-      scale_t&& weight_scales,
-      tensor&& wei_zero_point_m,
       tensor::desc&& src_desc,
       dnnl::reorder::primitive&& src_reorder)
-      : weight_scales(std::move(weight_scales)),
-        wei_zero_point_m(std::move(wei_zero_point_m)),
-        src_desc(std::move(src_desc)),
+      : src_desc(std::move(src_desc)),
         src_reorder(std::move(src_reorder)) {}
 };
 
@@ -679,6 +673,7 @@ struct matmul_forward : public dnnl::matmul,
     tensor::desc weights_desc(weights_dims , dtype, tag::any);
     attr_t attr;
     // If runtime src zero point is not set here, slow ref kernel will be used for quantization
+    // TODO: Not sure if this is still needed when zero points are all set at runtime (onednn v3.0)
     attr.set_zero_points(DNNL_ARG_SRC, /* mask */ 0, {DNNL_RUNTIME_S32_VAL});
     auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc, attr);
     return pd.weights_desc();
@@ -1141,7 +1136,6 @@ struct matmul_forward : public dnnl::matmul,
 
 
     // Create pd and primitive
-    // param.pd = primitive_desc(aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
     auto key = utils::create_key(
         src_desc,
         weights.get_desc(),

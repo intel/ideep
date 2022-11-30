@@ -2,29 +2,6 @@
 #define IDEEP_OPERATORS_CONV_HPP
 namespace ideep {
 
-struct convolution_forward_quant_params {
-  convolution_forward_quant_params() {}
-
-  convolution_forward_quant_params(tensor&& src_scales,
-                                   tensor&& weight_scales,
-                                   tensor&& dst_scales,
-                                   tensor&& src_zero_point,
-                                   tensor&& dst_zero_point)
-                                  : src_scales(std::move(src_scales)),
-                                    weight_scales(std::move(weight_scales)),
-                                    dst_scales(std::move(dst_scales)),
-                                    src_zero_point(std::move(src_zero_point)),
-                                    dst_zero_point(std::move(dst_zero_point)) {}
-
-  // Since oneDNN 3.0, scales/zero points are required to set at runtime
-  // Zero points of weights are always 0
-  tensor src_scales;
-  tensor weight_scales;
-  tensor dst_scales;
-  tensor src_zero_point;
-  tensor dst_zero_point;
-};
-
 struct convolution_forward_params {
   convolution_forward_params() {}
 
@@ -152,16 +129,7 @@ struct conv_deconv_utils {
       // Set scales to op_attr
       int src_scale_mask = 0;
       op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, {1.0f / src_scales_in[0]});
-      auto find_weight_scale_mask = [](int size, bool is_grouped, bool is_deconv) {
-        if (size <= 1) return 0;
-        if (is_grouped) {
-          if (is_deconv) return 4;
-          else return 2;
-        }
-        return is_deconv ? 2 : 1;
-      };
-      // auto wei_scale_mask = utils::tensor_scale_mask(weights_scales_in.size(), groups > 1);
-      auto wei_scale_mask = find_weight_scale_mask(weights_scales_in.size(), groups > 1, is_deconv);
+      auto wei_scale_mask = utils::conv_weight_scale_mask(weights_scales_in.size(), groups > 1, is_deconv);
       auto wei_scales = weights_scales_in;
       for (auto& s : wei_scales) {
         s = 1.0 / s;
@@ -251,7 +219,6 @@ struct conv_deconv_utils {
                                  tensor::desc& weights_desc, /* Output */
                                  tensor::desc& bias_desc, /* Output */
                                  tensor::desc& dst_desc /* Output */) {
-    scale_t dst_scales_in;
     data_type dst_data_type;
     op_attr = attr;
 
@@ -288,53 +255,6 @@ struct conv_deconv_utils {
                     : tensor::desc(dst_dims, dst_data_type);
   }
 
-  /// Get true zero point from input tensor, specified zero point or op attr
-  /// Priority: input.get_zero_point() > input_zero_point > op_attr > default
-  ///
-  /// @param input Get the true zero point from this tensor.
-  /// @param arg_idx Parameter argument index as passed to the
-  ///     primitive::execute() call. Such as DNNL_ARG_SRC.
-  /// @param op_attr Attr of the conv/deconv operation.
-  /// @param aengine Cpu execution engine.
-  /// @param zero_point Output tensor of zero points.
-  static void obtain_runtime_zero_point(const tensor& input,
-                                        const zero_point_t& input_zero_point,
-                                        const int& arg_idx,
-                                        const attr_t& op_attr,
-                                        const engine& aengine,
-                                        tensor& zero_point /* Output */) {
-    zero_point_t src_zero_point_in_attr;
-    int zp_mask = utils::tensor_zp_mask(1);
-    if (op_attr.has_zero_points()) {
-      const auto& all_zp = op_attr.get_all_zero_points();
-      if (all_zp.count(DNNL_ARG_SRC)) {
-        std::tie(src_zero_point_in_attr, zp_mask) = op_attr.get_zero_points(arg_idx);
-      }
-    }
-    dim src_zero_point_size = 1;
-    const zero_point_t* zero_point_data = NULL;
-    const zero_point_t default_zero_point = {0};
-    if (input.has_zero_point()) {
-      src_zero_point_size = static_cast<dim>(input.get_zero_point().size());
-      zero_point_data = &input.get_zero_point();
-    } else if (!input_zero_point.empty()) {
-      src_zero_point_size = static_cast<dim>(input_zero_point.size());
-      zero_point_data = &input_zero_point;
-    } else if (src_zero_point_in_attr == zero_point_t({DNNL_RUNTIME_S32_VAL}) ||
-        src_zero_point_in_attr.empty()) { // runtime zero point of input
-      src_zero_point_size = static_cast<dim>(default_zero_point.size());
-      zero_point_data = &default_zero_point;
-    } else {
-      src_zero_point_size = static_cast<dim>(src_zero_point_in_attr.size());
-      zero_point_data = &src_zero_point_in_attr;
-    }
-    tensor::desc src_zero_point_desc = {{src_zero_point_size}, data_type::s32, {1}};
-    zero_point.init(src_zero_point_desc, aengine);
-    auto src_z = reinterpret_cast<int32_t *>(zero_point.get_data_handle());
-    for (memory::dim i = 0; i < src_zero_point_size; ++i) // fill in zero point data
-      src_z[i] = (*zero_point_data)[i];
-
-  }
 };
 
 struct convolution_forward
@@ -1588,7 +1508,6 @@ private:
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     tensor weights_grouped;
     dims dil_compatible;
-    // tensor src_zp_tensor;
 
     conv_deconv_utils::prepare_parameters(
         src, weights, bias, dst_dims, dst, dilates, groups,
@@ -1726,7 +1645,6 @@ private:
     attr_t op_attr, src_attr, weights_attr, bias_attr;
     tensor weights_grouped;
     dims dil_compatible;
-    // tensor src_zp_tensor;
 
     conv_deconv_utils::prepare_parameters(
         src, weights, bias, dst_dims, dst, dilates, groups,

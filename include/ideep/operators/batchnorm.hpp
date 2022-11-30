@@ -201,14 +201,17 @@ struct batch_normalization_backward
       const tensor& diff_dst,
       const tensor& scale,
       tensor& diff_src,
-      tensor& diff_scale_shift,
+      tensor& diff_scale,
+      tensor& diff_shift,
       float epsilon,
       const tensor& dst = tensor(),
       const batch_normalization_flag flags =
-          batch_normalization_flag::use_scale,
+          batch_normalization_flag::use_scale |
+          batch_normalization_flag::use_shift,
       const engine& aengine = engine::cpu_engine()) {
     // TODO: support no-affine model
-    auto pd_flags = flags | batch_normalization_flag::use_scale;
+    auto pd_flags = flags | batch_normalization_flag::use_scale
+                          | batch_normalization_flag::use_shift;
     bool with_workspace =
         (bool)(flags & batch_normalization_flag::fuse_norm_relu);
     // workaround: use src.get_desc() once issue intel/mkl-dnn#588 is resolved
@@ -236,7 +239,8 @@ struct batch_normalization_backward
     auto expected_mean = mean.reorder_if_differ_in(pd.mean_desc());
     auto expected_variance = variance.reorder_if_differ_in(pd.variance_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());
-    diff_scale_shift.reinit_if_possible(pd.diff_weights_desc());
+    diff_scale.reinit_if_possible(scale.get_desc());
+    diff_shift.reinit_if_possible(scale.get_desc());
 
     tensor scratchpad(pd.scratchpad_desc());
 
@@ -247,7 +251,8 @@ struct batch_normalization_backward
         {DNNL_ARG_MEAN, expected_mean},
         {DNNL_ARG_VARIANCE, expected_variance},
         {DNNL_ARG_DIFF_SRC, diff_src},
-        {DNNL_ARG_DIFF_SCALE, diff_scale_shift},
+        {DNNL_ARG_DIFF_SCALE, diff_scale},
+        {DNNL_ARG_DIFF_SHIFT, diff_shift},
         {DNNL_ARG_SCRATCHPAD, scratchpad}};
     if (with_workspace) {
       args.insert({DNNL_ARG_WORKSPACE, dst.get_workspace()});
@@ -255,47 +260,6 @@ struct batch_normalization_backward
     super(pd).execute(stream::default_stream(), args);
   }
 
-  static void compute(
-      const tensor& src,
-      const tensor& mean,
-      const tensor& variance,
-      const tensor& diff_dst,
-      const tensor& scale,
-      tensor& diff_src,
-      tensor& diff_scale,
-      tensor& diff_shift,
-      float epsilon,
-      const tensor& dst = tensor(),
-      const batch_normalization_flag flags =
-          batch_normalization_flag::use_scale |
-          batch_normalization_flag::use_shift,
-      const engine& aengine = engine::cpu_engine()) {
-    tensor diff_scale_shift;
-    compute(
-        src,
-        mean,
-        variance,
-        diff_dst,
-        scale,
-        diff_src,
-        diff_scale_shift,
-        epsilon,
-        dst,
-        flags,
-        aengine);
-    diff_scale.reinit_if_possible(scale.get_desc());
-    diff_shift.reinit_if_possible(scale.get_desc());
-    auto* diff_scale_shift_buf =
-        static_cast<char*>(diff_scale_shift.get_data_handle());
-    std::memcpy(
-        diff_scale.get_data_handle(),
-        diff_scale_shift_buf,
-        diff_scale.get_size());
-    std::memcpy(
-        diff_shift.get_data_handle(),
-        diff_scale_shift_buf + diff_scale.get_size(),
-        diff_shift.get_size());
-  }
 };
 
 } // namespace ideep

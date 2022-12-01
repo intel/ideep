@@ -671,11 +671,7 @@ struct matmul_forward : public dnnl::matmul,
     tensor::desc x_desc(x_dims, x_dtype, ndims == 2 ? tag::ab : tag::abc);
     tensor::desc y_desc(y_dims, y_dtype, ndims == 2 ? tag::ab : tag::abc);
     tensor::desc weights_desc(weights_dims , dtype, tag::any);
-    attr_t attr;
-    // If runtime src zero point is not set here, slow ref kernel will be used for quantization
-    // TODO: Not sure if this is still needed when zero points are all set at runtime (onednn v3.0)
-    attr.set_zero_points(DNNL_ARG_SRC, /* mask */ 0, {DNNL_RUNTIME_S32_VAL});
-    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc, attr);
+    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc);
     return pd.weights_desc();
   }
 

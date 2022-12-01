@@ -3,18 +3,6 @@
 
 namespace ideep {
 
-struct deconv_forward_quant_params {
-  deconv_forward_quant_params() {}
-
-  deconv_forward_quant_params(tensor&& src_zero_point)
-      : src_zero_point(std::move(src_zero_point)) {}
-
-  // Due to oneDNN's mechanism of deconv, zero point is set to
-  // runtime value when weight is prepacked without input info in framework.
-  // So, the true zero point is set at primitive execution time
-  tensor src_zero_point;
-};
-
 struct deconv_forward_params {
   deconv_forward_params() {}
 

@@ -1380,6 +1380,7 @@ struct convolution_forward
         src_desc_query,
         weights_desc_query,
         with_bias,
+        bias_desc_query,
         strides,
         dilates,
         padding_l,

@@ -1231,10 +1231,7 @@ struct convolution_forward
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const lowp_kind alowp_kind = u8s8,
-      const engine& aengine = engine::cpu_engine(),
-      const zero_point_t& src_zero_points = zero_point_t(),
-      const zero_point_t& weights_zero_points = zero_point_t(),
-      const zero_point_t& dst_zero_points = zero_point_t()) {
+      const engine& aengine = engine::cpu_engine()) {
     bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     bool is_fp32 = src_scales.empty() && weights_scales.empty() && dst_scales.empty();
     if (is_fp32) {
@@ -1252,12 +1249,12 @@ struct convolution_forward
         do_prepare</*with_bias=*/false>(
             param, src, weights, bias, dst_dims, dst, strides, dilates,
             padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-            src_zero_points, dst_zero_points, is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+            zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
       } else {
         do_prepare</*with_bias=*/true>(
             param, src, weights, bias, dst_dims, dst, strides, dilates,
             padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-            src_zero_points, dst_zero_points, is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+            zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
       }
     }
   }
@@ -1283,10 +1280,7 @@ struct convolution_forward
       algorithm aalgorithm = algorithm::convolution_direct,
       prop_kind aprop_kind = prop_kind::forward,
       const lowp_kind alowp_kind = u8s8,
-      const engine& aengine = engine::cpu_engine(),
-      const zero_point_t& src_zero_points = zero_point_t(),
-      const zero_point_t& weights_zero_points = zero_point_t(),
-      const zero_point_t& dst_zero_points = zero_point_t()) {
+      const engine& aengine = engine::cpu_engine()) {
     bool is_channels_last = src.get_desc().is_channels_last() || weights.get_desc().is_channels_last();
     bool is_fp32 = src_scales.empty() && weights_scales.empty() && dst_scales.empty();
     static tensor dummy_bias;
@@ -1298,7 +1292,7 @@ struct convolution_forward
       do_prepare</*with_bias=*/false>(
           param, src, weights, dummy_bias, dst_dims, dst, strides, dilates,
           padding_l, padding_r, groups, src_scales, weights_scales, dst_scales,
-          src_zero_points, dst_zero_points, is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
+          zero_point_t(), zero_point_t(), is_channels_last, attr, aalgorithm, aprop_kind, alowp_kind, aengine);
     }
   }
 

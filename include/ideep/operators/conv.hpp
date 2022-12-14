@@ -126,10 +126,19 @@ struct conv_deconv_utils {
       const auto& src_zero_point = src.has_zero_point() ? src.get_zero_point() :
                                    src_zero_points.empty() ? default_zero_point : src_zero_points;
       const auto& weights_zero_point = weight_grouped.has_zero_point() ? weight_grouped.get_zero_point() : default_zero_point;
-      // Similar logic as dst_scales_in. Since when fused with sum, the dst will be the tensor of sum,
-      // In this case, the output tensor' dst_zero_points and dst_scales_in should be passed in explicitly.
-      const auto& dst_zero_point = !dst_zero_points.empty() ? dst_zero_points :
-                                   dst.has_zero_point() ? dst.get_zero_point() : default_zero_point;
+      const auto& dst_zero_point = [&]() {
+        if (attr.has_op_kind(kind::sum)) {
+          // Similar logic as dst_scales_in. Since when fused with sum, the dst will be the tensor of sum,
+          // In this case, the output tensor' dst_zero_points and dst_scales_in should be passed in explicitly.
+          IDEEP_ENFORCE(!dst_zero_points.empty(), "When conv fused with sum, dst_zero_points must be passed in.");
+          return dst_zero_points;
+        } else {
+          // Keep the original logic for finding dst_zero_point when not fused with sum.
+          return dst.has_zero_point() ? dst.get_zero_point() :
+                dst_zero_points.empty() ? default_zero_point : dst_zero_points;
+        }
+      }();
+
       const auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
       const auto weights_zero_point_size = 1;
       const auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());

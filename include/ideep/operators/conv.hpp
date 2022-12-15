@@ -126,8 +126,19 @@ struct conv_deconv_utils {
       const auto& src_zero_point = src.has_zero_point() ? src.get_zero_point() :
                                    src_zero_points.empty() ? default_zero_point : src_zero_points;
       const auto& weights_zero_point = weight_grouped.has_zero_point() ? weight_grouped.get_zero_point() : default_zero_point;
-      const auto& dst_zero_point = dst.has_zero_point() ? dst.get_zero_point() :
-                                   dst_zero_points.empty() ? default_zero_point : dst_zero_points;
+      const auto& dst_zero_point = [&]() {
+        if (attr.has_op_kind(kind::sum)) {
+          // Similar logic as dst_scales_in. Since when fused with sum, the dst will be the tensor of sum,
+          // In this case, the output tensor' dst_zero_points and dst_scales_in should be passed in explicitly.
+          IDEEP_ENFORCE(!dst_zero_points.empty(), "When conv fused with sum, dst_zero_points must be passed in.");
+          return dst_zero_points;
+        } else {
+          // Keep the original logic for finding dst_zero_point when not fused with sum.
+          return dst.has_zero_point() ? dst.get_zero_point() :
+                dst_zero_points.empty() ? default_zero_point : dst_zero_points;
+        }
+      }();
+
       const auto src_zero_point_size = static_cast<dim>(src_zero_point.size());
       const auto weights_zero_point_size = 1;
       const auto dst_zero_point_size = static_cast<dim>(dst_zero_point.size());
@@ -139,12 +150,18 @@ struct conv_deconv_utils {
           src_scales_in[0], dst_scales_in[0], weights_scales_in);
 
       if (attr.has_op_kind(kind::sum)) {
+        // Here we need to recalculate the scale of sum.
+        // When fused with sum, dst_scales_in is the final output tensor's scale.
+        // dst.scale is the scale of sum tensor.
         float sum_scale =
             dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+        // When fused with sum, the dst tensor is same as the sum tensor.
+        // So the sum_zero_point will be fetched from the dst tensor.
+        int32_t sum_zero_point = dst.has_zero_point() ? dst.get_zero_point()[0] : 0;
         if (attr.has_op_kind(kind::eltwise)) {
-          op_attr = attr_t::residual(sum_scale);
+          op_attr = attr_t::residual_with_sum_zero_point(sum_scale, sum_zero_point);
         } else {
-          op_attr = attr_t::fuse_sum(sum_scale);
+          op_attr = attr_t::fuse_sum(sum_scale, sum_zero_point);
         }
       }
       op_attr.set_output_scales(utils::op_scale_mask(scale_size), op_scales);

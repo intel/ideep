@@ -19,7 +19,7 @@ struct sum : public dnnl::sum {
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-    auto pd = primitive_desc(scales, src_descs, aengine, op_attr);
+    auto pd = primitive_desc(aengine, scales, src_descs, op_attr);
 
     dst.reinit_if_possible(pd.dst_desc());
     tensor scratchpad(pd.scratchpad_desc());

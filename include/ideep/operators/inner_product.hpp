@@ -236,7 +236,7 @@ struct inner_product_forward
     tensor::desc dst_desc(y_dims, y_dtype, tag::any);
     tensor::desc weights_desc(weights_dims, dtype, tag::any);
     auto pd =
-        primitive_desc({aprop_kind, src_desc, weights_desc, dst_desc}, aengine);
+        primitive_desc(aengine, aprop_kind, src_desc, weights_desc, dst_desc);
     return pd.weights_desc();
   }
 
@@ -261,12 +261,10 @@ struct inner_product_forward
     return fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
-            {aprop_kind, src_desc, weights_desc, bias_desc, dst_desc},
-            attr,
-            aengine);
+            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
       } else {
         return primitive_desc(
-            {aprop_kind, src_desc, weights_desc, dst_desc}, attr, aengine);
+            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
       }
     });
   };
@@ -560,17 +558,6 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
     auto weights_ = weights;
-    if (diff_dst.get_data_type() == data_type::bf16) {
-      if (weights_.get_data_type() != data_type::bf16) {
-        weights_.init(weights.get_desc().to_type(data_type::bf16));
-        weights_.reorder_from(weights);
-      }
-    } else if (diff_dst.get_data_type() == data_type::f16) {
-      if (weights_.get_data_type() != data_type::f16) {
-        weights_.init(weights.get_desc().to_type(data_type::f16));
-        weights_.reorder_from(weights);
-      }
-    }
 
     // workaround: diff_src and weights from caffe2 may have different dims.
     // It would be better for caffe2 to do this reshape anyway.
@@ -581,7 +568,7 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     }
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
-    auto weights_desc = weights_.get_desc();
+    auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
     auto diff_src_desc =
         tensor::desc(diff_src_dims, diff_dst.get_data_type(), tag::any);
 
@@ -592,7 +579,7 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
         diff_src_desc, weights_desc, diff_dst_desc, tensor::desc(), false, op_attr);
 
     auto pd = primitive_desc(
-        {diff_src_desc, weights_desc, diff_dst_desc}, op_attr, aengine, forward_hints);
+        aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
@@ -686,10 +673,10 @@ private:
         src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
 
     auto pd = with_diff_bias
-        ? primitive_desc({src_desc, diff_weights_desc, diff_bias_desc,
-                          diff_dst_desc}, op_attr, aengine, forward_hints)
-        : primitive_desc({src_desc, diff_weights_desc, diff_dst_desc},
-                          op_attr, aengine, forward_hints);
+        ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
+                         diff_dst_desc, forward_hints, op_attr)
+        : primitive_desc(aengine, src_desc, diff_weights_desc, diff_dst_desc,
+                         forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());

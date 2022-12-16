@@ -20,7 +20,7 @@ struct concat : public dnnl::concat {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     // create a pd to query the optimimal format for src and dst
-    auto pd = primitive_desc(axis, input_descs, aengine, op_attr);
+    auto pd = primitive_desc(aengine, axis, input_descs, op_attr);
     auto expected_desc = tensor::desc(pd.dst_desc());
 
     output.reinit_if_possible(expected_desc);
@@ -46,7 +46,7 @@ struct concat : public dnnl::concat {
         return static_cast<memory::desc>(t.get_desc());
       });
       // recreate the pd on new inputs with same formats
-      pd = primitive_desc(axis, input_descs, aengine, op_attr);
+      pd = primitive_desc(aengine, axis, input_descs, op_attr);
     }
 
     tensor scratchpad(pd.scratchpad_desc());

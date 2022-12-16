@@ -30,7 +30,7 @@ struct prelu_forward : public dnnl::prelu_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd =
-        primitive_desc({aprop_kind, src_desc, weight_desc}, op_attr, aengine);
+        primitive_desc(aengine, aprop_kind, src_desc, weight_desc, src_desc, op_attr);
     auto expected_weights = weight_in.reorder_if_differ_in(pd.weights_desc());
     dst.reinit_if_possible(pd.dst_desc());
 
@@ -77,16 +77,14 @@ struct prelu_backward : public dnnl::prelu_backward {
             weight_in.get_dims(), diff_dst_in.get_data_type(), tag::any)
             .to_format_any();
     auto forward_hints = prelu_forward::primitive_desc(
-        {prop_kind::forward, src_desc, weight_desc}, aengine);
+        aengine, prop_kind::forward, src_desc, weight_desc, src_desc);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {src_desc, weight_desc, diff_dst_desc, diff_weights_desc},
-        op_attr,
-        aengine,
-        forward_hints);
+        aengine, src_desc, weight_desc, diff_dst_desc, diff_weights_desc, diff_dst_desc,
+        forward_hints, op_attr);
 
     auto expected_diff_dst =
         diff_dst_in.reorder_if_differ_in(pd.diff_dst_desc());

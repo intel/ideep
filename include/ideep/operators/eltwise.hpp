@@ -26,7 +26,7 @@ struct eltwise_forward : public dnnl::eltwise_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aprop_kind, aalgorithm, src_desc, alpha, beta}, op_attr, aengine);
+        aengine, aprop_kind, aalgorithm, src_desc, src_desc, alpha, beta, op_attr);
 
     dst.reinit_if_possible(pd.dst_desc());
     if (src_in.has_scale()) {
@@ -63,16 +63,14 @@ struct eltwise_backward : public dnnl::eltwise_backward {
     auto src_desc = src.get_desc();
 
     auto forward_hints = eltwise_forward::primitive_desc(
-        {prop_kind::forward, aalgorithm, src_desc, alpha, beta}, aengine);
+        aengine, prop_kind::forward, aalgorithm, src_desc, src_desc, alpha, beta);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aalgorithm, forward_hints.dst_desc(), src_desc, alpha, beta},
-        op_attr,
-        aengine,
-        forward_hints);
+        aengine, aalgorithm, forward_hints.src_desc(), forward_hints.dst_desc(),
+        src_desc, alpha, beta, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());

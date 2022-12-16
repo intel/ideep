@@ -7,6 +7,14 @@
 namespace ideep {
 
 using post_ops = dnnl::post_ops;
+using scale_mask_pair = std::pair<scale_t, int>;
+using zp_mask_pair = std::pair<zero_point_t, int>;
+// Map DNNL arg to pair of scales and mask
+using scale_map = std::unordered_map<int, scale_mask_pair>;
+// Map DNNL arg to pair of zero points and mask
+using zero_point_map = std::unordered_map<int, zp_mask_pair>;
+static const scale_map empty_scale_map;
+static const zero_point_map empty_zp_map;
 
 /// Attribute class for extra information into computations
 struct attr_t : public dnnl::primitive_attr {
@@ -16,8 +24,24 @@ struct attr_t : public dnnl::primitive_attr {
     *this = other;
   }
 
+  attr_t(const dnnl::primitive_attr& other) : dnnl::primitive_attr(other) {}
+
+  /// @param arg Parameter argument index
+  attr_t(int arg, int mask, const scale_t& scales) {
+    set_scales_mask(arg, mask);
+    if (!scales_) {
+      scales_.reset(new scale_map());
+    }
+    (*scales_)[arg] = std::make_pair(scales, mask);
+  }
+
+  // Defualt arg = DNNL_ARG_DST
   attr_t(int mask, const scale_t& scales) {
-    set_output_scales(mask, scales);
+    set_scales_mask(DNNL_ARG_DST, mask);
+    if (!scales_) {
+      scales_.reset(new scale_map());
+    }
+    (*scales_)[DNNL_ARG_DST] = std::make_pair(scales, mask);
   }
 
   attr_t(dnnl_fpmath_mode_t fpmath_mode,
@@ -33,30 +57,73 @@ struct attr_t : public dnnl::primitive_attr {
     return *this;
   }
 
-  std::pair<scale_t, int> get_output_scales() const {
-    dnnl_dim_t count;
-    int c_mask;
-    const float* c_scales;
-    error::wrap_c_api(
-        dnnl_primitive_attr_get_output_scales(
-            get(), &count, &c_mask, &c_scales),
-        "could not get int output scales");
-    return std::make_pair(scale_t(c_scales, c_scales + count), c_mask);
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  void set_scales(int arg, int mask, const scale_t& scales) {
+    set_scales_mask(arg, mask);
+    if (!scales_) {
+      scales_.reset(new scale_map());
+    }
+    (*scales_)[arg] = std::make_pair(scales, mask);
   }
 
-  std::pair<zero_point_t, int> get_zero_points(int arg) const {
-    int mask;
-    zero_point_t zero_points;
-    get_zero_points(arg, mask, zero_points);
-    return std::make_pair(zero_points, mask);
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  scale_mask_pair& get_scales(int arg) const {
+    IDEEP_ENFORCE(has_scales_for(arg),
+                  "Scales for arg not found!");
+    return (*scales_)[arg];
   }
 
-  void get_zero_points(
-          int arg, int &mask, std::vector<int32_t> &zero_points) const {
-      dnnl::primitive_attr::get_zero_points(arg, mask, zero_points);
+  const scale_map& get_all_scales() const {
+    return scales_ ? *scales_ : empty_scale_map;
+  }
+
+  bool has_scales() const {
+    return (scales_ && !(*scales_).empty());
+  }
+
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  bool has_scales_for(int arg) const {
+    return has_scales() && scales_->count(arg);
+  }
+
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  void set_zero_points(int arg, int mask, const zero_point_t& zero_points) {
+    set_zero_points_mask(arg, mask);
+    if (!zero_points_) {
+      zero_points_.reset(new zero_point_map());
+    }
+    (*zero_points_)[arg] = std::make_pair(zero_points, mask);
+  }
+
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  zp_mask_pair& get_zero_points(int arg) const {
+    IDEEP_ENFORCE(has_zero_points_for(arg),
+                  "Zero point for arg not found!");
+    return (*zero_points_)[arg];
+  }
+
+  const zero_point_map& get_all_zero_points() const {
+    return zero_points_ ? *zero_points_ : empty_zp_map;
+  }
+
+  bool has_zero_points() const {
+    return (zero_points_ && !(*zero_points_).empty());
+  }
+
+  /// @param arg Parameter argument index, e.g. DNNL_ARG_SRC
+  bool has_zero_points_for(int arg) const {
+    return has_zero_points() && zero_points_->count(arg);
   }
 
   // Helper factory
+  static inline attr_t fuse_eltwise(algorithm alg, float alpha, float beta) {
+    attr_t attr;
+    post_ops po;
+    po.append_eltwise(alg, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
   static attr_t fuse_sum(float scale = 1.0) {
     attr_t attr;
     post_ops po;
@@ -67,214 +134,160 @@ struct attr_t : public dnnl::primitive_attr {
 
   static attr_t fuse_swish_sum(
       float sum_scale = 1.0,
-      float swish_scale = 1.0,
       float swish_alpha = 1.0,
       float swish_beta = 0.f) {
     attr_t attr;
     post_ops po;
-    po.append_eltwise(swish_scale, algorithm::eltwise_swish, swish_alpha, swish_beta);
+    po.append_eltwise(algorithm::eltwise_swish, swish_alpha, swish_beta);
     po.append_sum(sum_scale);
     attr.set_post_ops(po);
     return attr;
   }
 
+  // Deprecated
   static attr_t fuse_relu(
-      float scale = 1.0,
+      float scale = 1.0f, // unused since onednn 3.0
       float alpha = 0.f,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_relu, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_relu, alpha, beta);
   }
 
+  static attr_t fuse_relu_v2(
+      float alpha = 0.f,
+      float beta = 0.f) {
+    return fuse_eltwise(algorithm::eltwise_relu, alpha, beta);
+  }
+
+  // Deprecated
   static attr_t fuse_gelu(
-      float scale = 1.0,
+      float scale, // unused since onednn 3.0
       float alpha = 0.f,
       float beta = 0.f,
       algorithm gelu_type = algorithm::eltwise_gelu_erf) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, gelu_type, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(gelu_type, alpha, beta);
   }
 
+  static attr_t fuse_gelu_v2(
+      float alpha = 0.f,
+      float beta = 0.f,
+      algorithm gelu_type = algorithm::eltwise_gelu_erf) {
+    return fuse_eltwise(gelu_type, alpha, beta);
+  }
+
+  // Deprecated
   static attr_t fuse_elu(
-      float scale = 1.0,
+      float scale, // unused since onednn 3.0
       float alpha = 0.f,
       float beta = 1.0) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_elu, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_elu, alpha, beta);
+  }
+
+  static attr_t fuse_elu_v2(
+      float alpha = 0.f,
+      float beta = 1.0) {
+    return fuse_eltwise(algorithm::eltwise_elu, alpha, beta);
   }
 
   static attr_t fuse_sigmoid(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_logistic, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_logistic, alpha, beta);
   }
 
   static attr_t fuse_swish(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_swish, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_swish, alpha, beta);
   }
 
   static attr_t fuse_tanh(
-      float scale = 1.0,
       float alpha = 0.f,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_tanh, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_tanh, alpha, beta);
   }
 
   static attr_t fuse_mish(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_mish, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_mish, alpha, beta);
   }
 
   static attr_t residual(
       float sum_scale = 1.0,
-      float relu_scale = 1.0,
       float alpha = 0.f,
       float beta = 0.f) {
     attr_t attr;
     post_ops po;
     po.append_sum(sum_scale);
-    po.append_eltwise(relu_scale, algorithm::eltwise_relu, alpha, beta);
+    po.append_eltwise(algorithm::eltwise_relu, alpha, beta);
     attr.set_post_ops(po);
     return attr;
   }
 
   static attr_t fuse_clamp(float lower_bound = -1.0, float upper_bound = 1.0) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(1.0, algorithm::eltwise_clip, lower_bound, upper_bound);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_clip, lower_bound, upper_bound);
   }
 
   static attr_t fuse_hardswish(
-      float scale = 1.0,
-      float alpha = 1.0,
-      float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_hardswish, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+      float alpha = 1.0f / 6.0f,
+      float beta = 0.5f) {
+    return fuse_eltwise(algorithm::eltwise_hardswish, alpha, beta);
   }
 
   static attr_t fuse_abs(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_abs, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_abs, alpha, beta);
   }
 
   static attr_t fuse_exp(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_exp, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_exp, alpha, beta);
   }
 
   static attr_t fuse_square(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_square, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_square, alpha, beta);
   }
 
   static attr_t fuse_log(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_log, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_log, alpha, beta);
   }
 
   static attr_t fuse_round(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_round, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_round, alpha, beta);
   }
 
   static attr_t fuse_sqrt(
-      float scale = 1.0,
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_sqrt, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_sqrt, alpha, beta);
   }
 
+  // Deprecated
   static attr_t fuse_pow(
-      float scale = 1.0,
+      float scale, // unused since onednn 3.0
       float alpha = 1.0,
       float beta = 0.f) {
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_pow, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_pow, alpha, beta);
+  }
+
+  static attr_t fuse_pow_v2(
+      float alpha = 1.0,
+      float beta = 0.f) {
+    return fuse_eltwise(algorithm::eltwise_pow, alpha, beta);
   }
 
   static attr_t fuse_hardsigmoid() {
-    constexpr float scale = 1.0f;
     constexpr float alpha = 1.0f / 6.0f;
     constexpr float beta = 1.0f / 2.0f;
-
-    attr_t attr;
-    post_ops po;
-    po.append_eltwise(scale, algorithm::eltwise_hardsigmoid, alpha, beta);
-    attr.set_post_ops(po);
-    return attr;
+    return fuse_eltwise(algorithm::eltwise_hardsigmoid, alpha, beta);
   }
 
   static attr_t fuse_binary(algorithm alg, memory::desc src_desc) {
@@ -318,7 +331,7 @@ struct attr_t : public dnnl::primitive_attr {
         po.get_params_sum(index, scale);
         break;
       case kind::eltwise:
-        po.get_params_eltwise(index, scale, alg, alpha, beta);
+        po.get_params_eltwise(index, alg, alpha, beta);
         break;
       case kind::binary:
         po.get_params_binary(index, alg, binary_src_desc);
@@ -347,6 +360,7 @@ struct attr_t : public dnnl::primitive_attr {
     return true;
   }
 
+  // deep data copy
   attr_t& operator=(const attr_t& rhs) {
     if (this == &rhs) {
       return *this;
@@ -356,6 +370,20 @@ struct attr_t : public dnnl::primitive_attr {
         dnnl_primitive_attr_clone(&result, rhs.get()),
         "could not clone primitive attributes");
     this->reset(result);
+    if (rhs.has_scales()) {
+      if (scales_) {
+        *scales_ = rhs.get_all_scales();
+      } else {
+        scales_.reset(new scale_map(rhs.get_all_scales()));
+      }
+    }
+    if (rhs.has_zero_points()) {
+      if (zero_points_) {
+        *zero_points_ = rhs.get_all_zero_points();
+      } else {
+        zero_points_.reset(new zero_point_map(rhs.get_all_zero_points()));
+      }
+    }
     return *this;
   }
 
@@ -416,14 +444,31 @@ struct attr_t : public dnnl::primitive_attr {
     }
 
     // encode output scales
-    auto scales = get_output_scales();
-    utils::to_bytes(bytes, scales.first);
-    utils::to_bytes(bytes, scales.second);
+    if (has_scales()) {
+      for (auto& scales : get_all_scales()) {
+        utils::to_bytes(bytes, scales.first); // dnnl arg index
+        utils::to_bytes(bytes, scales.second.first); // scale vector
+        utils::to_bytes(bytes, scales.second.second); // mask
+      }
+    }
+
+    // encode zero points
+    if (has_zero_points()) {
+      for (auto& zp : get_all_zero_points()) {
+        utils::to_bytes(bytes, zp.first); // dnnl arg index
+        utils::to_bytes(bytes, zp.second.first); // zero point vector
+        utils::to_bytes(bytes, zp.second.second); // mask
+      }
+    }
 
     // Note: depthwise/binary post op, zero points, scales, rnn params are
     // not encoded so far. PD cache is supposed to use in convolution only
     // as a temporary workaround for gemm-based conv pd overhead
   }
+
+private:
+  std::shared_ptr<scale_map> scales_;
+  std::shared_ptr<zero_point_map> zero_points_;
 };
 
 } // namespace ideep

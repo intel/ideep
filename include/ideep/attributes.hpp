@@ -319,18 +319,20 @@ struct attr_t : public dnnl::primitive_attr {
     return po.len() > 0;
   }
 
-  std::tuple<kind, float, float, float, algorithm> get_params(int index) const {
+  std::tuple<kind, float, float, float, algorithm, int32_t> get_params(int index) const {
     auto po = get_post_ops();
     IDEEP_ENFORCE(index < po.len(), "post_ops index is out of range");
 
     algorithm alg = algorithm::undef;
     float scale = 1.0, alpha = 1.0, beta = 0.0;
     memory::desc binary_src_desc;
+    int32_t zero_point = 0;
+    memory::data_type post_op_sum_dtype;
 
     auto akind = po.kind(index);
     switch (akind) {
       case kind::sum:
-        po.get_params_sum(index, scale);
+        po.get_params_sum(index, scale, zero_point, post_op_sum_dtype);
         break;
       case kind::eltwise:
         po.get_params_eltwise(index, scale, alg, alpha, beta);
@@ -343,7 +345,7 @@ struct attr_t : public dnnl::primitive_attr {
         break;
     }
 
-    return std::make_tuple(akind, scale, alpha, beta, alg);
+    return std::make_tuple(akind, scale, alpha, beta, alg, zero_point);
   }
 
   bool non_negitive_output() const {
@@ -385,11 +387,12 @@ struct attr_t : public dnnl::primitive_attr {
       algorithm l_alg, r_alg;
       float l_scale = 1.0, l_alpha = 1.0, l_beta = 0.0;
       float r_scale = 1.0, r_alpha = 1.0, r_beta = 0.0;
-      std::tie(l_akind, l_scale, l_alpha, l_beta, l_alg) = get_params(index);
-      std::tie(r_akind, r_scale, r_alpha, r_beta, r_alg) =
+      int32_t l_zp = 0, r_zp = 0;
+      std::tie(l_akind, l_scale, l_alpha, l_beta, l_alg, l_zp) = get_params(index);
+      std::tie(r_akind, r_scale, r_alpha, r_beta, r_alg, r_zp) =
           rhs.get_params(index);
       if (l_akind != r_akind || l_alg != r_alg || l_scale != r_scale ||
-          l_alpha != r_alpha || l_beta != r_beta) {
+          l_alpha != r_alpha || l_beta != r_beta || l_zp != r_zp) {
         return false;
       }
     }
@@ -403,13 +406,16 @@ struct attr_t : public dnnl::primitive_attr {
       kind akind;
       algorithm alg = algorithm::undef;
       float scale = 1.0, alpha = 1.0, beta = 0.0;
-      std::tie(akind, scale, alpha, beta, alg) = get_params(i);
+      int32_t zp = 0;
+      std::tie(akind, scale, alpha, beta, alg, zp) = get_params(i);
 
       switch (akind) {
         case kind::sum:
           utils::to_bytes(bytes, akind);
           bytes.append(1, '.');
           utils::to_bytes(bytes, scale);
+          bytes.append(1, '.');
+          utils::to_bytes(bytes, zp);
           break;
         case kind::eltwise:
           utils::to_bytes(bytes, akind);
@@ -434,6 +440,22 @@ struct attr_t : public dnnl::primitive_attr {
     auto scales = get_output_scales();
     utils::to_bytes(bytes, scales.first);
     utils::to_bytes(bytes, scales.second);
+
+    // encode zero point
+    auto zp_src = get_zero_points(DNNL_ARG_SRC);
+    utils::to_bytes(bytes, DNNL_ARG_SRC);
+    utils::to_bytes(bytes, zp_src.first);
+    utils::to_bytes(bytes, zp_src.second);
+
+    auto zp_weight = get_zero_points(DNNL_ARG_WEIGHTS);
+    utils::to_bytes(bytes, DNNL_ARG_WEIGHTS);
+    utils::to_bytes(bytes, zp_weight.first);
+    utils::to_bytes(bytes, zp_weight.second);
+
+    auto zp_dst = get_zero_points(DNNL_ARG_DST);
+    utils::to_bytes(bytes, DNNL_ARG_DST);
+    utils::to_bytes(bytes, zp_dst.first);
+    utils::to_bytes(bytes, zp_dst.second);
 
     // Note: depthwise/binary post op, zero points, scales, rnn params are
     // not encoded so far. PD cache is supposed to use in convolution only

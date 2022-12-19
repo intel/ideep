@@ -1541,6 +1541,8 @@ struct convolution_forward
         aalgorithm,
         src_desc_query,
         weights_desc_query,
+        bias_desc_query,
+        dst_desc_query,
         with_bias,
         strides,
         dilates,

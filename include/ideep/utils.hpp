@@ -280,12 +280,46 @@ inline int tensor_scale_mask(dim scale_size, bool grouped) {
   return scale_size > 1 ? grouped ? 3 : 1 : 0;
 }
 
-inline int conv_weight_scale_mask(int scale_size, bool is_grouped, bool is_deconv) {
+inline int conv_weight_scale_mask(
+    int scale_size,
+    int channels_per_group,
+    int groups,
+    bool is_deconv) {
+  /* Mask defines the correspondence between the tensor dimensions and the scales vector.
+   * If scale is a scalar and applies to the entire tensor, mask is 0.
+   * If scales apply to i-th dimension, i-th bit of mask should be set.
+   * Refer to oneDNN's doc for more details.
+   * Example 1: weight format is oihw, scales apply on the o dimension (the 1st dimension).
+   *            The first bit should be set. Mask = 0001b = 1
+   * Example 2: weight format is goihw, scales apply on the g and o dimensions (the 1st and
+   *            2nd dimensions). The first and second bits should be set. Mask = 00011b = 3
+  */
   if (scale_size <= 1) return 0;
-  if (is_grouped) {
-    if (is_deconv) return 4;
-    else return 2;
+  if (groups > 1) {
+    if (is_deconv) {
+      // format = giow/giohw/giodhw for 1/2/3d
+      if (scale_size == channels_per_group) {
+        // scales apply on o (3rd dimension)
+        return 4;
+      } else {
+        // scale_size = groups * channels_per_group
+        // scales apply on g + o (1st and 3rd dimensions)
+        return 5;
+      }
+    } else {
+      // format = goiw/goihw/goidhw for 1/2/3d
+      if (scale_size == channels_per_group) {
+        // scales apply on o (2nd dimension)
+        return 2;
+      } else {
+        // scale_size = groups * channels_per_group
+        // scales apply on g + o (1st and 2nd dimensions)
+        return 3;
+      }
+    }
   }
+  // scales apply on o dimension
+  // i.e., 1st dimension for conv and 2nd for deconv
   return is_deconv ? 2 : 1;
 }
 

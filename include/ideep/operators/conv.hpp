@@ -129,7 +129,16 @@ struct conv_deconv_utils {
       // Set scales to op_attr
       int src_scale_mask = 0;
       op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, {1.0f / src_scales_in[0]});
-      auto wei_scale_mask = utils::conv_weight_scale_mask(weights_scales_in.size(), groups > 1, is_deconv);
+      // For grouped conv, weight format is `goi...`, where g is groups and o and i are OC/IC per group.
+      // `weight.get_dim(0)` returns g * o and `get_dim(1)` returns i.
+      // For non-grouped conv (groups = 1), weight format is `oi...`.
+      // `weight.get_dim(0)` returns o and `get_dim(1)` returns i.
+      // So, it's always correct to get oc per group by `get_dim(0) / groups`
+      // For deconv, weight format is `gio...` (grouped) or `io...` (non-grouped)
+      // `weight.get_dim(0)` returns g * i or i and `get_dim(1)` always returns o.
+      int oc_per_group = is_deconv ? weight_grouped.get_dim(1) : weight_grouped.get_dim(0) / groups;
+      auto wei_scale_mask = utils::conv_weight_scale_mask(
+          weights_scales_in.size(), oc_per_group, groups, is_deconv);
       auto wei_scales = weights_scales_in;
       for (auto& s : wei_scales) {
         s = 1.0 / s;

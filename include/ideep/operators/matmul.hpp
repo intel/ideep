@@ -48,7 +48,7 @@ struct matmul_forward_params {
 };
 
 struct matmul_forward : public dnnl::matmul,
-                        utils::computation_cache<dnnl::matmul::primitive_desc> {
+                        utils::computation_cache<std::pair<dnnl::matmul::primitive_desc, dnnl::matmul> > {
   using super = dnnl::matmul;
 
   // 2-in-1 compute for fp32 op with bias. Bias is disabled if it is empty.
@@ -839,17 +839,20 @@ struct matmul_forward : public dnnl::matmul,
         dst_desc,
         op_attr,
         with_bias,
-        omp_get_max_threads());
-    param.pd = fetch_or_create(key, [&]() {
-      if (with_bias) {
-        return primitive_desc(
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd = primitive_desc(
             aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
-      } else {
-        return primitive_desc(
+    } else {
+      param.pd = primitive_desc(
             aengine, src_desc, weights_desc, dst_desc, op_attr);
-      }
+    }
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
     });
-    param.primitive = std::move(super(param.pd));
+    param.primitive = std::move(pd_pair.second);
     if (param.op_attr.has_scales()) {
       if (!param.all_scales) {
         param.all_scales.reset(new std::unordered_map<int, tensor>);
@@ -998,17 +1001,20 @@ struct matmul_forward : public dnnl::matmul,
         dst_desc,
         op_attr,
         with_bias,
-        omp_get_max_threads());
-    param.pd = fetch_or_create(key, [&]() {
-      if (with_bias) {
-        return primitive_desc(
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd = primitive_desc(
             aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
-      } else {
-        return primitive_desc(
+    } else {
+      param.pd = primitive_desc(
             aengine, src_desc, weights_desc, dst_desc, op_attr);
-      }
+    }
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
     });
-    param.primitive = std::move(super(param.pd));
+    param.primitive = std::move(super(pd_pair.second));
     if (param.op_attr.has_scales()) {
       if (!param.all_scales) {
         param.all_scales.reset(new std::unordered_map<int, tensor>);

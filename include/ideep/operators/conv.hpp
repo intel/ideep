@@ -268,7 +268,7 @@ struct conv_deconv_utils {
 
 struct convolution_forward
     : public dnnl::convolution_forward,
-      utils::computation_cache<dnnl::convolution_forward::primitive_desc> {
+      utils::computation_cache<std::pair<dnnl::convolution_forward::primitive_desc, dnnl::convolution_forward> > {
 
   using super = dnnl::convolution_forward;
 
@@ -1312,10 +1312,10 @@ struct convolution_forward
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto pd = get_primitive_desc</*with_bias=*/false>(
         src_query, weights_desc, tensor::desc(), dst_query, strides, dilates_,
-        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, apkind);
+        padding_l, padding_r, 0/*weights_hashkey*/, is_channels_last, op_attr, aalgorithm, apkind);
 
     // embed group info into weights_desc
-    return tensor::desc(pd.weights_desc(), groups);
+    return tensor::desc(pd.first.weights_desc(), groups);
   }
 
   static tensor::desc expected_weights_desc(
@@ -1345,7 +1345,7 @@ struct convolution_forward
   }
 
   template <bool with_bias>
-  static primitive_desc get_primitive_desc(
+  static std::pair<primitive_desc, dnnl::convolution_forward> get_primitive_desc(
       const tensor::desc& src_desc,
       const tensor::desc& weights_desc,
       const tensor::desc& bias_desc,
@@ -1354,6 +1354,7 @@ struct convolution_forward
       const dims& dilates,
       const dims& padding_l,
       const dims& padding_r,
+      const size_t weights_hashkey = 0, /*this is to check inplace weight updates*/
       bool is_channels_last = false,
       const attr_t& attr = attr_t(),
       algorithm aalgorithm = algorithm::convolution_direct,
@@ -1395,10 +1396,11 @@ struct convolution_forward
         padding_l,
         padding_r,
         attr,
-        omp_get_max_threads());
-    return fetch_or_create(key, [&]() {
-      if (with_bias) {
-        return primitive_desc(
+        omp_get_max_threads(),
+        weights_hashkey);
+    dnnl::convolution_forward::primitive_desc pd;
+    if (with_bias) {
+      pd = primitive_desc(
             aengine,
             aprop_kind,
             aalgorithm,
@@ -1412,8 +1414,8 @@ struct convolution_forward
             padding_r,
             attr
             );
-      } else {
-        return primitive_desc(
+    } else {
+      pd = primitive_desc(
             aengine,
             aprop_kind,
             aalgorithm,
@@ -1425,7 +1427,9 @@ struct convolution_forward
             padding_l,
             padding_r,
             attr);
-      }
+    }
+    return fetch_or_create(key, [&]() {
+      return std::make_pair(pd, super(pd));
     });
   }
 
@@ -1483,9 +1487,9 @@ private:
     // Used for to_mkldnn() path
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
-    dnnl::convolution_forward primitive(pd);
-    convolution_forward_params params(std::move(pd), std::move(primitive), std::move(op_attr), groups);
+        padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
+
+    convolution_forward_params params(std::move(pd.first), std::move(pd.second), std::move(op_attr), groups);
     do_compute<with_bias, reorder_src, reorder_weight>(params, src, weights, bias, dst);
   }
 
@@ -1529,10 +1533,9 @@ private:
     // Used for to_mkldnn() path
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
-    dnnl::convolution_forward primitive(pd);
+        padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
     convolution_forward_params param(
-        std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr));
+        std::move(pd.first), std::move(pd.second), std::move(op_attr), groups, std::move(bias_attr));
 
     // Prepare tensors for scales and zero points
     if (param.op_attr.has_scales()) {
@@ -1619,11 +1622,9 @@ private:
 
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
 
-    dnnl::convolution_forward primitive(pd);
-
-    param = {std::move(pd), std::move(primitive), std::move(op_attr), groups};
+    param = {std::move(pd.first), std::move(pd.second), std::move(op_attr), groups};
   }
 
   // for int8
@@ -1665,11 +1666,9 @@ private:
 
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
-        padding_l, padding_r, is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
+        padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
 
-    dnnl::convolution_forward primitive(pd);
-
-    param = {std::move(pd), std::move(primitive), std::move(op_attr), groups, std::move(bias_attr)};
+    param = {std::move(pd.first), std::move(pd.second), std::move(op_attr), groups, std::move(bias_attr)};
 
     // Prepare tensors for scales and zero points
     if (param.op_attr.has_scales()) {
@@ -1870,14 +1869,14 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto forward_hints =
         convolution_forward::get_primitive_desc</*with_bias=*/false>(
             diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
-            dilates_, padding_l, padding_r, is_channels_last);
+            dilates_, padding_l, padding_r, weights.get_hash(), is_channels_last);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
         aengine, aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
-        dilates_, padding_l, padding_r, forward_hints, op_attr);
+        dilates_, padding_l, padding_r, forward_hints.first, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
@@ -1928,11 +1927,11 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     auto forward_hints =
         convolution_forward::get_primitive_desc</*with_bias=*/false>(
             diff_src_desc, weights_desc, tensor::desc(), diff_dst_desc, strides,
-            dilates_, padding_l, padding_r, is_channels_last, op_attr);
+            dilates_, padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr);
 
     auto pd = primitive_desc(
         aengine, aalgorithm, diff_src_desc, weights_desc, diff_dst_desc, strides,
-        dilates_, padding_l, padding_r, forward_hints, op_attr);
+        dilates_, padding_l, padding_r, forward_hints.first, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
@@ -2122,16 +2121,16 @@ struct convolution_backward_weights
     auto forward_hints =
         convolution_forward::get_primitive_desc<with_diff_bias>(
             src_desc, weights_desc, diff_bias_desc, diff_dst_desc, strides,
-            dilates_, padding_l, padding_r, is_channels_last, op_attr, aalgorithm,
+            dilates_, padding_l, padding_r, diff_weights.get_hash(), is_channels_last, op_attr, aalgorithm,
             prop_kind::forward, aengine);
 
     auto pd = with_diff_bias
         ? primitive_desc(aengine, aalgorithm, src_desc, diff_weights_desc,
                          diff_bias_desc, diff_dst_desc, strides, dilates_,
-                         padding_l, padding_r, forward_hints, op_attr)
+                         padding_l, padding_r, forward_hints.first, op_attr)
         : primitive_desc(aengine, aalgorithm, src_desc, diff_weights_desc,
                          diff_dst_desc, strides, dilates_,
-                         padding_l, padding_r, forward_hints, op_attr);
+                         padding_l, padding_r, forward_hints.first, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());

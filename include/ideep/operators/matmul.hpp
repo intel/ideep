@@ -51,7 +51,11 @@ struct matmul_forward_params {
 };
 
 struct matmul_forward : public dnnl::matmul,
+#ifdef __aarch64__
+                        utils::computation_cache<std::pair<dnnl::matmul::primitive_desc, dnnl::matmul> > {
+#else
                         utils::computation_cache<dnnl::matmul::primitive_desc> {
+#endif
   using super = dnnl::matmul;
 
   // 2-in-1 compute for fp32 op with bias. Bias is disabled if it is empty.
@@ -830,6 +834,30 @@ struct matmul_forward : public dnnl::matmul,
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }
+#ifdef __aarch64__
+    auto key = utils::create_key(
+        src_desc,
+        weights_desc,
+        bias_desc,
+        dst_desc,
+        op_attr,
+        with_bias,
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd = primitive_desc(
+            {src_desc, weights_desc, bias_desc, dst_desc}, op_attr, aengine);
+    } else {
+      param.pd = primitive_desc(
+            {src_desc, weights_desc, dst_desc}, op_attr, aengine);
+    }
+
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
+    });
+    param.primitive = std::move(pd_pair.second);
+#else
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -848,6 +876,7 @@ struct matmul_forward : public dnnl::matmul,
       }
     });
     param.primitive = std::move(super(param.pd));
+#endif
   }
 
   // For static int8 op (int8 * int8 -> int8)
@@ -982,6 +1011,30 @@ struct matmul_forward : public dnnl::matmul,
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }
+#ifdef __aarch64__
+    auto key = utils::create_key(
+        src_desc,
+        weights_desc,
+        bias_desc,
+        dst_desc,
+        op_attr,
+        with_bias,
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd =  primitive_desc(
+            {src_desc, weights_desc, bias_desc, dst_desc}, op_attr, aengine);
+    } else {
+      param.pd =  primitive_desc(
+            {src_desc, weights_desc, dst_desc}, op_attr, aengine);
+    }
+
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
+    });
+    param.primitive = std::move(pd_pair.second);
+#else
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -1000,6 +1053,7 @@ struct matmul_forward : public dnnl::matmul,
       }
     });
     param.primitive = std::move(super(param.pd));
+#endif
   }
 
   // For dynamic int8 op (fp32 * int8 -> fp32)

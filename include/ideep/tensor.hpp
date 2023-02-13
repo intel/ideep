@@ -4,6 +4,9 @@
 #include "attributes.hpp"
 #include "utils.hpp"
 
+#ifdef __aarch64__
+#define MAX_TENSOR_SIZE_FOR_HASHING 1024
+#endif
 namespace ideep {
 
 class tensor : public memory {
@@ -752,6 +755,15 @@ class tensor : public memory {
   inline size_t get_size() const {
     return get_desc().get_size();
   }
+
+#ifdef __aarch64__
+  // Return hashkey for the tensor buffer
+  inline size_t get_hash() const {
+     if (is_empty()) return 0;
+     return ideep::utils::get_array_hash_float(0 /*seed*/, (float*)get_data_handle(),
+                                               std::min(MAX_TENSOR_SIZE_FOR_HASHING, (int)get_size()));
+  }
+#endif
 
   /// Return whether the tensor is empty
   inline bool is_empty() const {

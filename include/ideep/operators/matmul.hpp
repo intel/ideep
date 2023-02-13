@@ -48,7 +48,11 @@ struct matmul_forward_params {
 };
 
 struct matmul_forward : public dnnl::matmul,
+#ifdef __aarch64__
+                        utils::computation_cache<std::pair<dnnl::matmul::primitive_desc, dnnl::matmul> > {
+#else
                         utils::computation_cache<dnnl::matmul::primitive_desc> {
+#endif
   using super = dnnl::matmul;
 
   // 2-in-1 compute for fp32 op with bias. Bias is disabled if it is empty.
@@ -834,6 +838,30 @@ struct matmul_forward : public dnnl::matmul,
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }
+#ifdef __aarch64__
+    auto key = utils::create_key(
+        src_desc,
+        weights_desc,
+        bias_desc,
+        dst_desc,
+        op_attr,
+        with_bias,
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd = primitive_desc(
+            aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
+    } else {
+      param.pd = primitive_desc(
+            aengine, src_desc, weights_desc, dst_desc, op_attr);
+    }
+
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
+    });
+    param.primitive = std::move(pd_pair.second);
+#else
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -852,6 +880,7 @@ struct matmul_forward : public dnnl::matmul,
       }
     });
     param.primitive = std::move(super(param.pd));
+#endif
     if (param.op_attr.has_scales()) {
       if (!param.all_scales) {
         param.all_scales.reset(new std::unordered_map<int, tensor>);
@@ -993,6 +1022,30 @@ struct matmul_forward : public dnnl::matmul,
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }
+#ifdef __aarch64__
+    auto key = utils::create_key(
+        src_desc,
+        weights_desc,
+        bias_desc,
+        dst_desc,
+        op_attr,
+        with_bias,
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd =  primitive_desc(
+            aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
+    } else {
+      param.pd =  primitive_desc(
+            aengine, src_desc, weights_desc, dst_desc, op_attr);
+    }
+
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
+    });
+    param.primitive = std::move(pd_pair.second);
+#else
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -1011,6 +1064,7 @@ struct matmul_forward : public dnnl::matmul,
       }
     });
     param.primitive = std::move(super(param.pd));
+#endif
     if (param.op_attr.has_scales()) {
       if (!param.all_scales) {
         param.all_scales.reset(new std::unordered_map<int, tensor>);

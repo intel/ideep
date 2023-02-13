@@ -360,6 +360,50 @@ inline int set_verbose(int level) {
   return ret == dnnl::status::success;
 }
 
+#ifdef __aarch64__
+// Note(snadampal): The below functions taken from mkl-dnn/src/utils/utils.hpp
+// Returns a value of type T by reinterpretting the representation of the input
+// value (part of C++20).
+//
+// Provides a safe implementation of type punning.
+//
+// Constraints:
+// - U and T must have the same size
+// - U and T must be trivially copyable
+template <typename T, typename U>
+inline T bit_cast(const U &u) {
+  static_assert(sizeof(T) == sizeof(U), "Bit-casting must preserve size.");
+  // Use std::is_pod as older GNU versions do not support
+  // std::is_trivially_copyable.
+  static_assert(std::is_pod<T>::value, "T must be trivially copyable.");
+  static_assert(std::is_pod<U>::value, "U must be trivially copyable.");
+
+  T t;
+  std::memcpy(&t, &u, sizeof(U));
+  return t;
+}
+
+inline int float2int(float x)  {
+  return bit_cast<int>(x);
+}
+
+// The following code is derived from Boost C++ library
+// Copyright 2005-2014 Daniel James.
+// Distributed under the Boost Software License, Version 1.0. (See accompanying
+// file LICENSE or copy at http://www.boost.org/LICENSE_1_0.txt)
+template <typename T>
+inline size_t hash_combine(size_t seed, const T &v) {
+  return seed ^= std::hash<T> {}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+}
+
+inline size_t get_array_hash_float(size_t seed, const float *v, int size) {
+  for (int i = 0; i < size; i++) {
+     seed = hash_combine(seed, float2int(v[i]));
+  }
+  return seed;
+}
+#endif
+
 } // namespace utils
 } // namespace ideep
 #endif

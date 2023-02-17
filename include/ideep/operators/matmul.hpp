@@ -662,7 +662,7 @@ struct matmul_forward : public dnnl::matmul,
       const engine& aengine = engine::cpu_engine()) {
     auto ndims = weights_dims.size();
     auto x_dims = weights_dims;
-    x_dims[ndims-2] = src_dims.size() == ndims && src_dims.size() > 0 ? src_dims[ndims-2] : 1;
+    x_dims[ndims-2] = src_dims.size() > 0 && src_dims.size() == ndims ? src_dims[ndims-2] : 1;
     x_dims[ndims-1] = weights_dims[ndims-2];
     dims y_dims = (ndims == 3) ? dims({x_dims[0], x_dims[1], weights_dims[2]})
                                : dims({x_dims[0], weights_dims[1]});
@@ -673,7 +673,7 @@ struct matmul_forward : public dnnl::matmul,
     tensor::desc x_desc(x_dims, x_dtype, ndims == 2 ? tag::ab : tag::abc);
     tensor::desc y_desc(y_dims, y_dtype, ndims == 2 ? tag::ab : tag::abc);
     tensor::desc weights_desc(weights_dims , dtype, tag::any);
-    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc);
+    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc, attr);
     return pd.weights_desc();
   }
 

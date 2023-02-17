@@ -815,7 +815,7 @@ struct matmul_forward : public dnnl::matmul,
       bias_desc = bias.get_desc().to_format_any();
     }
 
-    if (attr.has_op_kind(kind::sum)) {
+    if (attr.has_op_kind(kind::sum) && attr.get_post_ops().len() == 1) {
       op_attr = attr_t::fuse_sum(sum_coeff);
     }
     if (dst_coeff != 1.0f) {

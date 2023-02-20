@@ -655,9 +655,9 @@ struct matmul_forward : public dnnl::matmul,
 
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
+      const dims& src_dims = dims(),
       data_type dtype = data_type::f32,
       data_type x_dtype = data_type::f32,
-      const dims& src_dims = dims(),
       const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
     auto ndims = weights_dims.size();

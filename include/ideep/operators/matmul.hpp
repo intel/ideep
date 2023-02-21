@@ -655,12 +655,14 @@ struct matmul_forward : public dnnl::matmul,
 
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
+      const dims& src_dims = dims(),
       data_type dtype = data_type::f32,
       data_type x_dtype = data_type::f32,
+      const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
     auto ndims = weights_dims.size();
     auto x_dims = weights_dims;
-    x_dims[ndims-2] = 1;
+    x_dims[ndims-2] = src_dims.size() > 0 && src_dims.size() == ndims ? src_dims[ndims-2] : 1;
     x_dims[ndims-1] = weights_dims[ndims-2];
     dims y_dims = (ndims == 3) ? dims({x_dims[0], x_dims[1], weights_dims[2]})
                                : dims({x_dims[0], weights_dims[1]});
@@ -671,7 +673,7 @@ struct matmul_forward : public dnnl::matmul,
     tensor::desc x_desc(x_dims, x_dtype, ndims == 2 ? tag::ab : tag::abc);
     tensor::desc y_desc(y_dims, y_dtype, ndims == 2 ? tag::ab : tag::abc);
     tensor::desc weights_desc(weights_dims , dtype, tag::any);
-    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc);
+    auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc, attr);
     return pd.weights_desc();
   }
 
@@ -813,7 +815,7 @@ struct matmul_forward : public dnnl::matmul,
       bias_desc = bias.get_desc().to_format_any();
     }
 
-    if (attr.has_op_kind(kind::sum)) {
+    if (attr.has_op_kind(kind::sum) && attr.get_post_ops().len() == 1) {
       op_attr = attr_t::fuse_sum(sum_coeff);
     }
     if (dst_coeff != 1.0f) {

@@ -819,9 +819,12 @@ struct matmul_forward : public dnnl::matmul,
       op_attr = attr_t::fuse_sum(sum_coeff);
     }
     if (dst_coeff != 1.0f) {
+      // Since onednn 3.0, dst scales are applied after all post ops
+      // But here the dst_coeff should be applied before post ops
+      // So we set it as src scales here. This keeps the semantics.
       int scale_size = 1;
-      op_attr.set_scales(DNNL_ARG_DST, utils::op_scale_mask(scale_size),
-                         scale_t(1, 1.0f / dst_coeff));
+      op_attr.set_scales(DNNL_ARG_SRC, utils::op_scale_mask(scale_size),
+                         scale_t(1, dst_coeff));
     }
 
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);

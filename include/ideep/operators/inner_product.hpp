@@ -74,8 +74,8 @@ struct inner_product_forward
                              const prop_kind aprop_kind = prop_kind::forward,
                              const engine &aengine = engine::cpu_engine()) {
     inner_product_forward_params param;
-    do_prepare_<true>(param, src, weights, bias, dst, attr, aprop_kind,
-                      aengine);
+    do_prepare_<true, reorder_src, reorder_weight>(param, src, weights, bias, 
+                                                   dst, attr, aprop_kind, aengine);
     do_compute_binary<true, reorder_src, reorder_weight>(
         param, src, other, weights, bias, dst);
   }
@@ -91,8 +91,8 @@ struct inner_product_forward
                              const engine &aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     inner_product_forward_params param;
-    do_prepare_<false>(param, src, weights, dummy_bias, dst, attr, aprop_kind,
-                       aengine);
+    do_prepare_<false, reorder_src, reorder_weight>(param, src, weights, dummy_bias,
+                                                    dst, attr, aprop_kind, aengine);
     do_compute_binary<false, reorder_src, reorder_weight>(
         param, src, other, weights, dummy_bias, dst);
   }
@@ -195,7 +195,7 @@ struct inner_product_forward
       const prop_kind aprop_kind = prop_kind::forward,
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
-    compute_impl</*with_bias=*/true, true, true>(
+    compute_impl</*with_bias=*/true>(
         src, weights, bias, dst, attr, aprop_kind, aengine);
   }
 
@@ -213,7 +213,7 @@ struct inner_product_forward
       const lowp_kind alowp_kind = u8s8,
       const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
-    compute_impl</*with_bias=*/false, true, true>(
+    compute_impl</*with_bias=*/false>(
         src, weights, dummy_bias, dst, attr, aprop_kind, aengine);
   }
 
@@ -286,19 +286,19 @@ private:
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
-      do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind,
-                             aengine);
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, 
+                                                          dst, attr, aprop_kind, aengine);
       do_compute_<with_bias, reorder_src, reorder_weight>(param, src_, weights,
                                                           bias, dst);
     } else {
-      do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind,
-                             aengine);
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, 
+                                                          dst, attr, aprop_kind, aengine);
       do_compute_<with_bias, reorder_src, reorder_weight>(param, src, weights,
                                                           bias, dst);
     }
   }
 
-  template <bool with_bias>
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
   static void do_prepare(
       inner_product_forward_params& param,
       const tensor& src,
@@ -315,13 +315,13 @@ private:
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
-      do_prepare_<with_bias>(param, src_, weights, bias, dst, attr, aprop_kind, aengine);
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, dst, attr, aprop_kind, aengine);
     } else {
-      do_prepare_<with_bias>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, dst, attr, aprop_kind, aengine);
     }
   }
 
-  template <bool with_bias>
+  template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
   static void do_prepare_(
       inner_product_forward_params& param,
       const tensor& src,
@@ -331,7 +331,7 @@ private:
       const attr_t& attr,
       const prop_kind aprop_kind,
       const engine& aengine) {
-    tensor::desc src_desc, weights_desc, bias_desc;
+    tensor::desc src_desc, weights_desc, bias_desc, dst_desc;
     attr_t& op_attr = param.op_attr;
     attr_t& src_attr = param.src_attr;
     data_type dst_data_type;
@@ -353,16 +353,28 @@ private:
         ? data_type::bf16
         : ((src.get_data_type() == data_type::f16) ? data_type::f16
                                                    : data_type::f32);
-    src_desc = {src.get_dims(), dst_data_type, format_tag::any};
-    weights_desc = {weights.get_dims(), dst_data_type, format_tag::any};
+    if (!reorder_weight)  {
+      IDEEP_ENFORCE(weights.get_data_type() == src.get_data_type(),
+                  "weights' data type should be same with input's data type when reorder_weight is false");
+    }
+    src_desc = reorder_src ? tensor::desc(src.get_dims(), dst_data_type, format_tag::any)
+                           : src.get_desc();
+    weights_desc = reorder_weight ? tensor::desc(weights.get_dims(), dst_data_type, format_tag::any)
+                                  : weights.get_desc();
     if (with_bias) {
       IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
                                   data_type::f32, data_type::bf16, data_type::f16),
                     "Incorrect data type in bias");
-      bias_desc = bias.get_desc().to_format_any();
+      bias_desc = reorder_weight ? bias.get_desc().to_format_any()
+                                 : bias.get_desc();
     }
 
-    tensor::desc dst_desc(dst_dims, dst_data_type, format_tag::any);
+    if (!reorder_src)  {
+      IDEEP_ENFORCE(!dst.is_empty() && dst.get_data_type() == src.get_data_type(),
+                  "dst can't be a empty tensor and data type should be same with input when reorder_src is false");
+    }
+    dst_desc = reorder_src ? tensor::desc(dst_dims, dst_data_type, format_tag::any)
+                           : dst.get_desc();
 
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
@@ -469,6 +481,10 @@ private:
         dst.feed_from(expected_dst);
       }
     } else { // reorder_src
+      if (!reorder_src)  {
+          IDEEP_ENFORCE(!dst.is_empty(),
+                      "dst can't be a empty tensor when reorder_src is false");
+      }
       args.insert({DNNL_ARG_DST, dst});
       primitive.execute(stream::default_stream(), args);
     }
@@ -540,6 +556,10 @@ private:
         dst.feed_from(expected_dst);
       }
     } else { // reorder_src
+      if (!reorder_src)  {
+          IDEEP_ENFORCE(!dst.is_empty(),
+                      "dst can't be a empty tensor when reorder_src is false");
+      }
       args.insert({DNNL_ARG_DST, dst});
       primitive.execute(stream::default_stream(), args);
     }

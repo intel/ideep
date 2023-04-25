@@ -155,6 +155,10 @@ class tensor : public memory {
       return is_rnn_packed_desc();
     }
 
+    inline bool is_opaque() const {
+      return is_opaque_desc();
+    }
+
     inline bool is_default() const {
       if (!is_plain())
         return false;
@@ -394,6 +398,10 @@ class tensor : public memory {
 
     bool is_rnn_packed_desc() const {
       return get_format_kind() == dnnl_format_kind_rnn_packed;
+    }
+
+    bool is_opaque_desc() const {
+      return get_format_kind() == format_kind::opaque;
     }
 
     void set_g(dim groups) {

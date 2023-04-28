@@ -154,8 +154,8 @@ class tensor : public memory {
       return is_blocking_desc() && get_inner_nblks() == 0;
     };
 
-    inline bool is_rnn_packed() const {
-      return is_rnn_packed_desc();
+    inline bool is_opaque() const {
+      return is_opaque_desc();
     }
 
     inline bool is_default() const {
@@ -390,13 +390,8 @@ class tensor : public memory {
       return get_format_kind() == format_kind::blocked;
     }
 
-    // Deprecated. Not used in PyTorch.
-    bool is_wino_desc() const {
-      return get_format_kind() == dnnl_format_kind_wino;
-    }
-
-    bool is_rnn_packed_desc() const {
-      return get_format_kind() == dnnl_format_kind_rnn_packed;
+    bool is_opaque_desc() const {
+      return get_format_kind() == format_kind::opaque;
     }
 
     void set_g(dim groups) {
@@ -412,11 +407,6 @@ class tensor : public memory {
     }
 
     int groups = 1;
-    // The following two formats are now internal only in oneDNN
-    // Copy them here for compatibility
-    static const format_kind_t internal_only_start = (format_kind_t)(1 << 8);
-    static const format_kind_t dnnl_format_kind_wino = internal_only_start;
-    static const format_kind_t dnnl_format_kind_rnn_packed = (format_kind_t)((int)internal_only_start + 1);
   };
 
   desc get_desc() const {

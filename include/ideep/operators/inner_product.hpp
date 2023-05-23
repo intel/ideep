@@ -78,7 +78,7 @@ struct inner_product_forward
                              const prop_kind aprop_kind = prop_kind::forward,
                              const engine &aengine = engine::cpu_engine()) {
     inner_product_forward_params param;
-    do_prepare_<true, reorder_src, reorder_weight>(param, src, weights, bias,
+    do_prepare_<true, reorder_src, reorder_weight>(param, src, weights, bias, 
                                                    dst, attr, aprop_kind, aengine);
     do_compute_binary<true, reorder_src, reorder_weight>(
         param, src, other, weights, bias, dst);
@@ -327,12 +327,12 @@ private:
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
-      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, dst,
-                                                          attr, aprop_kind, aengine);
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, 
+                                                          dst, attr, aprop_kind, aengine);
       do_compute_<with_bias, reorder_src, reorder_weight>(param, src_, weights,
                                                           bias, dst);
     } else {
-      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias,
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, 
                                                           dst, attr, aprop_kind, aengine);
       do_compute_<with_bias, reorder_src, reorder_weight>(param, src, weights,
                                                           bias, dst);
@@ -534,9 +534,9 @@ private:
       } else {
         dst.feed_from(expected_dst);
       }
-    } else { // reorder src
+    } else { // reorder_src
       if (!reorder_src)  {
-        IDEEP_ENFORCE(!dst.is_empty(),
+          IDEEP_ENFORCE(!dst.is_empty(),
                       "dst can't be a empty tensor when reorder_src is false");
       }
       args.insert({DNNL_ARG_DST, dst});
@@ -609,9 +609,9 @@ private:
       } else {
         dst.feed_from(expected_dst);
       }
-    } else { // reorder src
+    } else { // reorder_src
       if (!reorder_src)  {
-        IDEEP_ENFORCE(!dst.is_empty(),
+          IDEEP_ENFORCE(!dst.is_empty(),
                       "dst can't be a empty tensor when reorder_src is false");
       }
       args.insert({DNNL_ARG_DST, dst});

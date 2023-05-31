@@ -75,7 +75,7 @@ struct conv_deconv_utils {
                                  tensor::desc& dst_desc /* Output */) {
     scale_t dst_scales_in;
     data_type dst_data_type;
-    op_attr = attr;
+    op_attr.set_post_ops(attr.get_post_ops());
 
     // make weights and dilates compatible with DNNL
     weight_grouped = weights.make_grouped_weights(groups, is_deconv);
@@ -144,8 +144,10 @@ struct conv_deconv_utils {
         }
       }
       // Set scales to op_attr
-      int src_scale_mask = 0;
-      op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, {1.0f / src_scales_in[0]});
+      if (src_scales_in[0] != 1.0f) {
+        int src_scale_mask = 0;
+        op_attr.set_scales(DNNL_ARG_SRC, src_scale_mask, {1.0f / src_scales_in[0]});
+      }
       // For grouped conv, weight format is `goi...`, where g is groups and o and i are OC/IC per group.
       // `weight.get_dim(0)` returns g * o and `get_dim(1)` returns i.
       // For non-grouped conv (groups = 1), weight format is `oi...`.
@@ -157,18 +159,26 @@ struct conv_deconv_utils {
       auto wei_scale_mask = utils::conv_weight_scale_mask(
           weights_scales_in.size(), oc_per_group, groups, is_deconv);
       auto wei_scales = weights_scales_in;
-      for (auto& s : wei_scales) {
-        s = 1.0 / s;
+      if (!std::all_of(wei_scales.begin(), wei_scales.end(), [](float i){ return i == 1.0f; })) {
+        for (auto& s : wei_scales) {
+          s = 1.0 / s;
+        }
+        op_attr.set_scales(DNNL_ARG_WEIGHTS, wei_scale_mask, wei_scales);
       }
-      op_attr.set_scales(DNNL_ARG_WEIGHTS, wei_scale_mask, wei_scales);
-      int dst_scale_mask = 0;
-      op_attr.set_scales(DNNL_ARG_DST, dst_scale_mask, {1.0f / dst_scales_in[0]});
-
+      if (dst_scales_in[0] != 1.0f) {
+        int dst_scale_mask = 0;
+        op_attr.set_scales(DNNL_ARG_DST, dst_scale_mask, {1.0f / dst_scales_in[0]});
+      }
       // Set zero points to op_attr (weight zero point is always 0. Do not set.)
-      auto src_zp_mask = utils::tensor_zp_mask(src_zero_point_size);
-      op_attr.set_zero_points(DNNL_ARG_SRC, src_zp_mask, src_zero_point);
-      auto dst_zp_mask = utils::tensor_zp_mask(dst_zero_point_size);
-      op_attr.set_zero_points(DNNL_ARG_DST, dst_zp_mask, dst_zero_point);
+      // Only set non-zero zero points otherwise there is extra oneDNN overhead
+      if (src_zero_point[0] != 0) {
+        auto src_zp_mask = utils::tensor_zp_mask(src_zero_point_size);
+        op_attr.set_zero_points(DNNL_ARG_SRC, src_zp_mask, src_zero_point);
+      }
+      if (dst_zero_point[0] != 0) {
+        auto dst_zp_mask = utils::tensor_zp_mask(dst_zero_point_size);
+        op_attr.set_zero_points(DNNL_ARG_DST, dst_zp_mask, dst_zero_point);
+      }
 
       src_desc = {src.get_dims(),
                   alowp_kind == u8s8 ? data_type::u8 : data_type::s8, tag::any};

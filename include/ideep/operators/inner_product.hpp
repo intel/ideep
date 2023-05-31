@@ -409,6 +409,7 @@ private:
       bias_desc = reorder_weight ? bias.get_desc().to_format_any()
                                  : bias.get_desc();
     }
+
     if (!reorder_src)  {
       IDEEP_ENFORCE(!dst.is_empty() && dst.get_data_type() == src.get_data_type(),
                   "dst can't be a empty tensor and data type should be same with input when reorder_src is false");

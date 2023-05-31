@@ -927,7 +927,7 @@ struct matmul_forward : public dnnl::matmul,
     attr_t& src_attr = param.src_attr;
     attr_t& weights_attr = param.weights_attr;
     attr_t& bias_attr = param.bias_attr;
-    op_attr = attr;
+    op_attr.set_post_ops(attr.get_post_ops());
     scale_t dst_scales_in;
     auto dst_data_type = data_type::u8;
 
@@ -993,18 +993,26 @@ struct matmul_forward : public dnnl::matmul,
       op_attr = attr_t::fuse_sum(sum_scale);
     }
 
-    op_attr.set_scales(DNNL_ARG_SRC, utils::op_scale_mask(src_scales_in.size()), src_scales_in);
-    auto wei_scales = weights_scales_in;
-    for (auto& s : wei_scales) {
-      s = 1.0 / s;
+    if (src_scales_in[0] != 1.0f) {
+      op_attr.set_scales(DNNL_ARG_SRC, utils::op_scale_mask(src_scales_in.size()), src_scales_in);
     }
-    op_attr.set_scales(DNNL_ARG_WEIGHTS, utils::op_scale_mask(wei_scales.size()), wei_scales);
+    auto wei_scales = weights_scales_in;
+    if (!std::all_of(wei_scales.begin(), wei_scales.end(), [](float i){ return i == 1.0f; })) {
+      for (auto& s : wei_scales) {
+        s = 1.0 / s;
+      }
+      op_attr.set_scales(DNNL_ARG_WEIGHTS, utils::op_scale_mask(wei_scales.size()), wei_scales);
+    }
     for (auto& s : dst_scales_in) {
       s = dst_coeff / s;
     }
-    op_attr.set_scales(DNNL_ARG_DST, utils::op_scale_mask(dst_scales_in.size()), dst_scales_in);
-    op_attr.set_zero_points(DNNL_ARG_SRC,
-                            utils::tensor_zp_mask(src_zero_point.size()), src_zero_point);
+    if (dst_scales_in[0] != 1.0f) {
+      op_attr.set_scales(DNNL_ARG_DST, utils::op_scale_mask(dst_scales_in.size()), dst_scales_in);
+    }
+    if (src_zero_point[0] != 0) {
+      op_attr.set_zero_points(DNNL_ARG_SRC,
+                              utils::tensor_zp_mask(src_zero_point.size()), src_zero_point);
+    }
     if (src.get_data_type() == data_type::f32) {
       // Set zero point for src reorder (fp32 -> int8).
       // First arg should be DNNL_ARG_DST rather than DNNL_ARG_SRC
@@ -1012,7 +1020,7 @@ struct matmul_forward : public dnnl::matmul,
                                utils::tensor_zp_mask(src_zero_point.size()),
                                src_zero_point);
     }
-    if (dst_data_type != data_type::f32) {
+    if (dst_data_type != data_type::f32 && dst_zero_point[0] != 0) {
       op_attr.set_zero_points(DNNL_ARG_DST,
                               utils::tensor_zp_mask(dst_zero_point.size()), dst_zero_point);
     }

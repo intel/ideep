@@ -40,4 +40,14 @@
 #include "ideep/tensor.hpp"
 #include "ideep/computations.hpp"
 
+// The ideep version number has four segments
+// The first three are the same as oneDNN version numbers
+// The fourth is to indicate ideep API change
+// So, ideep version = MAJOR.MINOR.PATCH.REVISION
+// e.g., 3.1.0.0
+#define IDEEP_VERSION_MAJOR    DNNL_VERSION_MAJOR
+#define IDEEP_VERSION_MINOR    DNNL_VERSION_MINOR
+#define IDEEP_VERSION_PATCH    DNNL_VERSION_PATCH
+#define IDEEP_VERSION_REVISION 0
+
 #endif

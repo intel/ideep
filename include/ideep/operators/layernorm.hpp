@@ -15,22 +15,15 @@ struct layer_normalization_forward : public dnnl::layer_normalization_forward {
       tensor& variance,
       float epsilon,
       const engine& aengine = engine::cpu_engine()) {
-    auto flags = batch_normalization_flag::use_scale_shift;
+    auto flags = batch_normalization_flag::use_scale |
+                 batch_normalization_flag::use_shift;
     auto src_desc = src.get_desc();
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     auto pd = primitive_desc(
-        {prop_kind::forward_training, src_desc, epsilon, flags},
-        op_attr,
-        aengine);
+        aengine, prop_kind::forward_training, src_desc, src_desc,
+        epsilon, flags, op_attr);
 
-    tensor scale_shift{pd.weights_desc()};
-    auto* scale_shift_buf = static_cast<char*>(scale_shift.get_data_handle());
-    std::memcpy(scale_shift_buf, scale.get_data_handle(), scale.get_size());
-    std::memcpy(
-        scale_shift_buf + scale.get_size(),
-        shift.get_data_handle(),
-        shift.get_size());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     mean.reinit_if_possible(pd.mean_desc());
     variance.reinit_if_possible(pd.variance_desc());
@@ -40,7 +33,8 @@ struct layer_normalization_forward : public dnnl::layer_normalization_forward {
     super(pd).execute(
         stream::default_stream(),
         {{DNNL_ARG_SRC, expected_src},
-         {DNNL_ARG_SCALE_SHIFT, scale_shift},
+         {DNNL_ARG_SCALE, scale},
+         {DNNL_ARG_SHIFT, shift},
          {DNNL_ARG_MEAN, mean},
          {DNNL_ARG_VARIANCE, variance},
          {DNNL_ARG_DST, dst},

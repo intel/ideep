@@ -13,8 +13,7 @@ class tensor : public memory {
  public:
   using dim_t = dnnl_dim_t;
   using dims_t = dnnl_dims_t;
-  using format_kind_t = dnnl_format_kind_t;
-  using blocking_desc_t = dnnl_blocking_desc_t;
+  using format_kind_t = memory::format_kind;
   using descriptor = tensor::desc; // for backward compatibility
 
   struct desc : public memory::desc {
@@ -27,12 +26,12 @@ class tensor : public memory {
     desc() : memory::desc(){};
 
     // copy ctor
-    desc(const desc& adesc) : memory::desc(adesc.data) {
+    desc(const desc& adesc) : memory::desc(adesc) {
       set_g(adesc.g());
     };
 
     // supplement group info for memory::desc
-    desc(const memory::desc& adesc, dim groups = 1) : memory::desc(adesc.data) {
+    desc(const memory::desc& adesc, dim groups = 1) : memory::desc(adesc) {
       set_g(groups);
     };
 
@@ -60,79 +59,81 @@ class tensor : public memory {
     void to_bytes(utils::bytestring& bytes) const {
       utils::to_bytes(bytes, get_data_type());
       utils::to_bytes(bytes, format_kind());
-      utils::to_bytes(bytes, offset0());
+      utils::to_bytes(bytes, get_submemory_offset());
 
-      auto& paddim = padded_dims();
-      auto& padoff = padded_offsets();
+      auto paddim = get_padded_dims();
+      auto padoff = get_padded_offsets();
 
-      for (int i = 0; i < data.ndims; i++) {
-        utils::to_bytes(bytes, data.dims[i]);
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+
+      for (int i = 0; i < get_internal_ndims(); i++) {
+        utils::to_bytes(bytes, c_dims[i]);
         utils::to_bytes(bytes, paddim[i]);
         utils::to_bytes(bytes, padoff[i]);
       }
 
       if (is_blocking_desc()) {
-        auto& blk = blocking_desc();
-        auto& stride = blocking_strides();
-        for (int i = 0; i < data.ndims; i++) {
-          utils::to_bytes(bytes, stride[i]);
+        dim_t *c_strides = nullptr;
+        dnnl_memory_desc_query(get(), dnnl_query_strides, &c_strides);
+        for (int i = 0; i < get_internal_ndims(); i++) {
+          utils::to_bytes(bytes, c_strides[i]);
         }
-        for (int i = 0; i < blk.inner_nblks; i++) {
-          utils::to_bytes(bytes, blk.inner_idxs[i]);
-          utils::to_bytes(bytes, blk.inner_blks[i]);
+        for (int i = 0; i < get_inner_nblks(); i++) {
+          utils::to_bytes(bytes, get_inner_idxs()[i]);
+          utils::to_bytes(bytes, get_inner_blks()[i]);
         }
       }
     }
 
     /// public ndims
     inline int get_ndims() const {
-      return is_grouped() ? data.ndims - 1 : data.ndims;
+      return is_grouped() ? get_internal_ndims() - 1 : get_internal_ndims();
     }
 
     /// Return size of specified dimension
     inline dim_t get_dim(int index) const {
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      int internal_ndims = get_internal_ndims();
       if (!is_grouped()) {
-        if (index < 0 || index >= data.ndims)
+        if (index < 0 || index >= internal_ndims)
           return static_cast<dim_t>(0);
-        return data.dims[index];
+        return c_dims[index];
       } else {
-        if (index < 0 || index >= data.ndims - 1)
+        if (index < 0 || index >= internal_ndims - 1)
           return static_cast<dim_t>(0);
-        return index == 0 ? data.dims[0] * data.dims[1] : data.dims[index + 1];
+        return index == 0 ?
+            c_dims[0] * c_dims[1] :
+            c_dims[index + 1];
       }
     }
 
     /// Returns dimension vector
     inline dims get_dims() const {
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      int internal_ndims = get_internal_ndims();
       if (!is_grouped()) {
-        return dims(data.dims, data.dims + data.ndims);
+        return dims(c_dims, c_dims + internal_ndims);
       } else {
-        auto ret = dims(data.dims + 1, data.dims + data.ndims);
-        ret[0] *= data.dims[0]; // g == data.dims[0]
+        auto ret = dims(c_dims + 1, c_dims + internal_ndims);
+        ret[0] *= c_dims[0]; // g == data.dims[0]
         return ret;
       }
-    }
-
-    /// Returns descriptor data type
-    inline data_type get_data_type() const {
-      return static_cast<data_type>(data.data_type);
     }
 
     inline dims get_strides() const {
       IDEEP_ENFORCE(is_plain(), "Call to_public() before get_strides()");
-      const auto& strides = blocking_strides();
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       if (!is_grouped()) {
-        return dims(strides, strides + data.ndims);
+        return dims(strides, strides + get_internal_ndims());
       } else {
-        auto ret = dims(strides + 1, strides + data.ndims);
+        auto ret = dims(strides + 1, strides + get_internal_ndims());
         ret[0] = std::min(strides[0], strides[1]);
         return ret;
       }
-    }
-
-    /** returns true if memory descriptor is zero */
-    bool is_zero() const {
-      return data.ndims == 0;
     }
 
     /** returns the number of elements including padding if \param with_padding
@@ -140,25 +141,30 @@ class tensor : public memory {
     inline dim_t nelems(bool with_padding = false) const {
       if (is_zero())
         return 0;
-      auto dims = with_padding ? data.padded_dims : data.dims;
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      dim_t *c_padded_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_padded_dims, &c_padded_dims);
+      auto dims = with_padding ? c_padded_dims : c_dims;
       return std::accumulate(
-          dims, dims + data.ndims, 1, std::multiplies<dim_t>());
+          dims, dims + get_internal_ndims(), 1, std::multiplies<dim_t>());
     }
 
     inline bool is_plain() const {
-      return is_blocking_desc() && blocking_desc().inner_nblks == 0;
+      return is_blocking_desc() && get_inner_nblks() == 0;
     };
 
-    inline bool is_rnn_packed() const {
-      return is_rnn_packed_desc();
+    inline bool is_opaque() const {
+      return is_opaque_desc();
     }
 
     inline bool is_default() const {
       if (!is_plain())
         return false;
 
-      const auto& strides = blocking_strides();
-      for (int i = 0; i < data.ndims - 1; i++) {
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
+      for (int i = 0; i < get_internal_ndims() - 1; i++) {
         if (strides[i] < strides[i + 1]) {
           return false;
         }
@@ -170,9 +176,11 @@ class tensor : public memory {
     // It may cause error in edge cases.
     // Avoid using it to determine memory layout in PyTorch.
     inline bool is_nhwc() const {
-      if (!is_plain() || data.ndims != 4) return false;
-      const auto &dims = data.dims;
-      const auto &strides = blocking_strides();
+      if (!is_plain() || get_internal_ndims() != 4) return false;
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto n = 0, c = 1, h = 2, w = 3;
       return strides[n] == dims[h] * dims[w] * dims[c]
           && strides[h] == dims[w] * dims[c]
@@ -184,9 +192,11 @@ class tensor : public memory {
     // It may cause error in edge cases.
     // Avoid using it to determine memory layout in PyTorch.
     inline bool is_ndhwc() const {
-      if (!is_plain() || data.ndims != 5) return false;
-      const auto &dims = data.dims;
-      const auto &strides = blocking_strides();
+      if (!is_plain() || get_internal_ndims() != 5) return false;
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto n = 0, c = 1, d =2, h = 3, w = 4;
       return strides[n] == dims[d] * dims[h] * dims[w] * dims[c]
           && strides[d] == dims[h] * dims[w] * dims[c]
@@ -196,10 +206,12 @@ class tensor : public memory {
     }
 
     inline bool is_nchw() const {
-      if (!is_plain() || data.ndims != 4)
+      if (!is_plain() || get_internal_ndims() != 4)
         return false;
-      const auto& dims = data.dims;
-      const auto& strides = blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto n = 0, c = 1, h = 2, w = 3;
       return strides[n] == dims[c] * dims[h] * dims[w] &&
           strides[c] == dims[h] * dims[w] && strides[h] == dims[w] &&
@@ -207,17 +219,20 @@ class tensor : public memory {
     };
 
     inline bool is_channels_last() const {
+      auto ndims = get_internal_ndims();
       if (!is_plain() ||
-          !(data.ndims == 4 || data.ndims == 5 || data.ndims == 3))
+          !(ndims == 4 || ndims == 5 || ndims == 3))
         return false;
-      const auto& dims = data.dims;
-      const auto& strides = blocking_strides();
-      if (data.ndims == 4) {
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
+      if (ndims == 4) {
         const auto n = 0, c = 1, h = 2, w = 3;
         return strides[n] == dims[h] * dims[w] * dims[c] &&
             strides[h] == dims[w] * dims[c] && strides[w] == dims[c] &&
             strides[c] == 1;
-      } else if (data.ndims == 5) {
+      } else if (ndims == 5) {
         const auto n = 0, c = 1, d = 2, h = 3, w = 4;
         return strides[n] == dims[d] * dims[h] * dims[w] * dims[c] &&
             strides[d] == dims[h] * dims[w] * dims[c] &&
@@ -231,10 +246,12 @@ class tensor : public memory {
     };
 
     inline bool is_iohw() const {
-      if (!is_plain() || data.ndims != 4)
+      if (!is_plain() || get_internal_ndims() != 4)
         return false;
-      const auto& dims = data.dims;
-      const auto& strides = blocking_strides();
+      dim_t *dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &dims);
+      dim_t *strides = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_strides, &strides);
       const auto o = 0, i = 1, h = 2, w = 3;
       return strides[i] == dims[o] * dims[h] * dims[w] &&
           strides[o] == dims[h] * dims[w] && strides[h] == dims[w] &&
@@ -243,23 +260,23 @@ class tensor : public memory {
 
     // workaround for issue intel/mkl-dnn#588
     bool is_4c_blocked() {
-      const auto& blk = blocking_desc();
-      return blk.inner_nblks == 1 && blk.inner_idxs[0] == 1 &&
-          blk.inner_blks[0] == 4;
+      return get_inner_nblks() == 1 && get_inner_idxs()[0] == 1 &&
+          get_inner_blks()[0] == 4;
     }
 
     // legacy API for caffe2
     bool is_limited_blockable() const {
-      const auto& blk = blocking_desc();
       // compute compatible block_dims with v0.x
-      dims block_dims(data.ndims, 1);
-      for (auto i = 0; i < blk.inner_nblks; i++) {
-        block_dims[blk.inner_idxs[i]] *= blk.inner_blks[i];
+      dims block_dims(get_internal_ndims(), 1);
+      for (auto i = 0; i < get_inner_nblks(); i++) {
+        block_dims[get_inner_idxs()[i]] *= get_inner_blks()[i];
       }
-      for (auto i = 0; i < data.ndims; i++) {
-        if (data.dims[i] < block_dims[i])
+      dim_t *desc_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &desc_dims);
+      for (auto i = 0; i < get_internal_ndims(); i++) {
+        if (desc_dims[i] < block_dims[i])
           continue;
-        if (data.dims[i] % block_dims[i] == 0)
+        if (desc_dims[i] % block_dims[i] == 0)
           continue;
         return false;
       }
@@ -288,9 +305,25 @@ class tensor : public memory {
       return desc(*this);
     }
 
-    desc to_type(data_type atype) const {
-      auto ret = clone();
-      ret.data.data_type = static_cast<dnnl_data_type_t>(atype);
+    desc to_type(data_type atype, engine aengine = engine::cpu_engine()) const {
+      // We cannot change data type of a desc directly.
+      // Case 1: Return a copy of this if no change is needed.
+      if (atype == get_data_type()) return clone();
+      // Case 2: For desc of plain layout, we can create a new desc with strides
+      if (is_plain()) {
+        desc ret(memory::desc(get_internal_dims(), atype, memory::desc::get_strides()));
+        ret.set_g(g());
+        return ret;
+      }
+      // Case 3: For blocked layout, we cannot create a new desc with strides
+      // Use binary primitive desc to query a desc so that we can
+      // change the data type and keep the layout
+      auto& src0_desc = *this;
+      auto src1_desc = desc(get_internal_dims(), atype, tag::any);
+      auto dst_desc = desc(get_internal_dims(), atype, tag::any);
+      auto pd = dnnl::binary::primitive_desc(
+          aengine, algorithm::binary_add, src0_desc, src1_desc, dst_desc);
+      auto ret = desc(pd.dst_desc());
       ret.set_g(g());
       return ret;
     }
@@ -303,79 +336,28 @@ class tensor : public memory {
     }
 
     bool has_same_shape_as(const desc& that) const {
-      if (data.ndims != that.data.ndims)
+      if (get_internal_ndims() != that.get_internal_ndims())
         return false;
-      return utils::array_cmp(data.dims, that.data.dims, data.ndims);
+      dim_t *this_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &this_dims);
+      dim_t *that_dims = nullptr;
+      dnnl_memory_desc_query(that.get(), dnnl_query_dims, &that_dims);
+      return utils::array_cmp(this_dims, that_dims, get_internal_ndims());
     }
 
     // to be replaced with memory_desc_permute_axes in DNNL v1.3
     desc permute(const std::vector<int>& permute_axes = {}) const {
-      if (data.ndims <= 1) {
+      if (get_internal_ndims() <= 1) {
         return clone();
       }
-
-      auto perms = permute_axes;
-      if (perms.empty()) {
-        perms.resize(data.ndims);
-        std::iota(perms.rbegin(), perms.rend(), 0);
-      } else {
-        IDEEP_ENFORCE(
-            perms.size() == data.ndims,
-            "Axes should be size like source tensor.");
-        auto perms_sorted = perms;
-        std::sort(perms_sorted.begin(), perms_sorted.end());
-        for (auto i = 0; i < perms_sorted.size(); ++i) {
-          IDEEP_ENFORCE(
-              perms_sorted[i] == i,
-              "Axes should be a permutation of 0 to ndim.");
-        }
-        if (perms_sorted == perms) {
-          return clone();
-        }
-      }
-
-      desc new_desc{};
-      auto ndims = data.ndims;
-      new_desc.data.ndims = data.ndims;
-      new_desc.data.data_type = data.data_type;
-      new_desc.data.format_kind = data.format_kind;
-      new_desc.data.offset0 = data.offset0;
-      new_desc.set_g(g());
-
-      // permute dims, padded_dims, padded_offsets, strides
-      auto& new_dims = new_desc.data.dims;
-      auto& old_dims = data.dims;
-      auto& new_stride = new_desc.data.format_desc.blocking.strides;
-      auto& old_stride = data.format_desc.blocking.strides;
-      auto& new_paddim = new_desc.data.padded_dims;
-      auto& old_paddim = data.padded_dims;
-      auto& new_padoff = new_desc.data.padded_offsets;
-      auto& old_padoff = data.padded_offsets;
-      for (int i = 0; i < ndims; i++) {
-        new_dims[i] = old_dims[perms[i]];
-        new_stride[i] = old_stride[perms[i]];
-        new_paddim[i] = old_paddim[perms[i]];
-        new_padoff[i] = old_padoff[perms[i]];
-      }
-
-      // permute blocking
-      auto inner_nblks = data.format_desc.blocking.inner_nblks;
-      new_desc.data.format_desc.blocking.inner_nblks = inner_nblks;
-      auto& old_inner_idxs = data.format_desc.blocking.inner_idxs;
-      auto& new_inner_idxs = new_desc.data.format_desc.blocking.inner_idxs;
-      auto& old_inner_blks = data.format_desc.blocking.inner_blks;
-      auto& new_inner_blks = new_desc.data.format_desc.blocking.inner_blks;
-      for (int i = 0; i < inner_nblks; i++) {
-        new_inner_idxs[i] = perms[old_inner_idxs[i]];
-        new_inner_blks[i] = old_inner_blks[i];
-      }
-      new_desc.data.extra = data.extra;
-
-      return new_desc;
+      auto permuted_md = memory::desc::permute_axes(permute_axes);
+      auto ret = desc(permuted_md);
+      ret.set_g(g());
+      return ret;
     }
 
     desc transpose(dim dim0, dim dim1) const {
-      std::vector<int> axes(data.ndims);
+      std::vector<int> axes(get_internal_ndims());
       std::iota(axes.begin(), axes.end(), 0);
       std::swap(axes[dim0], axes[dim1]);
       return permute(axes);
@@ -385,130 +367,52 @@ class tensor : public memory {
      * blocking structure
      */
     desc to_dims(const dims& adims) const {
-      IDEEP_ENFORCE(adims.size() == data.ndims, "Rank mismatched.");
-
-      dnnl_memory_desc_t md;
-      md.ndims = data.ndims;
-      md.data_type = data.data_type;
-
-      auto& blk = blocking_desc();
-
-      dims_t blocks;
-      for (auto i = 0; i < data.ndims; i++)
-        blocks[i] = 1;
-
-      dim_t block_size = 1;
-      for (int iblk = 0; iblk < blk.inner_nblks; ++iblk) {
-        blocks[blk.inner_idxs[iblk]] *= blk.inner_blks[iblk];
-        block_size *= blk.inner_blks[iblk];
-      }
-
-      for (int d = 0; d < data.ndims; ++d) {
-        md.dims[d] = adims[d];
-        md.padded_dims[d] = utils::rnd_up(adims[d], blocks[d]);
-        md.padded_offsets[d] = 0;
-      }
-      md.offset0 = 0;
-
-      md.format_kind = dnnl_blocked;
-      auto& mblk = md.format_desc.blocking;
-      mblk = blk;
-
-      for (auto i = 0; i < data.ndims; i++)
-        mblk.strides[i] = blk.strides[i];
-
-      int perm[DNNL_MAX_NDIMS];
-      for (int d = 0; d < data.ndims; ++d)
-        perm[d] = d;
-
-      utils::simultaneous_sort(
-          mblk.strides, perm, data.ndims, [](dim_t a, dim_t b) {
-            return b - a;
-          });
-
-      dim_t stride = block_size;
-      for (int _d = data.ndims - 1; _d >= 0; --_d) {
-        const int d = perm[_d];
-        md.format_desc.blocking.strides[d] = stride;
-        stride *= md.padded_dims[d] / blocks[d];
-      }
-
-      md.extra = dnnl_memory_extra_desc_t{};
-
-      return desc(md);
-    }
-
-    const blocking_desc_t& blocking_desc() const {
-      IDEEP_ENFORCE(
-          is_blocking_desc(),
-          "Cannot get blocking desc on a non-blocking desc");
-      return data.format_desc.blocking;
-    }
-
-    dims_t& blocking_strides() const {
-      IDEEP_ENFORCE(
-          is_blocking_desc(),
-          "Cannot get blocking desc on a non-blocking desc");
-      return const_cast<dnnl_memory_desc_t&>(data).format_desc.blocking.strides;
-    }
-
-    const dims_t& padded_dims() const {
-      return data.padded_dims;
+      IDEEP_ENFORCE(adims.size() == get_internal_ndims(), "Rank mismatched.");
+      auto ret = desc(memory::desc::reshape(adims));
+      ret.set_g(g());
+      return ret;
     }
 
    private:
     /// Returns dimension vector
     inline dims get_internal_dims() const {
-      return dims(data.dims, data.dims + data.ndims);
+      dim_t *c_dims = nullptr;
+      dnnl_memory_desc_query(get(), dnnl_query_dims, &c_dims);
+      return dims(c_dims, c_dims + get_internal_ndims());
     }
 
-    const dims_t& padded_offsets() const {
-      return data.padded_offsets;
-    }
-
-    dim_t offset0() const {
-      return data.offset0;
-    }
-
-    inline format_kind_t format_kind() const {
-      return data.format_kind;
+    // internal ndims
+    inline int get_internal_ndims() const {
+      return memory::desc::get_ndims();
     }
 
     bool is_blocking_desc() const {
-      return format_kind() == dnnl_blocked;
+      return get_format_kind() == format_kind::blocked;
     }
 
-    bool is_wino_desc() const {
-      return format_kind() == dnnl_format_kind_wino;
-    }
-
-    bool is_rnn_packed_desc() const {
-      return format_kind() == dnnl_format_kind_rnn_packed;
+    bool is_opaque_desc() const {
+      return get_format_kind() == format_kind::opaque;
     }
 
     void set_g(dim groups) {
-      auto reserved_size = sizeof(((dnnl_memory_extra_desc_t*)0)->reserved);
-      auto offset = reserved_size / sizeof(dim) - 1;
-      reinterpret_cast<dim*>(data.extra.reserved)[offset] = groups;
+      this->groups = groups;
     }
 
     dim g() const {
-      auto reserved_size = sizeof(((dnnl_memory_extra_desc_t*)0)->reserved);
-      auto offset = reserved_size / sizeof(dim) - 1;
-      return reinterpret_cast<const dim*>(data.extra.reserved)[offset];
+      return groups;
     }
 
     inline bool is_grouped() const {
       return g() > 1;
     }
+
+    int groups = 1;
   };
 
   desc get_desc() const {
-    const dnnl_memory_desc_t* cdesc;
-    error::wrap_c_api(
-        dnnl_memory_get_memory_desc(get(), &cdesc),
-        "could not get memory descriptor from a memory");
-    return desc(*cdesc);
+    auto ret = desc(memory::get_desc());
+    ret.set_g(groups_);
+    return ret;
   }
 
   // For backward compatibility. Will be deprecated.
@@ -586,6 +490,24 @@ class tensor : public memory {
     init(adims, adata_type, aengine);
   }
 
+  tensor(
+      const scale_t& scales,
+      const engine& aengine = engine::cpu_engine()) {
+    init({(int)scales.size()}, data_type::f32, aengine);
+    auto data_ptr = reinterpret_cast<float *>(get_data_handle());
+    for (size_t i = 0; i < scales.size(); ++i) // fill in zero point data
+      data_ptr[i] = scales[i];
+  }
+
+  tensor(
+      const zero_point_t& zero_points,
+      const engine& aengine = engine::cpu_engine()) {
+    init({(int)zero_points.size()}, data_type::s32, aengine);
+    auto data_ptr = reinterpret_cast<int32_t *>(get_data_handle());
+    for (size_t i = 0; i < zero_points.size(); ++i) // fill in zero point data
+      data_ptr[i] = zero_points[i];
+  }
+
   /// Function that refill tensor with new description. Specifiy extra buffer.
   void init(
       const desc& adesc,
@@ -595,6 +517,7 @@ class tensor : public memory {
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
+    groups_ = adesc.g();
     reset_internal(adesc, aengine, ahandle);
   }
 
@@ -604,6 +527,7 @@ class tensor : public memory {
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
+    groups_ = adesc.g();
     reset_internal(adesc, aengine, buffer_.get());
   }
 
@@ -616,6 +540,7 @@ class tensor : public memory {
     scale_.reset();
     zero_point_.reset();
     eng_ = aengine;
+    groups_ = adesc.g();
     reset_internal(adesc, aengine, buffer_.get());
   }
 
@@ -683,7 +608,8 @@ class tensor : public memory {
         scale_(t.scale_),
         zero_point_(t.zero_point_),
         buffer_(t.buffer_),
-        eng_(t.eng_) {}
+        eng_(t.eng_),
+        groups_(t.groups_) {}
 
   /// Move constructor
   tensor(tensor&& t)
@@ -692,7 +618,8 @@ class tensor : public memory {
         scale_(std::move(t.scale_)),
         zero_point_(std::move(t.zero_point_)),
         buffer_(std::move(t.buffer_)),
-        eng_(std::move(t.eng_)) {}
+        eng_(std::move(t.eng_)),
+        groups_(t.groups_) {}
 
   /// Assignment operator
   tensor& operator=(const tensor& t) {
@@ -702,6 +629,7 @@ class tensor : public memory {
     zero_point_ = t.zero_point_;
     workspace_ = t.workspace_;
     eng_ = t.eng_;
+    groups_ = t.groups_;
     return *this;
   }
 
@@ -713,6 +641,7 @@ class tensor : public memory {
     zero_point_ = std::move(t.zero_point_);
     workspace_ = std::move(t.workspace_);
     eng_ = std::move(t.eng_);
+    groups_ = std::move(t.groups_);
     return *this;
   }
 
@@ -811,12 +740,25 @@ class tensor : public memory {
   tensor reorder_if_differ_in(
       const desc& expected_desc,
       const attr_t& aattr = attr_t()) const {
-    auto output_scales = std::get<0>(aattr.get_output_scales());
-    auto is_empty_or_ones = output_scales.empty() ||
-        std::all_of(output_scales.begin(), output_scales.end(), [](float i) {
-                              return 1.0 == i;
-                            });
-    if (expected_desc == get_desc() && is_empty_or_ones) {
+    // Check desc, scales and zero points
+    bool reorder_not_needed = (expected_desc == get_desc());
+    if (reorder_not_needed && aattr.has_scales()) {
+      for (auto& arg_scale_pair : aattr.get_all_scales()) {
+        const scale_t& scales = arg_scale_pair.second.first;
+        reorder_not_needed = reorder_not_needed &&
+            (scales.empty() ||
+             std::all_of(scales.begin(), scales.end(), [](float i) {return 1.0 == i;}));
+      }
+    }
+    if (reorder_not_needed && aattr.has_zero_points()) {
+      for (auto& arg_zp_pair : aattr.get_all_zero_points()) {
+        const zero_point_t& zp = arg_zp_pair.second.first;
+        reorder_not_needed = reorder_not_needed &&
+            (zp.empty() ||
+             std::all_of(zp.begin(), zp.end(), [](int i) {return 0 == i;}));
+      }
+    }
+    if (reorder_not_needed) {
       return *this;
     } else {
       tensor dst{expected_desc};
@@ -874,6 +816,7 @@ class tensor : public memory {
       if (old_desc_trans.is_nhwc()) {
         // giohw (acbde) => gihwo (acdeb)
         grouped_desc = grouped_desc.to_format(format_tag::acdeb);
+        grouped_desc.set_g(groups);
       } else if (old_desc_trans.is_ndhwc()) {
         // giodhw (acbdef) => gidhwo (acdefb)
         // TODO: onednn doesn't have the tag of acdefb for now
@@ -898,6 +841,7 @@ class tensor : public memory {
              /*h*/ w * o,
              /*w*/ o}};
         grouped_desc = new_desc;
+        grouped_desc.set_g(groups);
       }
     } else {
       // conv: judge whether is channels last on oihw format
@@ -957,9 +901,9 @@ class tensor : public memory {
             return false;
           // block format, only one dim is blocked, and the size of blocked dim
           // > 1.
-          auto block_desc = src_desc.blocking_desc();
-          if (block_desc.inner_nblks == 1 &&
-              shape[block_desc.inner_idxs[0]] > 1) {
+          // auto block_desc = src_desc.blocking_desc();
+          if (src_desc.get_inner_nblks() == 1 &&
+              shape[src_desc.get_inner_idxs()[0]] > 1) {
             return false;
           }
         }
@@ -1009,11 +953,31 @@ class tensor : public memory {
     auto pd = dnnl::reorder::primitive_desc(*this, dst, op_attr);
 
     tensor scratchpad(pd.scratchpad_desc());
+    exec_args args;
+    args.insert({DNNL_ARG_FROM, const_cast<tensor&>(*this)});
+    args.insert({DNNL_ARG_TO, dst});
+    args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
+    // Insert scales and zero points
+    const static std::vector<int> args_for_scales_zp = {DNNL_ARG_SRC, DNNL_ARG_DST};
+    std::vector<tensor> scale_tensors(args_for_scales_zp.size());
+    for (size_t i = 0; i < args_for_scales_zp.size(); ++i) {
+      int arg = args_for_scales_zp[i];
+      if (op_attr.has_scales_for(arg)) {
+        scale_tensors[i] = tensor(op_attr.get_scales(arg).first);
+        args.insert({DNNL_ARG_ATTR_SCALES | arg, scale_tensors[i]});
+      }
+    }
+    std::vector<tensor> zp_tensors(args_for_scales_zp.size());
+    for (size_t i = 0; i < args_for_scales_zp.size(); ++i) {
+      int arg = args_for_scales_zp[i];
+      if (op_attr.has_zero_points_for(arg)) {
+        zp_tensors[i] = tensor(op_attr.get_zero_points(arg).first);
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | arg, zp_tensors[i]});
+      }
+    }
     dnnl::reorder(pd).execute(
         stream::default_stream(),
-        {{DNNL_ARG_FROM, const_cast<tensor&>(*this)},
-         {DNNL_ARG_TO, dst},
-         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+        args);
   }
 
   /// Convert the tensor to public format, and f32 data type by default
@@ -1066,9 +1030,6 @@ class tensor : public memory {
     } else if (src.has_scale()) {
       src_scale = src.get_scale();
       dst_scale.assign(src_scale.size(), 1.0f);
-    } else {
-      dst_scale = IDEEP_DEF_SCALE;
-      src_scale = IDEEP_DEF_SCALE;
     }
     IDEEP_ENFORCE(
         dst_scale.size() == src_scale.size(), "Invalid tensor scales");
@@ -1082,10 +1043,18 @@ class tensor : public memory {
       auto mask_dst = this->make_grouped_weights(groups, is_deconv_weights);
       auto mask_src = src.make_grouped_weights(groups, is_deconv_weights);
       int mask = utils::tensor_scale_mask(src_scale.size(), true);
-      mask_src.reorder_to(mask_dst, {mask, scales});
+      if (scales.empty()) {
+        mask_src.reorder_to(mask_dst);
+      } else {
+        mask_src.reorder_to(mask_dst, {mask, scales});
+      }
     } else {
       int mask = utils::tensor_scale_mask(src_scale.size(), false);
-      src.reorder_to(*this, {mask, scales});
+      if (scales.empty()) {
+        src.reorder_to(*this);
+      } else {
+        src.reorder_to(*this, {mask, scales});
+      }
     }
   }
 
@@ -1238,8 +1207,9 @@ class tensor : public memory {
  private:
   void reset_internal(const desc& adesc, const engine& aengine, void* ahandle) {
     dnnl_memory_t result;
+    dnnl_memory_desc_t memory_desc = adesc.get();
     error::wrap_c_api(
-        dnnl_memory_create(&result, &adesc.data, aengine.get(), ahandle),
+        dnnl_memory_create(&result, memory_desc, aengine.get(), ahandle),
         "could not create a memory");
     reset(result);
   }
@@ -1283,6 +1253,7 @@ class tensor : public memory {
   std::shared_ptr<zero_point_t> zero_point_;
   std::shared_ptr<void> buffer_;
   engine eng_;
+  int groups_;
 };
 
 } // namespace ideep

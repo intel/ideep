@@ -24,9 +24,8 @@ struct lrn_forward : public dnnl::lrn_forward {
 
     // auto src_desc = src.get_desc();
     auto pd = primitive_desc(
-        {aprop_kind, aalgorithm, src_desc, local_size, alpha, beta, k},
-        op_attr,
-        aengine);
+        aengine, aprop_kind, aalgorithm, src_desc, src_desc,
+        local_size, alpha, beta, k, op_attr);
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     dst.reinit_if_possible(pd.dst_desc());
@@ -65,23 +64,15 @@ struct lrn_backward : public dnnl::lrn_backward {
     auto src_desc = src._get_unblocked_desc_if_4c_blocked();
     // auto src_desc = src.get_desc();
     auto forward_hints = lrn_forward::primitive_desc(
-        {prop_kind::forward_training,
-         aalgorithm,
-         src_desc,
-         local_size,
-         alpha,
-         beta,
-         k},
-        aengine);
+        aengine, prop_kind::forward_training, aalgorithm, src_desc, src_desc,
+        local_size, alpha, beta, k);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aalgorithm, src_desc, diff_dst.get_desc(), local_size, alpha, beta, k},
-        op_attr,
-        aengine,
-        forward_hints);
+        aengine, aalgorithm, diff_dst.get_desc(), diff_dst.get_desc(), src_desc,
+        local_size, alpha, beta, k, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());

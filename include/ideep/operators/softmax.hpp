@@ -19,7 +19,8 @@ struct softmax_forward : public dnnl::softmax_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd =
-        primitive_desc({aprop_kind, src_desc, softmax_axis}, op_attr, aengine);
+        primitive_desc(aengine, aprop_kind, algorithm::softmax_accurate,
+        src_desc, src_desc, softmax_axis, op_attr);
     tensor scratchpad(pd.scratchpad_desc());
     super(pd).execute(
         stream::default_stream(),
@@ -39,16 +40,15 @@ struct softmax_backward : public dnnl::softmax_backward {
       int softmax_axis,
       const engine& aengine = engine::cpu_engine()) {
     auto forward_hints = softmax_forward::primitive_desc(
-        {prop_kind::forward_inference, dst.get_desc(), softmax_axis}, aengine);
+        aengine, prop_kind::forward_inference, algorithm::softmax_accurate,
+        dst.get_desc(), dst.get_desc(), softmax_axis);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {diff_dst.get_desc(), dst.get_desc(), softmax_axis},
-        op_attr,
-        aengine,
-        forward_hints);
+        aengine, algorithm::softmax_accurate, diff_dst.get_desc(), diff_dst.get_desc(),
+        dst.get_desc(), softmax_axis, forward_hints, op_attr);
     auto expected_dst = dst.reorder_if_differ_in(pd.dst_desc());
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());

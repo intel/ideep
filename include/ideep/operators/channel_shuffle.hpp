@@ -22,7 +22,7 @@ struct channel_shuffle_forward : public dnnl::shuffle_forward {
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {aprop_kind, src.get_desc(), axis, group_size}, aengine, op_attr);
+        aengine, aprop_kind, src.get_desc(), src.get_desc(), axis, group_size, op_attr);
 
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());
     dst.reinit_if_possible(pd.dst_desc());
@@ -50,13 +50,13 @@ struct channel_shuffle_backward : public dnnl::shuffle_backward {
     auto data_desc = diff_dst.get_desc();
 
     auto forward_hints = dnnl::shuffle_forward::primitive_desc(
-        {prop_kind::forward, data_desc, group_size, axis}, aengine);
+        aengine, prop_kind::forward, data_desc, data_desc, group_size, axis);
 
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
     auto pd = primitive_desc(
-        {data_desc, axis, group_size}, aengine, forward_hints, op_attr);
+        aengine, data_desc, data_desc, axis, group_size, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     diff_src.reinit_if_possible(pd.diff_src_desc());

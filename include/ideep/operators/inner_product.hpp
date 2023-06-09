@@ -78,7 +78,7 @@ struct inner_product_forward
                              const prop_kind aprop_kind = prop_kind::forward,
                              const engine &aengine = engine::cpu_engine()) {
     inner_product_forward_params param;
-    do_prepare_<true, reorder_src, reorder_weight>(param, src, weights, bias,
+    do_prepare_<true, reorder_src, reorder_weight>(param, src, weights, bias, 
                                                    dst, attr, aprop_kind, aengine);
     do_compute_binary<true, reorder_src, reorder_weight>(
         param, src, other, weights, bias, dst);
@@ -240,7 +240,7 @@ struct inner_product_forward
     tensor::desc dst_desc(y_dims, y_dtype, tag::any);
     tensor::desc weights_desc(weights_dims, dtype, tag::any);
     auto pd =
-        primitive_desc({aprop_kind, src_desc, weights_desc, dst_desc}, aengine);
+        primitive_desc(aengine, aprop_kind, src_desc, weights_desc, dst_desc);
     return pd.weights_desc();
   }
 
@@ -269,12 +269,10 @@ struct inner_product_forward
     dnnl::inner_product_forward::primitive_desc pd;
     if (with_bias) {
       pd = primitive_desc(
-            {aprop_kind, src_desc, weights_desc, bias_desc, dst_desc},
-            attr,
-            aengine);
+            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
     } else {
       pd = primitive_desc(
-            {aprop_kind, src_desc, weights_desc, dst_desc}, attr, aengine);
+            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
     }
 
     return fetch_or_create(key, [&]() {
@@ -303,12 +301,10 @@ struct inner_product_forward
     return fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
-            {aprop_kind, src_desc, weights_desc, bias_desc, dst_desc},
-            attr,
-            aengine);
+            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
       } else {
         return primitive_desc(
-            {aprop_kind, src_desc, weights_desc, dst_desc}, attr, aengine);
+            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
       }
     });
   };
@@ -331,12 +327,12 @@ private:
       auto new_dims = weights.get_dims();
       new_dims[0] = src.get_dim(0);
       src_.reshape(new_dims);
-      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, dst,
-                                                          attr, aprop_kind, aengine);
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src_, weights, bias, 
+                                                          dst, attr, aprop_kind, aengine);
       do_compute_<with_bias, reorder_src, reorder_weight>(param, src_, weights,
                                                           bias, dst);
     } else {
-      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias,
+      do_prepare_<with_bias, reorder_src, reorder_weight>(param, src, weights, bias, 
                                                           dst, attr, aprop_kind, aengine);
       do_compute_<with_bias, reorder_src, reorder_weight>(param, src, weights,
                                                           bias, dst);
@@ -391,12 +387,13 @@ private:
     }
 
     IDEEP_ENFORCE(utils::one_of(weights.get_data_type(),
-                                data_type::f32, data_type::bf16),
+                                data_type::f32, data_type::bf16, data_type::f16),
             "Incorrect data type in weights");
-
     // align weights data type with src
-    dst_data_type = src.get_data_type() == data_type::bf16 ? data_type::bf16
-                                                           : data_type::f32;
+    dst_data_type = src.get_data_type() == data_type::bf16
+        ? data_type::bf16
+        : ((src.get_data_type() == data_type::f16) ? data_type::f16
+                                                   : data_type::f32);
     if (!reorder_weight)  {
       IDEEP_ENFORCE(weights.get_data_type() == src.get_data_type(),
                   "weights' data type should be same with input's data type when reorder_weight is false");
@@ -407,11 +404,12 @@ private:
                                   : weights.get_desc();
     if (with_bias) {
       IDEEP_ENFORCE(utils::one_of(bias.get_data_type(),
-                                  data_type::f32, data_type::bf16),
+                                  data_type::f32, data_type::bf16, data_type::f16),
                     "Incorrect data type in bias");
       bias_desc = reorder_weight ? bias.get_desc().to_format_any()
                                  : bias.get_desc();
     }
+
     if (!reorder_src)  {
       IDEEP_ENFORCE(!dst.is_empty() && dst.get_data_type() == src.get_data_type(),
                   "dst can't be a empty tensor and data type should be same with input when reorder_src is false");
@@ -537,9 +535,9 @@ private:
       } else {
         dst.feed_from(expected_dst);
       }
-    } else { // reorder src
+    } else { // reorder_src
       if (!reorder_src)  {
-        IDEEP_ENFORCE(!dst.is_empty(),
+          IDEEP_ENFORCE(!dst.is_empty(),
                       "dst can't be a empty tensor when reorder_src is false");
       }
       args.insert({DNNL_ARG_DST, dst});
@@ -612,9 +610,9 @@ private:
       } else {
         dst.feed_from(expected_dst);
       }
-    } else { // reorder src
+    } else { // reorder_src
       if (!reorder_src)  {
-        IDEEP_ENFORCE(!dst.is_empty(),
+          IDEEP_ENFORCE(!dst.is_empty(),
                       "dst can't be a empty tensor when reorder_src is false");
       }
       args.insert({DNNL_ARG_DST, dst});
@@ -635,10 +633,6 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
     auto weights_ = weights;
-    if (diff_dst.get_data_type() == data_type::bf16) {
-      weights_.init(weights.get_desc().to_type(data_type::bf16));
-      weights_.reorder_from(weights);
-    }
 
     // workaround: diff_src and weights from caffe2 may have different dims.
     // It would be better for caffe2 to do this reshape anyway.
@@ -649,7 +643,7 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     }
 
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
-    auto weights_desc = weights_.get_desc();
+    auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
     auto diff_src_desc =
         tensor::desc(diff_src_dims, diff_dst.get_data_type(), tag::any);
 
@@ -661,13 +655,13 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
         diff_src_desc, weights_desc, weights.get_hash(), diff_dst_desc, tensor::desc(), false, op_attr);
 
     auto pd = primitive_desc(
-        {diff_src_desc, weights_desc, diff_dst_desc}, op_attr, aengine, forward_hints.first);
+        aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints.first, op_attr);
 #else
     auto forward_hints = inner_product_forward::get_primitive_desc(
         diff_src_desc, weights_desc, diff_dst_desc, tensor::desc(), false, op_attr);
 
     auto pd = primitive_desc(
-        {diff_src_desc, weights_desc, diff_dst_desc}, op_attr, aengine, forward_hints);
+        aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints, op_attr);
 #endif
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
@@ -763,19 +757,19 @@ private:
         src_desc, weights_desc, diff_weights.get_hash(), diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
 
     auto pd = with_diff_bias
-        ? primitive_desc({src_desc, diff_weights_desc, diff_bias_desc,
-                          diff_dst_desc}, op_attr, aengine, forward_hints.first)
-        : primitive_desc({src_desc, diff_weights_desc, diff_dst_desc},
-                          op_attr, aengine, forward_hints.first);
+        ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
+                         diff_dst_desc, forward_hints.first, op_attr)
+        : primitive_desc(aengine, src_desc, diff_weights_desc, diff_dst_desc,
+                         forward_hints.first, op_attr);
 #else
     auto forward_hints = inner_product_forward::get_primitive_desc(
         src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
 
     auto pd = with_diff_bias
-        ? primitive_desc({src_desc, diff_weights_desc, diff_bias_desc,
-                          diff_dst_desc}, op_attr, aengine, forward_hints)
-        : primitive_desc({src_desc, diff_weights_desc, diff_dst_desc},
-                          op_attr, aengine, forward_hints);
+        ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
+                         diff_dst_desc, forward_hints, op_attr)
+        : primitive_desc(aengine, src_desc, diff_weights_desc, diff_dst_desc,
+                         forward_hints, op_attr);
 #endif
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());

@@ -124,10 +124,10 @@ struct attr_t : public dnnl::primitive_attr {
     return attr;
   }
 
-  static attr_t fuse_sum(float scale = 1.0) {
+  static attr_t fuse_sum(float scale = 1.0, int32_t sum_zero_point = 0) {
     attr_t attr;
     post_ops po;
-    po.append_sum(scale);
+    po.append_sum(scale, sum_zero_point);
     attr.set_post_ops(po);
     return attr;
   }
@@ -219,6 +219,19 @@ struct attr_t : public dnnl::primitive_attr {
     attr_t attr;
     post_ops po;
     po.append_sum(sum_scale);
+    po.append_eltwise(algorithm::eltwise_relu, alpha, beta);
+    attr.set_post_ops(po);
+    return attr;
+  }
+
+  static attr_t residual_with_sum_zero_point(
+      float sum_scale = 1.0,
+      int32_t sum_zero_point = 0,
+      float alpha = 0.f,
+      float beta = 0.f) {
+    attr_t attr;
+    post_ops po;
+    po.append_sum(sum_scale, sum_zero_point);
     po.append_eltwise(algorithm::eltwise_relu, alpha, beta);
     attr.set_post_ops(po);
     return attr;

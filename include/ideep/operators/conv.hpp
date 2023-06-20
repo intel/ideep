@@ -131,8 +131,7 @@ struct conv_deconv_utils {
         // Here we need to recalculate the scale of sum.
         // When fused with sum, dst_scales_in is the final output tensor's scale.
         // dst.scale is the scale of sum tensor.
-        float sum_scale =
-            dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+        float sum_scale = 1.0/(dst.has_scale() ? dst.get_scale()[0] : 1.0f);
         // When fused with sum, the dst tensor is same as the sum tensor.
         // So the sum_zero_point will be fetched from the dst tensor.
         int32_t sum_zero_point = dst.has_zero_point() ? dst.get_zero_point()[0] : 0;

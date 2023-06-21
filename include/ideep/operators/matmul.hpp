@@ -989,7 +989,7 @@ struct matmul_forward : public dnnl::matmul,
 
     if (attr.has_op_kind(kind::sum)) {
       float sum_scale =
-          sum_coeff * dst_scales_in[0] / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
+          sum_coeff / (dst.has_scale() ? dst.get_scale()[0] : 1.0f);
       op_attr = attr_t::fuse_sum(sum_scale);
     }
 

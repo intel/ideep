@@ -1415,6 +1415,7 @@ struct convolution_forward
         weights_desc_query,
         with_bias,
         bias_desc_query,
+        dst_desc_query,
         strides,
         dilates,
         padding_l,

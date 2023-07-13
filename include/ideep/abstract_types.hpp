@@ -70,13 +70,14 @@ static bool has_bf16_type_support() {
   // static bool support_bf16 = isa >= dnnl::cpu_isa::avx512_core
   //                           && isa != dnnl::cpu_isa::avx2_vnni;
   static bool support_bf16 =
-      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core;
+      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx2_vnni_2;
   return support_bf16;
 }
 
 static bool has_fp16_type_support() {
   static bool support_fp16 =
-      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core_fp16;
+      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core_fp16 ||
+      dnnl::get_effective_cpu_isa() == dnnl::cpu_isa::avx2_vnni_2;
   return support_fp16;
 }
 

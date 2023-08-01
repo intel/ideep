@@ -41,15 +41,11 @@ using rnn_direction = dnnl::rnn_direction;
 // for computation cache
 using key_t = std::string;
 
-#ifndef NDEBUG
 #define IDEEP_ENFORCE(condition, message)                                \
   do {                                                                   \
     error::wrap_c_api(                                                   \
         (condition) ? dnnl_success : dnnl_invalid_arguments, (message)); \
   } while (false)
-#else
-#define IDEEP_ENFORCE(condition, message)
-#endif
 
 const scale_t IDEEP_DEF_SCALE{1.0f};
 const zero_point_t IDEEP_DEF_ZP{0};
@@ -78,6 +74,12 @@ static bool has_fp16_type_support() {
   static bool support_fp16 =
       dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core_fp16;
   return support_fp16;
+}
+
+static bool check_isa_avx2_vnni_2() {
+  static bool is_avx2_vnni_2 =
+      dnnl::get_effective_cpu_isa() == dnnl::cpu_isa::avx2_vnni_2;
+  return is_avx2_vnni_2;
 }
 
 /// cpu execution engine only.

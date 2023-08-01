@@ -60,6 +60,10 @@ struct lrn_backward : public dnnl::lrn_backward {
       float k = 1.0,
       algorithm aalgorithm = algorithm::lrn_across_channels,
       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     // workaround: use src.get_desc() once issue intel/mkl-dnn#588 is resolved
     auto src_desc = src._get_unblocked_desc_if_4c_blocked();
     // auto src_desc = src.get_desc();

@@ -759,6 +759,10 @@ struct convolution_transpose_backward_data
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     // make weights and dilates compatible with DNNL
     auto weights_ = weights.make_grouped_weights(groups, true);
     auto dilates_ = utils::get_compatible_dilates(dilates);
@@ -814,6 +818,10 @@ struct convolution_transpose_backward_weights
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+   IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
    compute_impl</*with_diff_bias=*/true>(
        src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
        strides, dilates, padding_l, padding_r, groups, attr, aalgorithm, aengine);
@@ -831,6 +839,10 @@ struct convolution_transpose_backward_weights
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::deconvolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
         src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
@@ -851,7 +863,10 @@ private:
                            const attr_t& attr,
                            algorithm aalgorithm,
                            const engine& aengine) {
-
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     // make diff_weights and dilates compatible with DNNL
     auto dilates_ = utils::get_compatible_dilates(dilates);
 

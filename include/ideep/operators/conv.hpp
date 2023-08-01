@@ -1869,6 +1869,10 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
                          bool is_channels_last = false,
                          algorithm aalgorithm = algorithm::convolution_direct,
                         const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     // make weights and dilates compatible with DNNL
     auto weights_ = weights.make_grouped_weights(groups);
     auto dilates_ = utils::get_compatible_dilates(dilates);
@@ -1930,6 +1934,10 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
                       const attr_t& attr = attr_t(),
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     // make weights and dilates compatible with DNNL
     auto weights_ = weights.make_grouped_weights(groups);
     auto dilates_ = utils::get_compatible_dilates(dilates);
@@ -2012,6 +2020,10 @@ struct convolution_backward_weights
                          const data_type diff_weight_type = data_type::undef,
                          algorithm aalgorithm = algorithm::convolution_direct,
                         const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     compute_impl</*with_diff_bias=*/true>(
         src, diff_dst, diff_weights_dims, diff_weights, diff_bias,
         strides, dilates, padding_l, padding_r, groups, is_channels_last,
@@ -2032,6 +2044,10 @@ struct convolution_backward_weights
                          const data_type diff_weight_type = data_type::undef,
                          algorithm aalgorithm = algorithm::convolution_direct,
                          const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     static tensor dummy_diff_bias;
     compute_impl</*with_diff_bias=*/false>(
         src, diff_dst, diff_weights_dims, diff_weights, dummy_diff_bias,
@@ -2054,6 +2070,10 @@ struct convolution_backward_weights
                       const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     bool is_nhwc = diff_dst.get_desc().is_nhwc();
     bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
     bool is_channels_last = is_nhwc || is_ndhwc;
@@ -2077,6 +2097,10 @@ struct convolution_backward_weights
                       const data_type diff_weight_type = data_type::undef,
                       algorithm aalgorithm = algorithm::convolution_direct,
                       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     static tensor dummy_diff_bias;
     bool is_nhwc = diff_dst.get_desc().is_nhwc();
     bool is_ndhwc = diff_dst.get_desc().is_ndhwc();
@@ -2104,10 +2128,13 @@ struct convolution_backward_weights
                            const data_type diff_weight_type,
                            algorithm aalgorithm,
                            const engine& aengine) {
-
+    data_type diff_dst_type = diff_dst.get_data_type();
+    IDEEP_ENFORCE(!(check_isa_avx2_vnni_2() &&
+                  utils::one_of(diff_dst_type,
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     // make diff_weights and dilates compatible with DNNL
     auto dilates_ = utils::get_compatible_dilates(dilates);
-    data_type diff_dst_type = diff_dst.get_data_type();
     data_type diff_weight_type_in = data_type::undef == diff_weight_type ?
                                     diff_dst_type : diff_weight_type;
     auto diff_weights_desc =

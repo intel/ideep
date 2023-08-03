@@ -65,14 +65,15 @@ struct inner_product_forward
 
   // 2-in-1 compute, with bias
   template <bool reorder_src = true, bool reorder_weight = true>
-  static void compute_binary(const tensor &src,
-                             const tensor &other,
-                             const tensor &weights,
-                             const tensor &bias,
-                             tensor &dst,
-                             const attr_t &attr = attr_t(),
-                             const prop_kind aprop_kind = prop_kind::forward,
-                             const engine &aengine = engine::cpu_engine()) {
+  static void compute_binary(
+      const tensor& src,
+      const std::vector<tensor>& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst,
+      const attr_t& attr = attr_t(),
+      const prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
     inner_product_forward_params param;
     do_prepare_<true, reorder_src, reorder_weight>(param, src, weights, bias, 
                                                    dst, attr, aprop_kind, aengine);
@@ -82,13 +83,14 @@ struct inner_product_forward
 
   // 2-in-1 compute, without bias
   template <bool reorder_src = true, bool reorder_weight = true>
-  static void compute_binary(const tensor &src,
-                             const tensor &other,
-                             const tensor &weights,
-                             tensor &dst,
-                             const attr_t &attr = attr_t(),
-                             const prop_kind aprop_kind = prop_kind::forward,
-                             const engine &aengine = engine::cpu_engine()) {
+  static void compute_binary(
+      const tensor& src,
+      const std::vector<tensor>& other,
+      const tensor& weights,
+      tensor& dst,
+      const attr_t& attr = attr_t(),
+      const prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
     static tensor dummy_bias;
     inner_product_forward_params param;
     do_prepare_<false, reorder_src, reorder_weight>(param, src, weights, dummy_bias,
@@ -156,12 +158,13 @@ struct inner_product_forward
   // with primitive descriptor. Otherwise, checks are made and reorder
   // may be needed.
   template <bool reorder_src = true, bool reorder_weight = true>
-  static void compute_binary(const inner_product_forward_params &param,
-                             const tensor &src,
-                             const tensor &other,
-                             const tensor &weights,
-                             const tensor &bias,
-                             tensor &dst) {
+  static void compute_binary(
+      const inner_product_forward_params& param,
+      const tensor& src,
+      const std::vector<tensor>& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
     do_compute_binary</*with_bias=*/true, reorder_src, reorder_weight>(
         param, src, other, weights, bias, dst);
   }
@@ -171,11 +174,12 @@ struct inner_product_forward
   // with primitive descriptor. Otherwise, checks are made and reorder
   // may be needed.
   template <bool reorder_src = true, bool reorder_weight = true>
-  static void compute_binary(const inner_product_forward_params &param,
-                             const tensor &src,
-                             const tensor &other,
-                             const tensor &weights,
-                             tensor &dst) {
+  static void compute_binary(
+      const inner_product_forward_params& param,
+      const tensor& src,
+      const std::vector<tensor>& other,
+      const tensor& weights,
+      tensor& dst) {
     static tensor dummy_bias;
     do_compute_binary</*with_bias=*/false, reorder_src, reorder_weight>(
         param, src, other, weights, dummy_bias, dst);
@@ -416,12 +420,13 @@ private:
   // with primitive descriptor. Otherwise, checks are made and reorder
   // may be needed. Used for binary fusion
   template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
-  static void do_compute_binary(const inner_product_forward_params &param,
-                                const tensor &src,
-                                const tensor &other,
-                                const tensor &weights,
-                                const tensor &bias,
-                                tensor &dst) {
+  static void do_compute_binary(
+      const inner_product_forward_params& param,
+      const tensor& src,
+      const std::vector<tensor>& other,
+      const tensor& weights,
+      const tensor& bias,
+      tensor& dst) {
     auto &pd = param.pd;
     auto &primitive = param.primitive;
     auto &op_attr = param.op_attr;
@@ -433,8 +438,13 @@ private:
         reorder_src ? src.reorder_if_differ_in(pd.src_desc(), src_attr) : src;
     // make sure other has same format with dst.
     // TODO: other has different with dst?
-    auto &expected_other =
-        reorder_src ? other.reorder_if_differ_in(pd.dst_desc()) : other;
+    size_t num_others = other.size();
+    std::vector<tensor> expected_other(num_others);
+    for (int i = 0; i < num_others; i++) {
+      expected_other[i] =
+          reorder_src ? other[i].reorder_if_differ_in(pd.dst_desc()) : other[i];
+    }
+
     auto &expected_weights =
         reorder_weight
             ? weights.reorder_if_differ_in(pd.weights_desc(), weights_attr)
@@ -451,8 +461,11 @@ private:
       args.insert({DNNL_ARG_BIAS, expected_bias});
     }
     args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
-    args.insert(
-        {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, expected_other});
+    for (int i = 0; i < num_others; i++) {
+      args.insert(
+          {DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1,
+           expected_other[i]});
+    }
     if (reorder_src) {
       tensor expected_dst;
       if (dst.is_empty() || dst.get_desc() != pd.dst_desc()) {

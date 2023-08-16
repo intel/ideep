@@ -56,6 +56,10 @@ struct prelu_backward : public dnnl::prelu_backward {
       tensor& diff_weight,
       prop_kind aprop_kind = prop_kind::backward,
       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto src_in = src;
     auto weight_in = weight;
     auto diff_dst_in = diff_dst;

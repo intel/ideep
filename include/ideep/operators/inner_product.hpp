@@ -632,6 +632,10 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
                       tensor& diff_src,
                       const attr_t& attr = attr_t(),
                       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto weights_ = weights;
 
     // workaround: diff_src and weights from caffe2 may have different dims.
@@ -730,6 +734,10 @@ private:
                            const data_type diff_weight_type,
                            const attr_t& attr = attr_t(),
                            const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto src_desc = src.get_desc().to_format_any();
     auto diff_dst_desc = diff_dst.get_desc().to_format_any();
     auto diff_weights_dims = src.get_dims();

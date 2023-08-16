@@ -145,6 +145,10 @@ struct pooling_backward : public dnnl::pooling_backward {
       const dims& padding_r,
       algorithm aalgorithm,
       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(src.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto src_desc = src.get_desc();
     auto dst_desc = dst.get_desc();
 
@@ -204,6 +208,10 @@ struct pooling_v2_backward : public dnnl::pooling_backward {
       const dims& padding_r,
       algorithm aalgorithm,
       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(src.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto src_desc = src.get_desc();
     auto dst_desc = dst.get_desc();
     auto dil_compatible = utils::get_compatible_dilates(dilation);

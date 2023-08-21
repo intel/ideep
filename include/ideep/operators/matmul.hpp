@@ -1203,6 +1203,30 @@ struct matmul_forward : public dnnl::matmul,
 
 
     // Create pd and primitive
+#ifdef __aarch64__
+    auto key = utils::create_key(
+        src_desc,
+        weights.get_desc(),
+        bias_desc,
+        dst_desc,
+        op_attr,
+        with_bias,
+        omp_get_max_threads(),
+        weights.get_hash());
+
+    if (with_bias) {
+      param.pd = primitive_desc(
+          aengine, src_desc, weights.get_desc(), bias_desc, dst_desc, op_attr);
+    } else {
+      param.pd = primitive_desc(
+          aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
+    }
+
+    auto pd_pair = fetch_or_create(key, [&]() {
+      return std::make_pair(param.pd, super(param.pd));
+    });
+    param.primitive = std::move(pd_pair.second);
+#else
     auto key = utils::create_key(
         src_desc,
         weights.get_desc(),
@@ -1221,6 +1245,7 @@ struct matmul_forward : public dnnl::matmul,
       }
     });
     param.primitive = super(param.pd);
+#endif
 
     // Create src reorder primitive with runtime scales/zero point
     auto src_reorder_pd = dnnl::reorder::primitive_desc(aengine, src.get_desc(), aengine, src_desc, src_attr);

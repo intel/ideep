@@ -1671,10 +1671,7 @@ private:
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
         padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
-    conv_deconv_utils::obtain_runtime_zero_point(
-      src, src_zero_point, DNNL_ARG_SRC, pd.first.get_primitive_attr(),
-      ideep::engine(pd.first.get_engine().get_kind()), src_zp_tensor);
-    convolution_forward_params params(
+    convolution_forward_params param(
         std::move(pd.first), std::move(pd.second), std::move(op_attr), groups, std::move(bias_attr));
 #else
     // Used for to_mkldnn() path
@@ -1827,10 +1824,6 @@ private:
     auto pd = get_primitive_desc<with_bias>(
         src_desc, weights_desc, bias_desc, dst_desc, strides, dil_compatible,
         padding_l, padding_r, weights.get_hash(), is_channels_last, op_attr, aalgorithm, aprop_kind, aengine);
-
-    conv_deconv_utils::obtain_runtime_zero_point(
-      src, src_zero_point, DNNL_ARG_SRC, pd.first.get_primitive_attr(),
-      ideep::engine(pd.first.get_engine().get_kind()), src_zp_tensor);
 
     param = {std::move(pd.first), std::move(pd.second), std::move(op_attr), groups, std::move(bias_attr)};
 #else

@@ -161,6 +161,9 @@ struct conv_deconv_utils {
           weights_scales_in.size(), oc_per_group, groups, is_deconv);
       auto wei_scales = weights_scales_in;
       if (!std::all_of(wei_scales.begin(), wei_scales.end(), [](float i){ return i == 1.0f; })) {
+        for (auto& s : wei_scales) {
+          s = 1.0 / s;
+        }
         op_attr.set_scales(DNNL_ARG_WEIGHTS, wei_scale_mask, wei_scales);
       }
       if (dst_scales_in[0] != 1.0f) {

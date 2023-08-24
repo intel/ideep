@@ -350,7 +350,21 @@ class tensor : public memory {
       if (get_internal_ndims() <= 1) {
         return clone();
       }
-      auto permuted_md = memory::desc::permute_axes(permute_axes);
+      auto perms = permute_axes;
+      if (perms.empty()) {
+        // If perms is empty, we need to init it.
+        perms.resize(get_internal_ndims());
+        std::iota(perms.rbegin(), perms.rend(), 0);
+      }
+      std::vector<int> expected_perms(perms.size(), -1);
+      for (size_t i = 0; i < perms.size(); i++) {
+        // The permute axis has different semantic between PyTorch and oneDNN
+        // Map the permute axis from PyTorch to oneDNN.
+        size_t new_shape_idx = i;
+        size_t org_shape_idx = perms[i];
+        expected_perms[org_shape_idx] = static_cast<int>(new_shape_idx);
+      }
+      auto permuted_md = memory::desc::permute_axes(expected_perms);
       auto ret = desc(permuted_md);
       ret.set_g(g());
       return ret;
@@ -1002,11 +1016,9 @@ class tensor : public memory {
             get_data_type(), data_type::s8, data_type::u8, data_type::s32) &&
         dst_desc.get_data_type() == data_type::f32 && has_scale()) {
       auto& src_scale = get_scale();
-      auto dequantize_scale =
-          utils::fmap(src_scale, [](float s) { return 1.f / s; });
       auto mask =
           utils::tensor_scale_mask(src_scale.size(), get_desc().is_grouped());
-      this->reorder_to(dst, {mask, dequantize_scale});
+      this->reorder_to(dst, {mask, src_scale});
     } else {
       this->reorder_to(dst);
       if (has_scale()) {
@@ -1035,7 +1047,7 @@ class tensor : public memory {
         dst_scale.size() == src_scale.size(), "Invalid tensor scales");
     scale_t scales(dst_scale.size());
     for (int i = 0; i < dst_scale.size(); i++) {
-      scales[i] = dst_scale[i] / src_scale[i];
+      scales[i] = src_scale[i] / dst_scale[i];
     }
 
     auto groups = 1;
@@ -1086,11 +1098,14 @@ class tensor : public memory {
     auto pd = dnnl::reorder::primitive_desc(
         src.get_engine(), src.get_desc(), get_engine(), view, op_attr);
     tensor scratchpad(pd.scratchpad_desc());
+    // we assume scale is only set for dst. Only used in concat.hpp
+    assert(op_attr.get_all_scales().size() == 1 && op_attr.has_scales_for(DNNL_ARG_DST));
     dnnl::reorder(pd).execute(
         stream::default_stream(),
         {{DNNL_ARG_FROM, const_cast<tensor&>(src)},
          {DNNL_ARG_TO, *this},
-         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+         {DNNL_ARG_SCRATCHPAD, scratchpad},
+         {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, tensor(op_attr.get_scales(DNNL_ARG_DST).first)}});
   }
 
   // reorder part of this tensor to dst

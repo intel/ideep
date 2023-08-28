@@ -73,7 +73,15 @@ struct eltwise_backward : public dnnl::eltwise_backward {
         src_desc, alpha, beta, forward_hints, op_attr);
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
-    diff_src.reinit_if_possible(pd.diff_src_desc());
+    tensor expected_diff_src;
+    if (diff_src.is_empty() || diff_src.get_desc() != pd.diff_src_desc()){
+      // If diff_src buffer are not given by user or user given diff_src buffer are not under expected format
+      // We need init a new one
+      expected_diff_src.init(pd.diff_src_desc());
+    } else {
+      // The format of given diff_src buffer is expected
+      expected_diff_src = diff_src;
+    }
 
     auto use_dst = utils::one_of(
         aalgorithm,
@@ -91,8 +99,17 @@ struct eltwise_backward : public dnnl::eltwise_backward {
         stream::default_stream(),
         {{DNNL_ARG_DIFF_DST, expected_diff_dst},
          {src_dst_arg, expected_src_dst},
-         {DNNL_ARG_DIFF_SRC, diff_src},
+         {DNNL_ARG_DIFF_SRC, expected_diff_src},
          {DNNL_ARG_SCRATCHPAD, scratchpad}});
+
+    // reorder back to diff_src's buffer if needed
+    if (diff_src.is_empty() ||
+         diff_src.get_desc() == expected_diff_src.get_desc() ||
+         !diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc())){
+      diff_src = expected_diff_src;
+    } else {
+      diff_src.feed_from(expected_diff_src);
+    }
   }
 };
 } // namespace ideep

@@ -103,11 +103,20 @@ struct eltwise_backward : public dnnl::eltwise_backward {
          {DNNL_ARG_SCRATCHPAD, scratchpad}});
 
     // reorder back to diff_src's buffer if needed
+    bool is_same_shape = diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc());
+    bool is_same_desc = diff_src.get_desc() == expected_diff_src.get_desc();
     if (diff_src.is_empty() ||
-         diff_src.get_desc() == expected_diff_src.get_desc() ||
-         !diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc())){
+        // when diff_src is empty, expect return buffer allocated by ideep
+        is_same_desc ||
+        // diff_src and expected_diff_src is the same under this case
+        !is_same_shape){
+        // for caffe2 caller, get an incorrect size from caller, can return
+        // buffer allocate by ideep
       diff_src = expected_diff_src;
     } else {
+      // When diff_src buffer is given by user, and expected_diff_src has same shape
+      // and different stride with diff_src, then expected_diff_src need to reorder
+      // back to diff_src's buffer.
       diff_src.feed_from(expected_diff_src);
     }
   }

@@ -103,12 +103,15 @@ struct eltwise_backward : public dnnl::eltwise_backward {
          {DNNL_ARG_SCRATCHPAD, scratchpad}});
 
     // reorder back to diff_src's buffer if needed
-    if (diff_src.is_empty() ||
-         diff_src.get_desc() == expected_diff_src.get_desc() ||
-         !diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc())){
-      diff_src = expected_diff_src;
-    } else {
-      diff_src.feed_from(expected_diff_src);
+    if (diff_src != expected_diff_src) {
+      if (!diff_src.is_empty() && diff_src.get_desc().has_same_shape_as(expected_diff_src.get_desc())) {
+        // When diff_src buffer is given by user, and expected_diff_src has same shape
+        // and different stride with diff_src, then expected_diff_src need to reorder
+        // back to diff_src's buffer.
+        diff_src.feed_from(expected_diff_src);
+      } else {
+        diff_src = expected_diff_src;
+      }
     }
   }
 };

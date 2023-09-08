@@ -312,6 +312,10 @@ struct lstm_backward : public dnnl::lstm_backward {
       const bool reverse = false,
       const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(src_layer.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto aprop = prop_kind::backward;
     auto direction = reverse ? rnn_direction::unidirectional_right2left
                              : rnn_direction::unidirectional_left2right;

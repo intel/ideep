@@ -39,6 +39,10 @@ struct softmax_backward : public dnnl::softmax_backward {
       tensor& diff_src,
       int softmax_axis,
       const engine& aengine = engine::cpu_engine()) {
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
+                  utils::one_of(diff_dst.get_data_type(),
+                                data_type::bf16, data_type::f16)),
+                  "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");
     auto forward_hints = softmax_forward::primitive_desc(
         aengine, prop_kind::forward_inference, algorithm::softmax_accurate,
         dst.get_desc(), dst.get_desc(), softmax_axis);

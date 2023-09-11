@@ -51,6 +51,19 @@ using key_t = std::string;
 #define IDEEP_ENFORCE(condition, message)
 #endif
 
+#if defined(__GNUC__) || defined(__ICL) || defined(__clang__)
+#define IDEEP_LIKELY(expr) (__builtin_expect(static_cast<bool>(expr), 1))
+#define IDEEP_UNLIKELY(expr) (__builtin_expect(static_cast<bool>(expr), 0))
+#else
+#define IDEEP_LIKELY(expr) (expr)
+#define IDEEP_UNLIKELY(expr) (expr)
+#endif
+
+#define IDEEP_CHECK(condition, message)                                  \
+  if (IDEEP_UNLIKELY(!(condition))) {                                    \
+    error::wrap_c_api(dnnl_invalid_arguments, (message));                \
+  }
+
 const scale_t IDEEP_DEF_SCALE{1.0f};
 const zero_point_t IDEEP_DEF_ZP{0};
 const scale_t IDEEP_EMPTY_SCALE;
@@ -70,13 +83,20 @@ static bool has_bf16_type_support() {
   // static bool support_bf16 = isa >= dnnl::cpu_isa::avx512_core
   //                           && isa != dnnl::cpu_isa::avx2_vnni;
   static bool support_bf16 =
-      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core;
+      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx2_vnni_2;
   return support_bf16;
+}
+
+static bool check_isa_is_avx2_vnni_2() {
+  static bool is_avx2_vnni_2 =
+      dnnl::get_effective_cpu_isa() == dnnl::cpu_isa::avx2_vnni_2;
+  return is_avx2_vnni_2;
 }
 
 static bool has_fp16_type_support() {
   static bool support_fp16 =
-      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core_fp16;
+      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core_fp16 ||
+      dnnl::get_effective_cpu_isa() == dnnl::cpu_isa::avx2_vnni_2;
   return support_fp16;
 }
 

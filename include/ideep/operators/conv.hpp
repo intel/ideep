@@ -2008,7 +2008,7 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
                          bool is_channels_last = false,
                          algorithm aalgorithm = algorithm::convolution_direct,
                         const engine& aengine = engine::cpu_engine()) {
-    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2i_2() &&
+    IDEEP_CHECK(!(check_isa_is_avx2_vnni_2() &&
                   utils::one_of(diff_dst.get_data_type(),
                                 data_type::bf16, data_type::f16)),
                   "DNNL does not support bf16/f16 backward on the platform with avx2_vnni_2");

@@ -805,12 +805,20 @@ struct matmul_forward : public dnnl::matmul,
                     ((src.get_data_type() == data_type::f16) ?
                       data_type::f16 : data_type::f32);
     src_desc = src.get_desc().to_type(dst_data_type);
+
+#ifdef __aarch64__
+    // for aarch64 ACL backend with fixed format kernels, the weights are
+    // always in blocked layout, so, set the descriptor to tag::any for the backend
+    // to decide the format
+    weights_desc = tensor::desc(weights.get_dims(), dst_data_type, tag::any);
+#else
     // For fp32 matmul, weight (2nd input) is usually not in blocked layout
     // Plain layout runs faster as of oneDNN 3.0
     // Should use tag::any to query blocked layout if there is perf gain later
     weights_desc = weights.get_desc().is_plain() ?
                    weights.get_desc().to_type(dst_data_type) :
                    tensor::desc(weights.get_dims(), dst_data_type, tag::any);
+#endif
     if (with_bias) {
       IDEEP_ENFORCE(bias.get_data_type() == data_type::f32 ||
                     bias.get_data_type() == data_type::bf16 ||

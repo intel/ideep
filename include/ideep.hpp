@@ -45,9 +45,14 @@
 // The fourth is to indicate ideep API change
 // So, ideep version = MAJOR.MINOR.PATCH.REVISION
 // e.g., 3.1.0.0
+// REVISION should +1 after API change if oneDNN is not
+// updated at the same time.
+// REVISION should be reset to 0 after oneDNN update
+// Use ((IDEEP_VERSION_MAJOR << 32) + (IDEEP_VERSION_MINOR << 16) + \
+//   (IDEEP_VERSION_PATCH << 8) + (DNNL_VERSION_PATCH)) to check
 #define IDEEP_VERSION_MAJOR    DNNL_VERSION_MAJOR
 #define IDEEP_VERSION_MINOR    DNNL_VERSION_MINOR
 #define IDEEP_VERSION_PATCH    DNNL_VERSION_PATCH
-#define IDEEP_VERSION_REVISION 1
+#define IDEEP_VERSION_REVISION 0
 
 #endif

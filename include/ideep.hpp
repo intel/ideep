@@ -48,15 +48,15 @@
 // REVISION should +1 after API change if oneDNN is not
 // updated at the same time.
 // REVISION should be reset to 0 after oneDNN update
-// Use ((IDEEP_VERSION_MAJOR << 32) + (IDEEP_VERSION_MINOR << 16) + \
-//   (IDEEP_VERSION_PATCH << 8) + (DNNL_VERSION_PATCH)) to check
 #define IDEEP_VERSION_MAJOR    DNNL_VERSION_MAJOR
 #define IDEEP_VERSION_MINOR    DNNL_VERSION_MINOR
 #define IDEEP_VERSION_PATCH    DNNL_VERSION_PATCH
 #define IDEEP_VERSION_REVISION 0
+
+// Check if ideep version prerequisite is met
 #define IDEEP_PREREQ(major, minor, patch, revision) \
   (((IDEEP_VERSION_MAJOR << 32) + (IDEEP_VERSION_MINOR << 16) + \
-   (IDEEP_VERSION_PATCH << 8) + (DNNL_VERSION_PATCH)) >= \
+   (IDEEP_VERSION_PATCH << 8) + (IDEEP_VERSION_REVISION)) >= \
    ((major << 32) + (minor << 16) + (patch << 8) + (revision)))
 
 #endif

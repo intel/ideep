@@ -149,7 +149,15 @@ class lru_cache {
   size_type capacity_;
 };
 
+#ifdef __aarch64__
+/* initializing the cache with capacity 1 (as zero is crashig) to
+ * disable it by default. And enable it for inference use cases that benefit
+ * by setting LRU_CACHE_CAPACITY to appropriate size
+ */
+template <class value_t, size_t capacity = 1, class key_t = std::string>
+#else
 template <class value_t, size_t capacity = 1024, class key_t = std::string>
+#endif
 class computation_cache {
  public:
   using iterator = typename lru_cache<key_t, value_t>::iterator;

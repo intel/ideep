@@ -34,7 +34,11 @@ struct inner_product_forward_params {
 
 struct inner_product_forward
     : public dnnl::inner_product_forward,
+#ifdef __aarch64__
+      utils::computation_cache<std::pair<dnnl::inner_product_forward::primitive_desc, dnnl::inner_product_forward>> {
+#else
       utils::computation_cache<dnnl::inner_product_forward::primitive_desc> {
+#endif
   using super = dnnl::inner_product_forward;
 
   // 2-in-1 compute, with bias
@@ -244,6 +248,38 @@ struct inner_product_forward
     return pd.weights_desc();
   }
 
+#ifdef __aarch64__
+    static std::pair<dnnl::inner_product_forward::primitive_desc, dnnl::inner_product_forward> get_primitive_desc(
+      const tensor::desc& src_desc,
+      const tensor::desc& weights_desc,
+      const tensor::desc& dst_desc,
+      const tensor::desc& bias_desc = tensor::desc(),
+      const bool with_bias = false,
+      const attr_t& attr = attr_t(),
+      const prop_kind aprop_kind = prop_kind::forward,
+      const engine& aengine = engine::cpu_engine()) {
+    auto key = utils::create_key(
+        aprop_kind,
+        src_desc,
+        weights_desc,
+        bias_desc,
+        dst_desc,
+        attr,
+        with_bias,
+        omp_get_max_threads());
+    return fetch_or_create(key, [&]() {
+      dnnl::inner_product_forward::primitive_desc pd;
+      if (with_bias) {
+        pd = primitive_desc(
+            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
+      } else {
+        pd = primitive_desc(
+            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
+      }
+      return std::make_pair(pd, super(pd));
+    });
+  }
+#else
   static primitive_desc get_primitive_desc(
       const tensor::desc& src_desc,
       const tensor::desc& weights_desc,
@@ -272,6 +308,7 @@ struct inner_product_forward
       }
     });
   };
+#endif
 
 private:
   template <bool with_bias, bool reorder_src = true, bool reorder_weight = true>
@@ -382,6 +419,18 @@ private:
 
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
+#ifdef __aarch64__
+    auto pd_pair = get_primitive_desc(
+        src_desc,
+        weights_desc,
+        dst_desc,
+        bias_desc,
+        with_bias,
+        op_attr,
+        aprop_kind);
+    param.pd = std::move(pd_pair.first);
+    param.primitive = std::move(pd_pair.second);
+#else
     param.pd = get_primitive_desc(
         src_desc,
         weights_desc,
@@ -391,6 +440,7 @@ private:
         op_attr,
         aprop_kind);
     param.primitive = std::move(super(param.pd));
+#endif
   }
 
   // Set reorder flags to false if you are sure the memory layout aligns
@@ -615,8 +665,13 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     auto forward_hints = inner_product_forward::get_primitive_desc(
         diff_src_desc, weights_desc, diff_dst_desc, tensor::desc(), false, op_attr);
 
+#ifdef __aarch64__
+    auto pd = primitive_desc(
+        aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints.first, op_attr);
+#else
     auto pd = primitive_desc(
         aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints, op_attr);
+#endif
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_weights = weights_.reorder_if_differ_in(pd.weights_desc());
@@ -713,11 +768,19 @@ private:
     auto forward_hints = inner_product_forward::get_primitive_desc(
         src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
 
+#ifdef __aarch64__
+    auto pd = with_diff_bias
+        ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
+                         diff_dst_desc, forward_hints.first, op_attr)
+        : primitive_desc(aengine, src_desc, diff_weights_desc, diff_dst_desc,
+                         forward_hints.first, op_attr);
+#else
     auto pd = with_diff_bias
         ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
                          diff_dst_desc, forward_hints, op_attr)
         : primitive_desc(aengine, src_desc, diff_weights_desc, diff_dst_desc,
                          forward_hints, op_attr);
+#endif
 
     auto expected_diff_dst = diff_dst.reorder_if_differ_in(pd.diff_dst_desc());
     auto expected_src = src.reorder_if_differ_in(pd.src_desc());

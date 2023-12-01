@@ -248,7 +248,6 @@ struct inner_product_forward
   static std::pair<dnnl::inner_product_forward::primitive_desc, dnnl::inner_product_forward> get_primitive_desc(
       const tensor::desc& src_desc,
       const tensor::desc& weights_desc,
-      const size_t weights_hashkey, /* this is to check in place weight updates */
       const tensor::desc& dst_desc,
       const tensor::desc& bias_desc = tensor::desc(),
       const bool with_bias = false,
@@ -263,22 +262,20 @@ struct inner_product_forward
         dst_desc,
         attr,
         with_bias,
-        omp_get_max_threads(),
-        weights_hashkey);
-
-    dnnl::inner_product_forward::primitive_desc pd;
-    if (with_bias) {
-      pd = primitive_desc(
-            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
-    } else {
-      pd = primitive_desc(
-            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
-    }
+        omp_get_max_threads());
 
     return fetch_or_create(key, [&]() {
+      dnnl::inner_product_forward::primitive_desc pd;
+      if (with_bias) {
+        pd = primitive_desc(
+            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
+      } else {
+        pd = primitive_desc(
+            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
+      }
       return std::make_pair(pd, super(pd));
     });
-  };
+  }
 #else
   static primitive_desc get_primitive_desc(
       const tensor::desc& src_desc,
@@ -423,7 +420,6 @@ private:
     auto pd_pair = get_primitive_desc(
         src_desc,
         weights_desc,
-        weights.get_hash(),
         dst_desc,
         bias_desc,
         with_bias,
@@ -654,16 +650,13 @@ struct inner_product_backward_data : public dnnl::inner_product_backward_data {
     auto op_attr = attr;
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-#ifdef __aarch64__
-    auto forward_hints = inner_product_forward::get_primitive_desc(
-        diff_src_desc, weights_desc, weights.get_hash(), diff_dst_desc, tensor::desc(), false, op_attr);
-
-    auto pd = primitive_desc(
-        aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints.first, op_attr);
-#else
     auto forward_hints = inner_product_forward::get_primitive_desc(
         diff_src_desc, weights_desc, diff_dst_desc, tensor::desc(), false, op_attr);
 
+#ifdef __aarch64__
+    auto pd = primitive_desc(
+        aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints.first, op_attr);
+#else
     auto pd = primitive_desc(
         aengine, diff_src_desc, weights_desc, diff_dst_desc, forward_hints, op_attr);
 #endif
@@ -760,19 +753,16 @@ private:
     auto op_attr = attr;
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-#ifdef __aarch64__
     auto forward_hints = inner_product_forward::get_primitive_desc(
-        src_desc, weights_desc, diff_weights.get_hash(), diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
+        src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
 
+#ifdef __aarch64__
     auto pd = with_diff_bias
         ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
                          diff_dst_desc, forward_hints.first, op_attr)
         : primitive_desc(aengine, src_desc, diff_weights_desc, diff_dst_desc,
                          forward_hints.first, op_attr);
 #else
-    auto forward_hints = inner_product_forward::get_primitive_desc(
-        src_desc, weights_desc, diff_dst_desc, diff_bias_desc, with_diff_bias, op_attr);
-
     auto pd = with_diff_bias
         ? primitive_desc(aengine, src_desc, diff_weights_desc, diff_bias_desc,
                          diff_dst_desc, forward_hints, op_attr)

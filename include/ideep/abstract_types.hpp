@@ -100,6 +100,12 @@ static bool has_fp16_type_support() {
   return support_fp16;
 }
 
+static bool has_amx_fp16_support() {
+  static bool support_amx_fp16 =
+      dnnl::get_effective_cpu_isa() >= dnnl::cpu_isa::avx512_core_amx_fp16;
+  return support_amx_fp16;
+}
+
 /// cpu execution engine only.
 struct engine : public dnnl::engine {
   friend class tensor;

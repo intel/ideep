@@ -928,7 +928,7 @@ struct matmul_forward : public dnnl::matmul,
     }
 
     int scale_size = (weights_scales_in.size() > 1) ? weights.get_dim(1) : 1;
-    weights_desc = weights.get_desc();
+    weights_desc = tensor::desc(weights.get_dims(), weights.get_data_type(), tag::any);
     if (weights.get_data_type() == data_type::f32) {
       weights_attr = {utils::tensor_scale_mask(scale_size, false),
                       weights_scales_in};

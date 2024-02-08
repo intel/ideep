@@ -706,10 +706,28 @@ struct matmul_forward : public dnnl::matmul,
     auto& weights_scales_in =
         weights.has_scale() ? weights.get_scale() : weights_scales;
     if (!weights_scales_in.empty()) { // for int8
-      do_prepare_static_quant<with_bias>(
-          param, src, weights, bias, dst,
-          src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
-          dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      if (src.get_data_type() == data_type::f32) { // invoke dynamic quant
+        // prepare
+        do_prepare_dynamic_quant<with_bias>(param, src, weights,
+                              bias, dst, weights_scales, sum_coeff,
+                              attr, data_type::f32, aengine);
+        // compute
+        if (bias.is_empty()) {
+          do_compute_dynamic_quant</*with_bias=*/false, reorder_weight>(
+                              param, src, weights, bias, dst,
+                              src_scales, src_zero_points, dst_coeff, aengine);
+        } else {
+          do_compute_dynamic_quant</*with_bias=*/true, reorder_weight>(
+                              param, src, weights, bias, dst,
+                              src_scales, src_zero_points, dst_coeff, aengine);
+        }
+        return;
+      } else { // invoke static quant
+        do_prepare_static_quant<with_bias>(
+            param, src, weights, bias, dst,
+            src_scales, weights_scales, dst_scales, src_zero_points, dst_zero_points,
+            dst_coeff, sum_coeff, attr, dst_type, alowp_kind, aengine);
+      }
     } else {
       do_prepare<with_bias>(param, src, weights, bias, dst, dst_coeff, sum_coeff,
                  attr, dst_type, aengine);

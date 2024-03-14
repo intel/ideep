@@ -2009,7 +2009,7 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     // align weight data type with diff_dst for bf16 and f16
     auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
     if (groups > 1) {
-      weights_desc = weights_desc.to_grouped(groups);
+      weights_desc = weights_desc.to_grouped(groups).to_format_any();
     }
 
     auto diff_src_desc =
@@ -2074,7 +2074,7 @@ struct convolution_backward_data : public dnnl::convolution_backward_data {
     // align weight data type with diff_dst for bf16 and f16
     auto weights_desc = tensor::desc(weights_.get_dims(), diff_dst.get_data_type(), tag::any);
     if (groups > 1) {
-      weights_desc = weights_desc.to_grouped(groups);
+      weights_desc = weights_desc.to_grouped(groups).to_format_any();
     }
 
     auto diff_src_desc = 
@@ -2280,7 +2280,7 @@ struct convolution_backward_weights
     if (diff_weight_type_in != diff_dst_type) {
       weights_desc = tensor::desc(diff_weights_desc.get_dims(), diff_dst_type, tag::any);
       if (groups > 1) {
-        weights_desc = weights_desc.to_grouped(groups);
+        weights_desc = weights_desc.to_grouped(groups).to_format_any();
       }
     }
     auto op_attr = attr;

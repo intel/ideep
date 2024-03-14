@@ -1295,7 +1295,7 @@ private:
 
     if (groups > 1) {
       // dim: [g, o, i/g, ...]
-      diff_weights_desc = diff_weights_desc.to_grouped(groups).transpose(1, 2);
+      diff_weights_desc = diff_weights_desc.to_grouped(groups).transpose(1, 2).to_format_any();
     } else {
       // dim: [o, i, ...]
       diff_weights_desc = diff_weights_desc.transpose(0, 1);

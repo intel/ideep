@@ -330,7 +330,12 @@ class tensor : public memory {
 
     desc to_grouped(int groups, bool is_deconv = false) const {
       auto grouped_dims = utils::group_dims(get_internal_dims(), groups);
-      auto grouped_desc = desc(grouped_dims, get_data_type());
+      // preserve tag `any` otherwise use plain format tag since we don't know the exact original tag
+      format_tag f_tag = get_default_format(grouped_dims);
+      if (get_format_kind() == format_kind::any) {
+        f_tag = format_tag::any;
+      }
+      auto grouped_desc = desc(grouped_dims, get_data_type(), f_tag);
       grouped_desc.set_g(groups);
       return grouped_desc;
     }

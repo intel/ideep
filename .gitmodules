@@ -1,3 +1,3 @@
 [submodule "mkl-dnn"]
 	path = mkl-dnn
-	url = https://github.com/intel/mkl-dnn.git
+	url = https://github.com/uxlfoundation/oneDNN.git

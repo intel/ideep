@@ -43,8 +43,8 @@ struct eltwise_forward : public dnnl::eltwise_forward {
       super(pd).execute(
           stream::default_stream(),
           {{DNNL_ARG_SRC, src_in},
-          {DNNL_ARG_DST, src_in},
-          {DNNL_ARG_SCRATCHPAD, scratchpad}});
+           {DNNL_ARG_DST, src_in},
+           {DNNL_ARG_SCRATCHPAD, scratchpad}});
       dst.feed_from(src_in);
     
     } else{
@@ -57,8 +57,8 @@ struct eltwise_forward : public dnnl::eltwise_forward {
       super(pd).execute(
           stream::default_stream(),
           {{DNNL_ARG_SRC, src_in},
-          {DNNL_ARG_DST, dst},
-          {DNNL_ARG_SCRATCHPAD, scratchpad}});
+           {DNNL_ARG_DST, dst},
+           {DNNL_ARG_SCRATCHPAD, scratchpad}});
     }
 #else
     dst.reinit_if_possible(pd.dst_desc());

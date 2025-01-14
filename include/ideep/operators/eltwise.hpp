@@ -32,6 +32,8 @@ bool f32_cast_needed = false;
 #endif
 
     if (f32_cast_needed){
+      dst.reinit_if_possible(src_desc);
+      
       src_desc = src_desc.to_type(data_type::f32);
       src_in = src_in.reorder_if_differ_in(src_desc);
 

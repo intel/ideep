@@ -25,44 +25,21 @@ struct eltwise_forward : public dnnl::eltwise_forward {
     auto op_attr = dnnl::primitive_attr();
     op_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
 
-bool f32_cast_needed = false;
-#ifdef __aarch64__
-    // Arm Compute Library (ACL) + oneDNN do not support bf16 post-ops for which f32 up/down casting is needed for better performance
-    f32_cast_needed = (src_desc.get_data_type() == data_type::bf16);
-#endif
-
-    if (f32_cast_needed){
-      src_desc = src_desc.to_type(data_type::f32);
-      src_in = src_in.reorder_if_differ_in(src_desc);
-
-      auto pd = primitive_desc(
-        aengine, aprop_kind, aalgorithm, src_desc, src_desc, alpha, beta, op_attr);    
-      
-      tensor scratchpad(pd.scratchpad_desc());
-      super(pd).execute(
-          stream::default_stream(),
-          {{DNNL_ARG_SRC, src_in},
-           {DNNL_ARG_DST, src_in},
-           {DNNL_ARG_SCRATCHPAD, scratchpad}});
-      
-      dst.feed_from(src_in);
-    
-    } else{
-      auto pd = primitive_desc(
+    auto pd = primitive_desc(
         aengine, aprop_kind, aalgorithm, src_desc, src_desc, alpha, beta, op_attr);
-     
-      dst.reinit_if_possible(pd.dst_desc());
-      if (src_in.has_scale()) {
-        dst.set_scale(src_in.get_scale());
-      }
-     
-      tensor scratchpad(pd.scratchpad_desc());
-      super(pd).execute(
-          stream::default_stream(),
-          {{DNNL_ARG_SRC, src_in},
-           {DNNL_ARG_DST, dst},
-           {DNNL_ARG_SCRATCHPAD, scratchpad}});
+
+    dst.reinit_if_possible(pd.dst_desc());
+    if (src_in.has_scale()) {
+      dst.set_scale(src_in.get_scale());
     }
+    tensor scratchpad(pd.scratchpad_desc());
+
+    super(pd).execute(
+        stream::default_stream(),
+        {{DNNL_ARG_SRC, src_in},
+         {DNNL_ARG_DST, dst},
+         {DNNL_ARG_SCRATCHPAD, scratchpad}});
+
     // xpz: ???
     if (dst.has_scale() && aalgorithm == algorithm::eltwise_relu &&
         dst.get_data_type() == data_type::s8) {

@@ -860,7 +860,12 @@ struct matmul_forward : public dnnl::matmul,
     }
 
     if (attr.has_op_kind(kind::sum) && attr.get_post_ops().len() == 1) {
-      op_attr = attr_t::fuse_sum(sum_coeff);
+      // Extend using fuse_sum to avoid re-init op_attr, and remain the logic
+      // of fuse_sum. When re-init op_attr, the attrs in the original attr will
+      // be removed.
+      post_ops po;
+      po.append_sum(sum_coeff, 0);
+      op_attr.set_post_ops(po);
     }
     if (dst_coeff != 1.0f) {
       // Since onednn 3.0, dst scales are applied after all post ops

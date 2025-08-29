@@ -294,7 +294,7 @@ struct conv_deconv_utils {
 struct convolution_forward
     : public dnnl::convolution_forward,
 #ifdef __aarch64__
-      utils::computation_cache<std::pair<dnnl::convolution_forward::primitive_desc, dnnl::convolution_forward> > {
+      utils::placeholder_computation_cache {
 #else
       utils::computation_cache<dnnl::convolution_forward::primitive_desc> {
 #endif
@@ -1417,54 +1417,37 @@ struct convolution_forward
       dst_desc_query = dst_desc.to_format(memory_format);
     }
 
-    auto key = utils::create_key(
-        aprop_kind,
-        aalgorithm,
-        src_desc_query,
-        weights_desc_query,
-        bias_desc_query,
-        dst_desc_query,
-        with_bias,
-        strides,
-        dilates,
-        padding_l,
-        padding_r,
-        attr,
-        omp_get_max_threads());
-
     dnnl::convolution_forward::primitive_desc pd;
-    return fetch_or_create(key, [&]() {
-      if (with_bias) {
-         pd = primitive_desc(
-            aengine,
-            aprop_kind,
-            aalgorithm,
-            src_desc_query,
-            weights_desc_query,
-            bias_desc_query,
-            dst_desc_query,
-            strides,
-            dilates,
-            padding_l,
-            padding_r,
-            attr
-            );
-      } else {
+    if (with_bias) {
         pd = primitive_desc(
-            aengine,
-            aprop_kind,
-            aalgorithm,
-            src_desc_query,
-            weights_desc_query,
-            dst_desc_query,
-            strides,
-            dilates,
-            padding_l,
-            padding_r,
-            attr);
-      }
-      return std::make_pair(pd, super(pd));
-    });
+          aengine,
+          aprop_kind,
+          aalgorithm,
+          src_desc_query,
+          weights_desc_query,
+          bias_desc_query,
+          dst_desc_query,
+          strides,
+          dilates,
+          padding_l,
+          padding_r,
+          attr
+          );
+    } else {
+      pd = primitive_desc(
+          aengine,
+          aprop_kind,
+          aalgorithm,
+          src_desc_query,
+          weights_desc_query,
+          dst_desc_query,
+          strides,
+          dilates,
+          padding_l,
+          padding_r,
+          attr);
+    }
+    return {pd, super(pd)};
   }
 #else
   template <bool with_bias>

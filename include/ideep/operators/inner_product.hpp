@@ -35,7 +35,7 @@ struct inner_product_forward_params {
 struct inner_product_forward
     : public dnnl::inner_product_forward,
 #ifdef __aarch64__
-      utils::computation_cache<std::pair<dnnl::inner_product_forward::primitive_desc, dnnl::inner_product_forward>> {
+      utils::placeholder_computation_cache {
 #else
       utils::computation_cache<dnnl::inner_product_forward::primitive_desc> {
 #endif
@@ -254,27 +254,15 @@ struct inner_product_forward
       const attr_t& attr = attr_t(),
       const prop_kind aprop_kind = prop_kind::forward,
       const engine& aengine = engine::cpu_engine()) {
-    auto key = utils::create_key(
-        aprop_kind,
-        src_desc,
-        weights_desc,
-        bias_desc,
-        dst_desc,
-        attr,
-        with_bias,
-        omp_get_max_threads());
-
-    return fetch_or_create(key, [&]() {
-      dnnl::inner_product_forward::primitive_desc pd;
-      if (with_bias) {
-        pd = primitive_desc(
-            aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
-      } else {
-        pd = primitive_desc(
-            aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
-      }
-      return std::make_pair(pd, super(pd));
-    });
+    dnnl::inner_product_forward::primitive_desc pd;
+    if (with_bias) {
+      pd = primitive_desc(
+          aengine, aprop_kind, src_desc, weights_desc, bias_desc, dst_desc, attr);
+    } else {
+      pd = primitive_desc(
+          aengine, aprop_kind, src_desc, weights_desc, dst_desc, attr);
+    }
+    return std::make_pair(pd, super(pd));
   }
 #else
   static primitive_desc get_primitive_desc(

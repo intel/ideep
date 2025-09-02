@@ -895,7 +895,7 @@ struct matmul_forward : public dnnl::matmul,
       param.pd = primitive_desc(
           aengine, src_desc, weights_desc, dst_desc, op_attr);
     }
-    param.primitive = std::move(super(param.pd));
+    param.primitive = super(param.pd);
 #else
     auto key = utils::create_key(
         src_desc,
@@ -1073,7 +1073,7 @@ struct matmul_forward : public dnnl::matmul,
       param.pd =  primitive_desc(
           aengine, src_desc, weights_desc, dst_desc, op_attr);
     }
-    param.primitive = std::move(super(param.pd));
+    param.primitive = super(param.pd);
 #else
     auto key = utils::create_key(
         src_desc,
@@ -1225,7 +1225,7 @@ struct matmul_forward : public dnnl::matmul,
       param.pd = primitive_desc(
           aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
     }
-    param.primitive = std::move(super(param.pd));
+    param.primitive = super(param.pd);
 #else
     auto key = utils::create_key(
         src_desc,

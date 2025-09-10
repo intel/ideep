@@ -212,6 +212,22 @@ class computation_cache {
     return t_store_;
   }
 };
+
+struct placeholder_lru {
+  void clear() {};
+};
+
+// Placeholder cache to be used where computation cache
+// isn't required but expected. Missing methods should
+// be added as required
+class placeholder_computation_cache {
+ private:
+  static placeholder_lru lru;
+ public:
+  static inline placeholder_lru& t_store() {
+    return lru;
+  }
+};
 } // namespace utils
 } // namespace ideep
 #endif

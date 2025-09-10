@@ -49,7 +49,7 @@ struct matmul_forward_params {
 
 struct matmul_forward : public dnnl::matmul,
 #ifdef __aarch64__
-                        utils::computation_cache<std::pair<dnnl::matmul::primitive_desc, dnnl::matmul> > {
+                        utils::placeholder_computation_cache {
 #else
                         utils::computation_cache<dnnl::matmul::primitive_desc> {
 #endif
@@ -887,6 +887,16 @@ struct matmul_forward : public dnnl::matmul,
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }
 
+#ifdef __aarch64__
+    if (with_bias) {
+      param.pd = primitive_desc(
+          aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
+    } else {
+      param.pd = primitive_desc(
+          aengine, src_desc, weights_desc, dst_desc, op_attr);
+    }
+    param.primitive = super(param.pd);
+#else
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -895,21 +905,6 @@ struct matmul_forward : public dnnl::matmul,
         op_attr,
         with_bias,
         omp_get_max_threads());
-
-#ifdef __aarch64__
-    auto pd_pair = fetch_or_create(key, [&]() {
-      if (with_bias) {
-        param.pd = primitive_desc(
-            aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
-      } else {
-        param.pd = primitive_desc(
-            aengine, src_desc, weights_desc, dst_desc, op_attr);
-      }
-      return std::make_pair(param.pd, super(param.pd));
-    });
-    param.pd = std::move(pd_pair.first);
-    param.primitive = std::move(pd_pair.second);
-#else
     param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
@@ -1070,6 +1065,16 @@ struct matmul_forward : public dnnl::matmul,
     if (!dst.is_empty()) {
       dst_desc = dst.get_desc().to_type(dst_data_type);
     }
+#ifdef __aarch64__
+    if (with_bias) {
+      param.pd =  primitive_desc(
+          aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
+    } else {
+      param.pd =  primitive_desc(
+          aengine, src_desc, weights_desc, dst_desc, op_attr);
+    }
+    param.primitive = super(param.pd);
+#else
     auto key = utils::create_key(
         src_desc,
         weights_desc,
@@ -1078,20 +1083,6 @@ struct matmul_forward : public dnnl::matmul,
         op_attr,
         with_bias,
         omp_get_max_threads());
-#ifdef __aarch64__
-    auto pd_pair = fetch_or_create(key, [&]() {
-      if (with_bias) {
-        param.pd =  primitive_desc(
-            aengine, src_desc, weights_desc, bias_desc, dst_desc, op_attr);
-      } else {
-        param.pd =  primitive_desc(
-            aengine, src_desc, weights_desc, dst_desc, op_attr);
-      }
-      return std::make_pair(param.pd, super(param.pd));
-    });
-    param.pd = std::move(pd_pair.first);
-    param.primitive = std::move(pd_pair.second);
-#else
     param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(
@@ -1225,6 +1216,17 @@ struct matmul_forward : public dnnl::matmul,
       bias_desc = {bias.get_dims(), data_type::f32, bia_tag};
     }
 
+    // Create pd and primitive
+#ifdef __aarch64__
+    if (with_bias) {
+      param.pd = primitive_desc(
+          aengine, src_desc, weights.get_desc(), bias_desc, dst_desc, op_attr);
+    } else {
+      param.pd = primitive_desc(
+          aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
+    }
+    param.primitive = super(param.pd);
+#else
     auto key = utils::create_key(
         src_desc,
         weights.get_desc(),
@@ -1233,22 +1235,6 @@ struct matmul_forward : public dnnl::matmul,
         op_attr,
         with_bias,
         omp_get_max_threads());
-
-    // Create pd and primitive
-#ifdef __aarch64__
-    auto pd_pair = fetch_or_create(key, [&]() {
-      if (with_bias) {
-        param.pd = primitive_desc(
-            aengine, src_desc, weights.get_desc(), bias_desc, dst_desc, op_attr);
-      } else {
-        param.pd = primitive_desc(
-            aengine, src_desc, weights.get_desc(), dst_desc, op_attr);
-      }
-      return std::make_pair(param.pd, super(param.pd));
-    });
-    param.pd = std::move(pd_pair.first);
-    param.primitive = std::move(pd_pair.second);
-#else
     param.pd = fetch_or_create(key, [&]() {
       if (with_bias) {
         return primitive_desc(

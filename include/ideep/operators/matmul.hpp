@@ -657,7 +657,7 @@ struct matmul_forward : public dnnl::matmul,
     }
   }
 
-static tensor::desc expected_weights_desc(
+  static tensor::desc expected_weights_desc(
       const dims& weights_dims,
       const dims& src_dims,
       data_type dtype,

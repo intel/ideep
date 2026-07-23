@@ -659,9 +659,10 @@ struct matmul_forward : public dnnl::matmul,
 
   static tensor::desc expected_weights_desc(
       const dims& weights_dims,
-      const dims& src_dims = dims(),
-      data_type dtype = data_type::f32,
-      data_type x_dtype = data_type::f32,
+      const dims& src_dims,
+      data_type dtype,
+      data_type x_dtype,
+      data_type y_dtype,
       const attr_t& attr = attr_t(),
       const engine& aengine = engine::cpu_engine()) {
     auto ndims = weights_dims.size();
@@ -670,7 +671,6 @@ struct matmul_forward : public dnnl::matmul,
     x_dims[ndims-1] = weights_dims[ndims-2];
     dims y_dims = (ndims == 3) ? dims({x_dims[0], x_dims[1], weights_dims[2]})
                                : dims({x_dims[0], weights_dims[1]});
-    auto y_dtype = (dtype != data_type::s8) ? dtype : data_type::s32;
 
     IDEEP_ENFORCE(x_dims.size() == weights_dims.size(),
                   "Invalid dims for data and weights");
@@ -679,6 +679,25 @@ struct matmul_forward : public dnnl::matmul,
     tensor::desc weights_desc(weights_dims , dtype, tag::any);
     auto pd = primitive_desc(aengine, x_desc, weights_desc, y_desc, attr);
     return pd.weights_desc();
+  }
+
+  static tensor::desc expected_weights_desc(
+      const dims& weights_dims,
+      const dims& src_dims = dims(),
+      data_type dtype = data_type::f32,
+      data_type x_dtype = data_type::f32,
+      const attr_t& attr = attr_t(),
+      const engine& aengine = engine::cpu_engine()) {
+    auto y_dtype = (dtype != data_type::s8) ? dtype : data_type::s32;
+
+    return expected_weights_desc(
+        weights_dims,
+        src_dims,
+        dtype,
+        x_dtype,
+        y_dtype,
+        attr,
+        aengine);
   }
 
  private:

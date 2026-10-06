@@ -11,6 +11,7 @@
 #include "operators/direct_copy.hpp"
 #include "operators/dropout.hpp"
 #include "operators/eltwise.hpp"
+#include "operators/grouped_matmul.hpp"
 #include "operators/gru.hpp"
 #include "operators/inner_product.hpp"
 #include "operators/layernorm.hpp"
